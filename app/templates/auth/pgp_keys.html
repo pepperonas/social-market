@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+
+{% block title %}PGP Key Generation{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-12">
+        <h2>🔐 PGP Key Generation (RSA-4096)</h2>
+        <p class="text-muted">Generate secure RSA keypairs for encrypted communication</p>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">Generate New RSA Keypair</h5>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info">
+                    <strong>⚠️ Important Security Notice:</strong>
+                    <ul class="mb-0 mt-2">
+                        <li>Keys are generated locally and <strong>never stored</strong> on our servers</li>
+                        <li>You must download and save your keys immediately</li>
+                        <li>Keep your private key and passphrase absolutely secure</li>
+                        <li>Loss of passphrase means permanent loss of access to encrypted data</li>
+                    </ul>
+                </div>
+
+                <form method="POST" action="{{ url_for('auth.generate_pgp_key') }}" id="keyGenForm">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+
+                    <div class="mb-3">
+                        <label for="key_name" class="form-label">Full Name *</label>
+                        <input type="text" class="form-control" id="key_name" name="key_name"
+                               required minlength="3" placeholder="John Doe"
+                               value="{{ current_user.username }}">
+                        <div class="form-text">Your real name or username (min. 3 characters)</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="key_email" class="form-label">Email Address *</label>
+                        <input type="email" class="form-control" id="key_email" name="key_email"
+                               required placeholder="john@example.com"
+                               value="{{ current_user.email }}">
+                        <div class="form-text">Email associated with this key</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="key_length" class="form-label">Key Length (bits)</label>
+                        <select class="form-select" id="key_length" name="key_length">
+                            <option value="2048">2048-bit (Fast, Standard Security)</option>
+                            <option value="3072">3072-bit (Balanced)</option>
+                            <option value="4096" selected>4096-bit (Recommended, Maximum Security)</option>
+                        </select>
+                        <div class="form-text">
+                            <strong>Recommended: 4096-bit</strong> - Industry standard for high security
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="expire_years" class="form-label">Key Expiration</label>
+                        <select class="form-select" id="expire_years" name="expire_years">
+                            <option value="0" selected>Never expire</option>
+                            <option value="1">1 year</option>
+                            <option value="2">2 years</option>
+                            <option value="5">5 years</option>
+                        </select>
+                        <div class="form-text">How long the key remains valid</div>
+                    </div>
+
+                    <hr>
+
+                    <div class="mb-3">
+                        <label for="passphrase" class="form-label">Passphrase *</label>
+                        <input type="password" class="form-control" id="passphrase" name="passphrase"
+                               required minlength="12" placeholder="Enter strong passphrase">
+                        <div class="form-text">
+                            <strong>Minimum 12 characters</strong> - Use a strong, unique passphrase
+                        </div>
+                        <div id="passphrase-strength" class="mt-2"></div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="passphrase_confirm" class="form-label">Confirm Passphrase *</label>
+                        <input type="password" class="form-control" id="passphrase_confirm" name="passphrase_confirm"
+                               required minlength="12" placeholder="Re-enter passphrase">
+                    </div>
+
+                    <div class="alert alert-warning">
+                        <strong>Generation Time:</strong> RSA-4096 key generation may take 30-60 seconds.
+                        Please be patient and do not close this page.
+                    </div>
+
+                    <button type="submit" class="btn btn-primary btn-lg w-100" id="generateBtn">
+                        🔐 Generate RSA-4096 Keypair
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card mb-3">
+            <div class="card-header">
+                <h5>Security Features</h5>
+            </div>
+            <div class="card-body">
+                <ul class="small">
+                    <li><strong>RSA-4096:</strong> Military-grade encryption</li>
+                    <li><strong>Secure Generation:</strong> Uses system entropy</li>
+                    <li><strong>No Storage:</strong> Keys never saved on server</li>
+                    <li><strong>Passphrase Protected:</strong> Private key encrypted</li>
+                    <li><strong>OpenPGP Standard:</strong> Compatible with all PGP tools</li>
+                    <li><strong>Rate Limited:</strong> 3 generations/hour</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-header">
+                <h5>What is RSA-4096?</h5>
+            </div>
+            <div class="card-body small">
+                <p>RSA-4096 uses 4096-bit keys, providing extremely strong cryptographic security.</p>
+                <p><strong>Use cases:</strong></p>
+                <ul class="mb-0">
+                    <li>Encrypted email communication</li>
+                    <li>Digital signatures</li>
+                    <li>Secure file encryption</li>
+                    <li>Authentication</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <h5>Passphrase Tips</h5>
+            </div>
+            <div class="card-body small">
+                <ul class="mb-0">
+                    <li>Use 16+ characters</li>
+                    <li>Mix uppercase, lowercase, numbers, symbols</li>
+                    <li>Avoid dictionary words</li>
+                    <li>Use a passphrase manager</li>
+                    <li>Never share your passphrase</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Form submission handling
+document.getElementById('keyGenForm').addEventListener('submit', function(e) {
+    const btn = document.getElementById('generateBtn');
+    btn.disabled = true;
+    btn.textContent = '🔄 Generating keys... Please wait (30-60 seconds)';
+});
+
+// Passphrase strength indicator - using textContent for XSS safety
+document.getElementById('passphrase').addEventListener('input', function(e) {
+    const passphrase = e.target.value;
+    const strengthDiv = document.getElementById('passphrase-strength');
+
+    // Clear previous content
+    strengthDiv.textContent = '';
+
+    // Create badge element
+    const badge = document.createElement('span');
+    badge.className = 'badge';
+
+    if (passphrase.length < 12) {
+        badge.classList.add('bg-danger');
+        badge.textContent = 'Too Short';
+    } else if (passphrase.length < 16) {
+        badge.classList.add('bg-warning');
+        badge.textContent = 'Medium';
+    } else if (passphrase.length < 20) {
+        badge.classList.add('bg-success');
+        badge.textContent = 'Strong';
+    } else {
+        badge.classList.add('bg-success');
+        badge.textContent = 'Very Strong';
+    }
+
+    strengthDiv.appendChild(badge);
+});
+</script>
+{% endblock %}

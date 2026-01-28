@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+
+{% block title %}Download PGP Keys{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-12">
+        <h2>✅ Keys Generated Successfully!</h2>
+        <p class="text-muted">Download and save your keys securely</p>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="alert alert-success">
+            <h5>✅ Your RSA-{{ keys.key_length }} Keypair is Ready!</h5>
+            <p class="mb-0">
+                <strong>Fingerprint:</strong> <code>{{ keys.fingerprint }}</code><br>
+                <strong>Key ID:</strong> <code>{{ keys.keyid }}</code><br>
+                <strong>Created:</strong> {{ keys.created_at }}
+            </p>
+        </div>
+
+        <div class="alert alert-danger">
+            <strong>⚠️ CRITICAL: Download Your Keys Now!</strong>
+            <ul class="mb-0 mt-2">
+                <li>Keys are <strong>NOT stored on the server</strong></li>
+                <li>This is your <strong>ONLY chance</strong> to download them</li>
+                <li>Once you leave this page, keys will be permanently deleted</li>
+                <li>Store your private key and passphrase in a secure location</li>
+            </ul>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">Download Options</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <div class="d-grid">
+                            <a href="{{ url_for('auth.download_key_file', key_type='public') }}"
+                               class="btn btn-success btn-lg">
+                                📄 Public Key
+                            </a>
+                            <small class="text-muted mt-2">Share with others for encryption</small>
+                        </div>
+                    </div>
+
+                    <div class="col-md-4 mb-3">
+                        <div class="d-grid">
+                            <a href="{{ url_for('auth.download_key_file', key_type='private') }}"
+                               class="btn btn-danger btn-lg">
+                                🔒 Private Key
+                            </a>
+                            <small class="text-muted mt-2">Keep secret! Never share!</small>
+                        </div>
+                    </div>
+
+                    <div class="col-md-4 mb-3">
+                        <div class="d-grid">
+                            <a href="{{ url_for('auth.download_key_file', key_type='both') }}"
+                               class="btn btn-primary btn-lg">
+                                📦 Both Keys
+                            </a>
+                            <small class="text-muted mt-2">Download complete keypair</small>
+                        </div>
+                    </div>
+                </div>
+
+                <hr>
+
+                <form method="POST" action="{{ url_for('auth.clear_generated_keys') }}"
+                      onsubmit="return confirm('Are you sure you have downloaded your keys? This action cannot be undone!');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <button type="submit" class="btn btn-secondary w-100">
+                        🗑️ Clear Keys from Session
+                    </button>
+                    <small class="text-muted d-block mt-2">
+                        Only click this after you have securely saved your keys
+                    </small>
+                </form>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <h5>Key Details</h5>
+            </div>
+            <div class="card-body">
+                <h6>Public Key (Share freely):</h6>
+                <textarea class="form-control font-monospace small" rows="8" readonly>{{ keys.public_key }}</textarea>
+
+                <hr>
+
+                <h6>Private Key (Keep secret!):</h6>
+                <div class="alert alert-warning small">
+                    ⚠️ Never share your private key with anyone!
+                </div>
+                <textarea class="form-control font-monospace small" rows="10" readonly>{{ keys.private_key }}</textarea>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card mb-3">
+            <div class="card-header bg-success text-white">
+                <h5>Next Steps</h5>
+            </div>
+            <div class="card-body">
+                <ol class="small">
+                    <li><strong>Download</strong> both keys using the buttons above</li>
+                    <li><strong>Save</strong> your private key to a secure location
+                        <ul>
+                            <li>Encrypted USB drive</li>
+                            <li>Password manager</li>
+                            <li>Offline storage</li>
+                        </ul>
+                    </li>
+                    <li><strong>Backup</strong> your passphrase separately</li>
+                    <li><strong>Import</strong> keys into your PGP client
+                        <ul>
+                            <li>GPG (command line)</li>
+                            <li>Kleopatra (Windows)</li>
+                            <li>GPG Suite (macOS)</li>
+                            <li>Thunderbird + Enigmail</li>
+                        </ul>
+                    </li>
+                    <li><strong>Share</strong> your public key with contacts</li>
+                </ol>
+            </div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-header">
+                <h5>Security Reminders</h5>
+            </div>
+            <div class="card-body small">
+                <ul class="mb-0">
+                    <li>✅ Public key: Safe to share</li>
+                    <li>❌ Private key: Never share</li>
+                    <li>❌ Passphrase: Never share</li>
+                    <li>📦 Backup keys to multiple secure locations</li>
+                    <li>🔄 Consider setting a calendar reminder to rotate keys</li>
+                    <li>🗑️ Securely delete keys from downloads folder after importing</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <h5>Import Instructions</h5>
+            </div>
+            <div class="card-body small">
+                <h6>GPG (Command Line):</h6>
+                <pre class="bg-dark text-white p-2"><code>gpg --import public_key.asc
+gpg --import private_key.asc</code></pre>
+
+                <h6 class="mt-3">Verify Import:</h6>
+                <pre class="bg-dark text-white p-2"><code>gpg --list-keys
+gpg --list-secret-keys</code></pre>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
