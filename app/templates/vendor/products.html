@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+
+{% block title %}Manage Products{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-12 d-flex justify-content-between align-items-center">
+        <h2>Manage Products</h2>
+        <a href="{{ url_for('vendor.add_product') }}" class="btn btn-primary">Add New Product</a>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-12">
+        {% if products %}
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Image</th>
+                        <th>Title</th>
+                        <th>Category</th>
+                        <th>Price</th>
+                        <th>Status</th>
+                        <th>Created</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for product in products %}
+                    <tr>
+                        <td>
+                            {% if product.images %}
+                            <img src="{{ product.images[0] }}" alt="{{ product.title }}" style="width: 50px; height: 50px; object-fit: cover;">
+                            {% else %}
+                            <div style="width: 50px; height: 50px; background-color: #ccc;"></div>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <a href="{{ url_for('marketplace.product_detail', product_id=product.id) }}">{{ product.title }}</a>
+                        </td>
+                        <td><span class="badge bg-secondary">{{ product.category.name if product.category else 'No Category' }}</span></td>
+                        <td>${{ "%.2f"|format(product.price) }}</td>
+                        <td>
+                            <span class="badge bg-{{ 'success' if product.is_active else 'danger' }}">
+                                {{ 'Active' if product.is_active else 'Inactive' }}
+                            </span>
+                        </td>
+                        <td>{{ product.created_at.strftime('%Y-%m-%d') }}</td>
+                        <td>
+                            <a href="{{ url_for('vendor.edit_product', product_id=product.id) }}" class="btn btn-sm btn-secondary">Edit</a>
+                            <form method="POST" action="{{ url_for('vendor.delete_product', product_id=product.id) }}" style="display: inline;">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Delete this product?')">Delete</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="alert alert-info">
+            <p class="mb-0">You haven't listed any products yet. <a href="{{ url_for('vendor.add_product') }}">Add your first product</a></p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

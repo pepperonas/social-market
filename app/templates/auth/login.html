@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block title %}Login{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0">Login</h4>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('auth.login') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                    <div class="mb-3">
+                        <label for="username" class="form-label">Username</label>
+                        <input type="text" class="form-control" id="username" name="username" required autofocus>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="password" class="form-label">Password</label>
+                        <input type="password" class="form-control" id="password" name="password" required>
+                    </div>
+
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" class="form-check-input" id="remember" name="remember">
+                        <label class="form-check-label" for="remember">Remember me</label>
+                    </div>
+
+                    <div class="alert alert-info small">
+                        <strong>Security Notice:</strong>
+                        <ul class="mb-0">
+                            <li>Accounts lock after 5 failed attempts</li>
+                            <li>All login attempts are logged</li>
+                            <li>2FA required for admin accounts</li>
+                        </ul>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary w-100">Login</button>
+                </form>
+
+                <hr>
+
+                <div class="text-center">
+                    <p class="mb-0">Don't have an account? <a href="{{ url_for('auth.register') }}">Register here</a></p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Default Credentials (Training Environment Only) -->
+        <div class="alert alert-warning mt-3">
+            <strong>Training Environment Default Credentials:</strong>
+            <br>
+            Username: <code>admin</code> / Password: <code>ChangeMe123!</code>
+            <br>
+            <small>⚠️ Change immediately after first login!</small>
+        </div>
+    </div>
+</div>
+{% endblock %}

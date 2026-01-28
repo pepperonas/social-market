@@ -1,0 +1,30 @@
+# EDUCATIONAL SECURITY TRAINING ENVIRONMENT
+# Robots.txt - Search Engine Directives
+
+# Important: This is a LOCAL training environment
+# NOT intended for public indexing
+
+# Disallow all search engine crawling
+User-agent: *
+Disallow: /
+
+# Security notice
+# This application is for educational security training only
+# For authorized users and researchers only
+
+# Specific paths (if this were production)
+# Disallow: /admin/
+# Disallow: /auth/
+# Disallow: /api/
+# Disallow: /messages/
+# Disallow: /vendor/
+# Disallow: /buyer/
+
+# Allow security.txt
+Allow: /.well-known/security.txt
+
+# Crawl-delay (if this were production)
+# Crawl-delay: 10
+
+# Sitemap (if this were production)
+# Sitemap: http://marketplace.local/sitemap.xml

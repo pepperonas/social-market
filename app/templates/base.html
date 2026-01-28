@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Educational Security Training Environment - Social Market">
+    <meta name="robots" content="noindex, nofollow">
+    <title>{% block title %}Social Market{% endblock %} - Educational Training</title>
+
+    <!-- Security Notice -->
+    <meta name="security-environment" content="educational-training">
+
+    <!-- CSS - Bootstrap 5 (CSS only, no JavaScript) - Local copy -->
+    <link href="{{ url_for('static', filename='css/bootstrap.min.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/custom.css') }}" rel="stylesheet">
+
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <!-- Security Warning Banner -->
+    <div class="alert alert-warning text-center mb-0" role="alert">
+        <strong>⚠️ EDUCATIONAL TRAINING ENVIRONMENT ⚠️</strong>
+        <br>
+        For authorized security training and research only
+    </div>
+
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="{{ url_for('marketplace.index') }}">
+                🛒 Social Market
+            </a>
+
+            <div class="navbar-nav ms-auto">
+                {% if current_user.is_authenticated %}
+                    <span class="navbar-text me-3">
+                        Welcome, {{ current_user.username }}
+                        {% if current_user.two_factor_enabled %}
+                            <span class="badge bg-success">2FA</span>
+                        {% endif %}
+                    </span>
+
+                    <a class="nav-link" href="{{ url_for('marketplace.index') }}">Products</a>
+
+                    {% if current_user.is_vendor() %}
+                        <a class="nav-link" href="{{ url_for('vendor.dashboard') }}">Vendor Dashboard</a>
+                    {% endif %}
+
+                    {% if current_user.is_admin() %}
+                        <a class="nav-link" href="{{ url_for('admin.dashboard') }}">Admin</a>
+                    {% endif %}
+
+                    <a class="nav-link" href="{{ url_for('buyer.orders') }}">My Orders</a>
+                    <a class="nav-link" href="{{ url_for('messages.inbox') }}">Messages</a>
+                    <a class="nav-link" href="{{ url_for('auth.profile') }}">Profile</a>
+                    <a class="nav-link" href="{{ url_for('auth.logout') }}">Logout</a>
+                {% else %}
+                    <a class="nav-link" href="{{ url_for('auth.login') }}">Login</a>
+                    <a class="nav-link" href="{{ url_for('auth.register') }}">Register</a>
+                {% endif %}
+            </div>
+        </div>
+    </nav>
+
+    <!-- Flash Messages -->
+    <div class="container mt-3">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+    </div>
+
+    <!-- Main Content -->
+    <main class="container my-4">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-dark text-white mt-5 py-4">
+        <div class="container">
+            <div class="row">
+                <div class="col-md-6">
+                    <h5>Educational Security Training</h5>
+                    <p class="small">
+                        This is a training environment for IT security education.
+                        <br>
+                        For authorized use only.
+                    </p>
+                </div>
+                <div class="col-md-6 text-end">
+                    <h5>Security</h5>
+                    <ul class="list-unstyled small">
+                        <li><a href="/.well-known/security.txt" class="text-white">Security.txt</a></li>
+                        <li><a href="/robots.txt" class="text-white">Robots.txt</a></li>
+                        <li>TLS 1.3 Enabled</li>
+                        <li>2FA Supported</li>
+                        <li>PGP Encrypted Messaging</li>
+                    </ul>
+                </div>
+            </div>
+            <hr class="bg-white">
+            <div class="text-center small">
+                © 2026 Social Market - Educational Use Only
+            </div>
+        </div>
+    </footer>
+
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

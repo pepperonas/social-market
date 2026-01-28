@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+
+{% block title %}PGP Settings{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h4>PGP Encryption Settings</h4>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info">
+                    <strong>Privacy Notice:</strong> PGP encryption ensures your messages can only be read by you.
+                </div>
+
+                <form method="POST" action="{{ url_for('auth.pgp_settings') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+
+                    <div class="mb-3">
+                        <label for="pgp_public_key" class="form-label">PGP Public Key</label>
+                        <textarea class="form-control" id="pgp_public_key" name="pgp_public_key" rows="10" required>{{ current_user.pgp_public_key if current_user.pgp_public_key else '' }}</textarea>
+                        <div class="form-text">Paste your PGP public key (including BEGIN/END markers)</div>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary">Save PGP Key</button>
+                    <a href="{{ url_for('auth.profile') }}" class="btn btn-secondary">Cancel</a>
+                </form>
+
+                <hr class="my-4">
+
+                <div class="alert alert-warning">
+                    <h6>Important:</h6>
+                    <ul class="mb-0 small">
+                        <li>Keep your private key secure - never share it</li>
+                        <li>Only your public key should be uploaded here</li>
+                        <li>Messages encrypted with your public key can only be decrypted with your private key</li>
+                        <li>Back up your private key safely</li>
+                    </ul>
+                </div>
+
+                {% if current_user.pgp_public_key %}
+                <div class="card mt-3">
+                    <div class="card-header">
+                        <h6>Current PGP Key Info</h6>
+                    </div>
+                    <div class="card-body">
+                        <pre class="small mb-0" style="max-height: 200px; overflow-y: auto;">{{ current_user.pgp_public_key }}</pre>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

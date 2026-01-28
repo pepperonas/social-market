@@ -1,0 +1,353 @@
+# EDUCATIONAL SECURITY TRAINING ENVIRONMENT
+# Nginx Configuration - Hardened Reverse Proxy
+
+user nginx;
+worker_processes auto;
+error_log /var/log/nginx/error.log warn;
+pid /tmp/nginx.pid;
+
+# Security: Limit number of file descriptors
+worker_rlimit_nofile 4096;
+
+events {
+    worker_connections 1024;
+    use epoll;
+    multi_accept on;
+}
+
+http {
+    # =============================================================================
+    # Basic Settings
+    # =============================================================================
+
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+
+    # Security: Hide Nginx version
+    server_tokens off;
+
+    # =============================================================================
+    # Logging
+    # =============================================================================
+
+    log_format main '$remote_addr - $remote_user [$time_local] "$request" '
+                    '$status $body_bytes_sent "$http_referer" '
+                    '"$http_user_agent" "$http_x_forwarded_for"';
+
+    log_format security '$remote_addr - $remote_user [$time_local] '
+                        '"$request" $status $body_bytes_sent '
+                        '"$http_referer" "$http_user_agent" '
+                        '$request_time $upstream_response_time '
+                        '$pipe $connection_requests';
+
+    access_log /var/log/nginx/access.log main;
+    error_log /var/log/nginx/error.log warn;
+
+    # =============================================================================
+    # Performance Tuning
+    # =============================================================================
+
+    sendfile on;
+    tcp_nopush on;
+    tcp_nodelay on;
+    keepalive_timeout 65;
+    keepalive_requests 100;
+    types_hash_max_size 2048;
+
+    # =============================================================================
+    # Buffer Security (Prevent Buffer Overflow Attacks)
+    # =============================================================================
+
+    client_body_buffer_size 16k;
+    client_header_buffer_size 1k;
+    client_max_body_size 5m;
+    large_client_header_buffers 4 8k;
+
+    # Timeout settings (prevent slowloris attacks)
+    client_body_timeout 12;
+    client_header_timeout 12;
+    send_timeout 10;
+
+    # =============================================================================
+    # Rate Limiting Zones
+    # =============================================================================
+
+    # General rate limit: 10 req/sec per IP
+    limit_req_zone $binary_remote_addr zone=general:10m rate=10r/s;
+
+    # Login rate limit: 1 req/min per IP
+    limit_req_zone $binary_remote_addr zone=login:10m rate=1r/m;
+
+    # Registration rate limit: 1 req per 60 minutes per IP
+    limit_req_zone $binary_remote_addr zone=register:10m rate=1r/m;
+
+    # API rate limit: 100 req/min per IP
+    limit_req_zone $binary_remote_addr zone=api:10m rate=100r/m;
+
+    # Connection limiting
+    limit_conn_zone $binary_remote_addr zone=addr:10m;
+
+    # Rate limit status codes
+    limit_req_status 429;
+    limit_conn_status 429;
+
+    # =============================================================================
+    # Gzip Compression
+    # =============================================================================
+
+    gzip on;
+    gzip_disable "msie6";
+    gzip_vary on;
+    gzip_proxied any;
+    gzip_comp_level 6;
+    gzip_types text/plain text/css text/xml text/javascript
+               application/json application/javascript application/xml+rss
+               application/rss+xml font/truetype font/opentype
+               application/vnd.ms-fontobject image/svg+xml;
+
+    # =============================================================================
+    # SSL/TLS Configuration (for HTTPS)
+    # =============================================================================
+
+    # TLS 1.3 only
+    ssl_protocols TLSv1.3;
+    ssl_prefer_server_ciphers off;
+
+    # Modern cipher suite (TLS 1.3)
+    ssl_ciphers 'TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256';
+
+    # SSL session cache
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 10m;
+    ssl_session_tickets off;
+
+    # OCSP Stapling
+    ssl_stapling on;
+    ssl_stapling_verify on;
+
+    # =============================================================================
+    # DNS Resolver for Docker
+    # =============================================================================
+
+    # Use Docker's internal DNS for dynamic resolution
+    resolver 127.0.0.11 valid=10s;
+    resolver_timeout 5s;
+
+    # =============================================================================
+    # Server Blocks
+    # =============================================================================
+
+    # HTTP Server (Redirect to HTTPS in production)
+    server {
+        listen 80 default_server;
+        listen [::]:80 default_server;
+
+        server_name _;
+
+        # Include security headers
+        include /etc/nginx/security-headers.conf;
+
+        # =============================================================================
+        # Rate Limiting
+        # =============================================================================
+
+        # General rate limit
+        limit_req zone=general burst=20 nodelay;
+        limit_conn addr 10;
+
+        # =============================================================================
+        # Health Check (No rate limit)
+        # =============================================================================
+
+        location /health {
+            access_log off;
+            return 200 "healthy\n";
+            add_header Content-Type text/plain;
+        }
+
+        # =============================================================================
+        # Static Files (served through Flask app)
+        # =============================================================================
+
+        # Static files are served by Flask app for simplicity in training environment
+        # In production, consider serving static files directly from Nginx with proper volume mounting
+
+        # =============================================================================
+        # Authentication Endpoints (Stricter Rate Limiting)
+        # =============================================================================
+
+        location /auth/login {
+            limit_req zone=login burst=3 nodelay;
+            limit_req_status 429;
+
+            # Use variable to enable dynamic DNS resolution
+            set $backend_server "app:5000";
+            proxy_pass http://$backend_server;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+
+            # Additional security for login
+            proxy_read_timeout 30s;
+            proxy_connect_timeout 10s;
+
+            # Fix chunked encoding
+            proxy_buffering off;
+            proxy_http_version 1.1;
+        }
+
+        location /auth/register {
+            limit_req zone=register burst=1 nodelay;
+            limit_req_status 429;
+
+            set $backend_server "app:5000";
+            proxy_pass http://$backend_server;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+
+            # Fix chunked encoding
+            proxy_buffering off;
+            proxy_http_version 1.1;
+        }
+
+        # =============================================================================
+        # API Endpoints
+        # =============================================================================
+
+        location /api/ {
+            limit_req zone=api burst=50 nodelay;
+
+            set $backend_server "app:5000";
+            proxy_pass http://$backend_server;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+
+            # API-specific timeouts
+            proxy_read_timeout 60s;
+            proxy_connect_timeout 10s;
+
+            # Fix chunked encoding
+            proxy_buffering off;
+            proxy_http_version 1.1;
+        }
+
+        # =============================================================================
+        # Application (Default)
+        # =============================================================================
+
+        location / {
+            # General rate limiting
+            limit_req zone=general burst=20 nodelay;
+
+            # Proxy to Flask app (use variable for dynamic DNS)
+            set $backend_server "app:5000";
+            proxy_pass http://$backend_server;
+            proxy_redirect off;
+
+            # Security headers
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+
+            # Timeouts
+            proxy_read_timeout 90s;
+            proxy_connect_timeout 10s;
+            proxy_send_timeout 90s;
+
+            # Disable buffering to fix chunked encoding issues
+            proxy_buffering off;
+            proxy_request_buffering off;
+
+            # HTTP version
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
+
+            # Fix chunked transfer encoding
+            chunked_transfer_encoding on;
+        }
+
+        # =============================================================================
+        # Security: Block Common Attack Patterns
+        # =============================================================================
+
+        # Block access to hidden files
+        location ~ /\. {
+            deny all;
+            access_log off;
+            log_not_found off;
+        }
+
+        # Block access to backup files
+        location ~ ~$ {
+            deny all;
+            access_log off;
+            log_not_found off;
+        }
+
+        # Block user-agents (bots, scrapers)
+        if ($http_user_agent ~* (bot|crawler|spider|scraper)) {
+            return 403;
+        }
+
+        # Block SQL injection patterns in query strings
+        if ($query_string ~* "(union.*select|insert.*into|drop.*table|delete.*from|update.*set)") {
+            return 403;
+        }
+
+        # Block file injection attempts
+        if ($query_string ~* "(\.\.\/|\.\.\\|etc\/passwd|boot\.ini)") {
+            return 403;
+        }
+
+        # =============================================================================
+        # Error Pages
+        # =============================================================================
+
+        error_page 400 401 403 404 /error.html;
+        error_page 500 502 503 504 /error.html;
+
+        location = /error.html {
+            internal;
+            return 200 "Error occurred\n";
+            add_header Content-Type text/plain;
+        }
+
+        # Custom 429 (Rate Limit) response
+        error_page 429 /rate_limit.html;
+        location = /rate_limit.html {
+            internal;
+            return 429 "Rate limit exceeded. Please try again later.\n";
+            add_header Content-Type text/plain;
+            add_header Retry-After 60;
+        }
+    }
+
+    # =============================================================================
+    # HTTPS Server (Production)
+    # =============================================================================
+
+    # server {
+    #     listen 443 ssl http2 default_server;
+    #     listen [::]:443 ssl http2 default_server;
+    #
+    #     server_name marketplace.local;
+    #
+    #     # SSL certificates
+    #     ssl_certificate /etc/nginx/ssl/cert.pem;
+    #     ssl_certificate_key /etc/nginx/ssl/key.pem;
+    #
+    #     # Include security headers
+    #     include /etc/nginx/security-headers.conf;
+    #
+    #     # HSTS (force HTTPS)
+    #     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
+    #
+    #     # ... (same location blocks as HTTP server)
+    # }
+}

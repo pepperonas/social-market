@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block title %}Messages{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-12">
+        <h2>Messages</h2>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-12">
+        {% if threads %}
+        <div class="list-group">
+            {% for thread in threads %}
+            <a href="{{ url_for('messages.thread', thread_id=thread.id) }}" class="list-group-item list-group-item-action">
+                <div class="d-flex w-100 justify-content-between">
+                    <h5 class="mb-1">
+                        {% if thread.sender_id == current_user.id %}
+                        To: {{ thread.recipient.username }}
+                        {% else %}
+                        From: {{ thread.sender.username }}
+                        {% endif %}
+                        {% if thread.unread %}
+                        <span class="badge bg-primary">New</span>
+                        {% endif %}
+                    </h5>
+                    <small>{{ thread.created_at.strftime('%Y-%m-%d %H:%M') }}</small>
+                </div>
+                <p class="mb-1 text-truncate">{{ thread.subject if thread.subject else '(No subject)' }}</p>
+                <small class="text-muted">
+                    {% if thread.encrypted %}
+                    <span class="badge bg-success">🔒 Encrypted</span>
+                    {% endif %}
+                    {{ thread.message_count }} message(s)
+                </small>
+            </a>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="alert alert-info">
+            <p class="mb-0">No messages yet.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

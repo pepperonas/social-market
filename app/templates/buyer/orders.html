@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block title %}My Orders{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-12">
+        <h2>My Orders</h2>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-12">
+        {% if orders %}
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Order ID</th>
+                        <th>Product</th>
+                        <th>Vendor</th>
+                        <th>Quantity</th>
+                        <th>Total</th>
+                        <th>Status</th>
+                        <th>Date</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for order in orders %}
+                    <tr>
+                        <td><a href="{{ url_for('buyer.order_detail', order_id=order.id) }}">#{{ order.id[:8] }}</a></td>
+                        <td>{{ order.product.title }}</td>
+                        <td><a href="{{ url_for('marketplace.vendor_profile', user_id=order.vendor_id) }}">{{ order.vendor.username }}</a></td>
+                        <td>{{ order.quantity }}</td>
+                        <td>${{ "%.2f"|format(order.total_price) }}</td>
+                        <td><span class="badge bg-{{ order.status_color }}">{{ order.status }}</span></td>
+                        <td>{{ order.created_at.strftime('%Y-%m-%d') }}</td>
+                        <td>
+                            <a href="{{ url_for('buyer.order_detail', order_id=order.id) }}" class="btn btn-sm btn-primary">View</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="alert alert-info">
+            <p class="mb-0">You haven't placed any orders yet. <a href="{{ url_for('marketplace.index') }}">Browse products</a></p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

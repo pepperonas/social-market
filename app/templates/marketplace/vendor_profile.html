@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block title %}{{ vendor.username }} - Vendor Profile{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h4>Vendor: {{ vendor.username }}</h4>
+            </div>
+            <div class="card-body">
+                <table class="table table-borderless">
+                    <tr>
+                        <th width="200">Member Since:</th>
+                        <td>{{ vendor.created_at.strftime('%Y-%m-%d') }}</td>
+                    </tr>
+                    {% if vendor.vendor_rating %}
+                    <tr>
+                        <th>Rating:</th>
+                        <td>{{ "%.1f"|format(vendor.vendor_rating) }} / 5.0</td>
+                    </tr>
+                    {% endif %}
+                    <tr>
+                        <th>PGP Key:</th>
+                        <td>
+                            {% if vendor.pgp_public_key %}
+                                <span class="badge bg-success">Available</span>
+                            {% else %}
+                                <span class="badge bg-secondary">Not Set</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                </table>
+
+                {% if current_user.is_authenticated and current_user.id != vendor.id %}
+                <a href="{{ url_for('messages.new_thread', recipient_id=vendor.id) }}" class="btn btn-primary">Send Message</a>
+                {% endif %}
+            </div>
+        </div>
+
+        <h4>Products by {{ vendor.username }}</h4>
+        <div class="row">
+            {% if products %}
+                {% for product in products %}
+                <div class="col-md-6 mb-4">
+                    <div class="card h-100">
+                        {% if product.images %}
+                        <img src="{{ product.images[0] }}" class="card-img-top" alt="{{ product.title }}" style="height: 150px; object-fit: cover;">
+                        {% else %}
+                        <div class="card-img-top bg-secondary d-flex align-items-center justify-content-center" style="height: 150px;">
+                            <span class="text-white">No Image</span>
+                        </div>
+                        {% endif %}
+                        <div class="card-body">
+                            <h5 class="card-title">{{ product.title }}</h5>
+                            <p class="card-text">
+                                <strong>Price:</strong> ${{ "%.2f"|format(product.price) }}
+                            </p>
+                            <a href="{{ url_for('marketplace.product_detail', product_id=product.id) }}" class="btn btn-primary btn-sm">View</a>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="col-md-12">
+                    <div class="alert alert-info">No products listed yet.</div>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        {% if vendor.pgp_public_key %}
+        <div class="card">
+            <div class="card-header">
+                <h6>PGP Public Key</h6>
+            </div>
+            <div class="card-body">
+                <pre class="small" style="max-height: 300px; overflow-y: auto; font-size: 10px;">{{ vendor.pgp_public_key }}</pre>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

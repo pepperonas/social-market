@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+
+{% block title %}User Details - {{ user.username }}{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="d-flex justify-content-between align-items-center">
+            <h2>User Details</h2>
+            <a href="{{ url_for('admin.users') }}" class="btn btn-secondary">Back to Users</a>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5>Basic Information</h5>
+            </div>
+            <div class="card-body">
+                <table class="table table-borderless">
+                    <tr>
+                        <th width="40%">Username:</th>
+                        <td>{{ user.username }}</td>
+                    </tr>
+                    <tr>
+                        <th>Email:</th>
+                        <td>{{ user.email }}</td>
+                    </tr>
+                    <tr>
+                        <th>Role:</th>
+                        <td>
+                            <span class="badge bg-primary">{{ user.role }}</span>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>Status:</th>
+                        <td>
+                            {% if user.is_active %}
+                            <span class="badge bg-success">Active</span>
+                            {% else %}
+                            <span class="badge bg-danger">Inactive</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>Verified:</th>
+                        <td>
+                            {% if user.is_verified %}
+                            <span class="badge bg-success">Yes</span>
+                            {% else %}
+                            <span class="badge bg-warning">No</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>Created:</th>
+                        <td>{{ user.created_at.strftime('%Y-%m-%d %H:%M') if user.created_at else 'N/A' }}</td>
+                    </tr>
+                    <tr>
+                        <th>Last Login:</th>
+                        <td>{{ user.last_login.strftime('%Y-%m-%d %H:%M') if user.last_login else 'Never' }}</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5>Security</h5>
+            </div>
+            <div class="card-body">
+                <table class="table table-borderless">
+                    <tr>
+                        <th width="50%">2FA Enabled:</th>
+                        <td>
+                            {% if user.two_factor_enabled %}
+                            <span class="badge bg-success">Yes</span>
+                            {% else %}
+                            <span class="badge bg-warning">No</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>Failed Login Attempts:</th>
+                        <td>{{ user.failed_login_attempts }}</td>
+                    </tr>
+                    <tr>
+                        <th>Account Locked:</th>
+                        <td>
+                            {% if user.account_locked_until %}
+                            <span class="badge bg-danger">Until {{ user.account_locked_until.strftime('%Y-%m-%d %H:%M') }}</span>
+                            {% else %}
+                            <span class="badge bg-success">No</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>Last Login IP:</th>
+                        <td>{{ user.last_login_ip or 'N/A' }}</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5>Statistics</h5>
+            </div>
+            <div class="card-body">
+                <table class="table table-borderless">
+                    {% if user.is_vendor() %}
+                    <tr>
+                        <th width="50%">Products:</th>
+                        <td>{{ stats.products }}</td>
+                    </tr>
+                    <tr>
+                        <th>Orders:</th>
+                        <td>{{ stats.orders }}</td>
+                    </tr>
+                    <tr>
+                        <th>Vendor Approved:</th>
+                        <td>
+                            {% if user.is_vendor_approved %}
+                            <span class="badge bg-success">Yes</span>
+                            {% else %}
+                            <span class="badge bg-warning">Pending</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <th width="50%">Orders:</th>
+                        <td>{{ stats.orders }}</td>
+                    </tr>
+                    {% endif %}
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                <h5>Actions</h5>
+            </div>
+            <div class="card-body">
+                <div class="btn-group">
+                    {% if user.is_active %}
+                    <form method="POST" action="{{ url_for('admin.deactivate_user', user_id=user.id) }}" style="display: inline;">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                        <button type="submit" class="btn btn-warning" onclick="return confirm('Deactivate user {{ user.username }}?')">
+                            Deactivate Account
+                        </button>
+                    </form>
+                    {% else %}
+                    <form method="POST" action="{{ url_for('admin.activate_user', user_id=user.id) }}" style="display: inline;">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                        <button type="submit" class="btn btn-success">
+                            Activate Account
+                        </button>
+                    </form>
+                    {% endif %}
+
+                    {% if user.account_locked_until %}
+                    <button class="btn btn-info" disabled>
+                        Unlock Account (TODO)
+                    </button>
+                    {% endif %}
+
+                    {% if user.is_vendor() and not user.is_vendor_approved %}
+                    <button class="btn btn-primary" disabled>
+                        Approve Vendor (TODO)
+                    </button>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block title %}Search Results{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-12">
+        <h2>Search Results</h2>
+        <p class="text-muted">{{ products.total if products else 0 }} product(s) found{% if query %} for "{{ query }}"{% endif %}</p>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-12">
+        <form method="GET" action="{{ url_for('marketplace.search') }}" class="input-group">
+            <input type="text" class="form-control" name="q" placeholder="Search products..." value="{{ query if query else '' }}">
+            <button class="btn btn-primary" type="submit">Search</button>
+        </form>
+    </div>
+</div>
+
+<div class="row">
+    {% if products and products.items %}
+        {% for product in products.items %}
+        <div class="col-md-4 mb-4">
+            <div class="card h-100">
+                {% if product.images %}
+                <img src="{{ product.images[0] }}" class="card-img-top" alt="{{ product.title }}" style="height: 200px; object-fit: cover;">
+                {% else %}
+                <div class="card-img-top bg-secondary d-flex align-items-center justify-content-center" style="height: 200px;">
+                    <span class="text-white">No Image</span>
+                </div>
+                {% endif %}
+                <div class="card-body">
+                    <h5 class="card-title">{{ product.title }}</h5>
+                    <p class="card-text text-truncate">{{ product.description }}</p>
+                    <p class="card-text">
+                        <strong>Price:</strong> ${{ "%.2f"|format(product.price) }}<br>
+                        <strong>Category:</strong> <span class="badge bg-secondary">{{ product.category }}</span>
+                    </p>
+                    <a href="{{ url_for('marketplace.product_detail', product_id=product.id) }}" class="btn btn-primary btn-sm">View Details</a>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    {% else %}
+        <div class="col-md-12">
+            <div class="alert alert-info">
+                <p class="mb-0">No products found. Try a different search term.</p>
+            </div>
+        </div>
+    {% endif %}
+</div>
+
+{% if products and products.pages > 1 %}
+<div class="row mt-4">
+    <div class="col-md-12">
+        <nav aria-label="Search results pagination">
+            <ul class="pagination justify-content-center">
+                {% if products.has_prev %}
+                <li class="page-item">
+                    <a class="page-link" href="{{ url_for('marketplace.search', q=query, page=products.prev_num) }}">Previous</a>
+                </li>
+                {% endif %}
+
+                {% for page_num in products.iter_pages(left_edge=1, right_edge=1, left_current=1, right_current=2) %}
+                    {% if page_num %}
+                        <li class="page-item {{ 'active' if page_num == products.page else '' }}">
+                            <a class="page-link" href="{{ url_for('marketplace.search', q=query, page=page_num) }}">{{ page_num }}</a>
+                        </li>
+                    {% else %}
+                        <li class="page-item disabled"><span class="page-link">...</span></li>
+                    {% endif %}
+                {% endfor %}
+
+                {% if products.has_next %}
+                <li class="page-item">
+                    <a class="page-link" href="{{ url_for('marketplace.search', q=query, page=products.next_num) }}">Next</a>
+                </li>
+                {% endif %}
+            </ul>
+        </nav>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

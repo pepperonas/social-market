@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+
+{% block title %}Order #{{ order.id[:8] }}{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h4>Order Details</h4>
+            </div>
+            <div class="card-body">
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <strong>Order ID:</strong> #{{ order.id[:8] }}<br>
+                        <strong>Date:</strong> {{ order.created_at.strftime('%Y-%m-%d %H:%M') }}<br>
+                        <strong>Status:</strong> <span class="badge bg-{{ order.status_color }}">{{ order.status }}</span>
+                    </div>
+                    <div class="col-md-6">
+                        <strong>Vendor:</strong> <a href="{{ url_for('marketplace.vendor_profile', user_id=order.vendor_id) }}">{{ order.vendor.username }}</a><br>
+                        <strong>Total:</strong> ${{ "%.2f"|format(order.total_price) }}
+                    </div>
+                </div>
+
+                <hr>
+
+                <h5>Product</h5>
+                <div class="row">
+                    <div class="col-md-3">
+                        {% if order.product.images %}
+                        <img src="{{ order.product.images[0] }}" alt="{{ order.product.title }}" class="img-fluid">
+                        {% else %}
+                        <div class="bg-secondary" style="width: 100%; height: 150px;"></div>
+                        {% endif %}
+                    </div>
+                    <div class="col-md-9">
+                        <h6><a href="{{ url_for('marketplace.product_detail', product_id=order.product_id) }}">{{ order.product.title }}</a></h6>
+                        <p><strong>Price:</strong> ${{ "%.2f"|format(order.product.price) }}</p>
+                        <p><strong>Quantity:</strong> {{ order.quantity }}</p>
+                    </div>
+                </div>
+
+                <hr>
+
+                {% if order.shipping_address %}
+                <h5>Shipping Address</h5>
+                <p>{{ order.shipping_address }}</p>
+                {% endif %}
+
+                {% if order.tracking_number %}
+                <h5>Tracking</h5>
+                <p><strong>Tracking Number:</strong> {{ order.tracking_number }}</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card mb-3">
+            <div class="card-header">
+                <h5>Order Status</h5>
+            </div>
+            <div class="card-body">
+                <div class="progress mb-3" style="height: 25px;">
+                    {% if order.status == 'PENDING' %}
+                    <div class="progress-bar bg-warning" role="progressbar" style="width: 25%">25%</div>
+                    {% elif order.status == 'PAID' %}
+                    <div class="progress-bar bg-info" role="progressbar" style="width: 50%">50%</div>
+                    {% elif order.status == 'SHIPPED' %}
+                    <div class="progress-bar bg-primary" role="progressbar" style="width: 75%">75%</div>
+                    {% elif order.status == 'DELIVERED' or order.status == 'COMPLETED' %}
+                    <div class="progress-bar bg-success" role="progressbar" style="width: 100%">100%</div>
+                    {% endif %}
+                </div>
+
+                <ul class="list-unstyled small">
+                    <li class="mb-2">
+                        <span class="badge bg-{{ 'success' if order.status != 'PENDING' else 'secondary' }}">✓</span> Order Placed
+                    </li>
+                    <li class="mb-2">
+                        <span class="badge bg-{{ 'success' if order.status in ['PAID', 'SHIPPED', 'DELIVERED', 'COMPLETED'] else 'secondary' }}">✓</span> Payment Confirmed
+                    </li>
+                    <li class="mb-2">
+                        <span class="badge bg-{{ 'success' if order.status in ['SHIPPED', 'DELIVERED', 'COMPLETED'] else 'secondary' }}">✓</span> Shipped
+                    </li>
+                    <li class="mb-2">
+                        <span class="badge bg-{{ 'success' if order.status in ['DELIVERED', 'COMPLETED'] else 'secondary' }}">✓</span> Delivered
+                    </li>
+                </ul>
+
+                {% if order.status == 'PENDING' %}
+                <form method="POST" action="{{ url_for('buyer.fund_escrow', order_id=order.id) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <button type="submit" class="btn btn-primary w-100">Fund Escrow</button>
+                </form>
+                {% elif order.status == 'SHIPPED' %}
+                <form method="POST" action="{{ url_for('buyer.confirm_delivery', order_id=order.id) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <button type="submit" class="btn btn-success w-100">Confirm Delivery</button>
+                </form>
+                {% endif %}
+
+                <hr>
+
+                <a href="{{ url_for('messages.new_thread', recipient_id=order.vendor_id) }}" class="btn btn-secondary w-100">Contact Vendor</a>
+            </div>
+        </div>
+
+        {% if order.escrow %}
+        <div class="card">
+            <div class="card-header">
+                <h6>Escrow Information</h6>
+            </div>
+            <div class="card-body small">
+                <p><strong>Status:</strong> <span class="badge bg-secondary">{{ order.escrow.status }}</span></p>
+                <p><strong>Amount:</strong> ${{ "%.2f"|format(order.escrow.amount) }}</p>
+                {% if order.escrow.release_date %}
+                <p><strong>Auto-Release:</strong> {{ order.escrow.release_date.strftime('%Y-%m-%d') }}</p>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-md-12">
+        <a href="{{ url_for('buyer.orders') }}" class="btn btn-secondary">Back to Orders</a>
+    </div>
+</div>
+{% endblock %}

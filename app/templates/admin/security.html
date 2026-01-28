@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+
+{% block title %}Security Monitor{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-12">
+        <h2>Security Monitoring</h2>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h3 class="text-danger">{{ stats.failed_logins }}</h3>
+                <p class="mb-0">Failed Logins (24h)</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h3 class="text-warning">{{ stats.rate_limit_hits }}</h3>
+                <p class="mb-0">Rate Limits (24h)</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h3 class="text-info">{{ stats.security_events }}</h3>
+                <p class="mb-0">Security Events (24h)</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h3 class="text-success">{{ stats.active_sessions }}</h3>
+                <p class="mb-0">Active Sessions</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                <h5>Recent Security Events</h5>
+            </div>
+            <div class="card-body">
+                {% if security_events %}
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Timestamp</th>
+                                <th>Severity</th>
+                                <th>Event Type</th>
+                                <th>User</th>
+                                <th>IP Address</th>
+                                <th>Message</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for event in security_events %}
+                            <tr>
+                                <td>{{ event.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                                <td><span class="badge bg-{{ event.severity_color }}">{{ event.severity }}</span></td>
+                                <td><span class="badge bg-secondary">{{ event.event_type }}</span></td>
+                                <td>
+                                    {% if event.user %}
+                                    {{ event.user.username }}
+                                    {% else %}
+                                    <em>Anonymous</em>
+                                    {% endif %}
+                                </td>
+                                <td><code>{{ event.ip_address }}</code></td>
+                                <td>{{ event.message }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-muted mb-0">No security events recorded.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5>Failed Login Attempts</h5>
+            </div>
+            <div class="card-body">
+                {% if failed_logins %}
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Username</th>
+                                <th>IP Address</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for login in failed_logins %}
+                            <tr>
+                                <td>{{ login.created_at.strftime('%H:%M:%S') }}</td>
+                                <td>{{ login.username }}</td>
+                                <td><code>{{ login.ip_address }}</code></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-muted mb-0">No failed login attempts.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5>System Health</h5>
+            </div>
+            <div class="card-body">
+                <ul class="list-unstyled mb-0">
+                    <li class="mb-2">
+                        <strong>Database:</strong>
+                        <span class="badge bg-{{ 'success' if health.database else 'danger' }}">
+                            {{ 'Connected' if health.database else 'Error' }}
+                        </span>
+                    </li>
+                    <li class="mb-2">
+                        <strong>Redis:</strong>
+                        <span class="badge bg-{{ 'success' if health.redis else 'danger' }}">
+                            {{ 'Connected' if health.redis else 'Error' }}
+                        </span>
+                    </li>
+                    <li class="mb-2">
+                        <strong>Celery:</strong>
+                        <span class="badge bg-{{ 'success' if health.celery else 'warning' }}">
+                            {{ 'Running' if health.celery else 'Unknown' }}
+                        </span>
+                    </li>
+                    <li class="mb-2">
+                        <strong>Disk Usage:</strong>
+                        <span class="badge bg-{{ 'success' if health.disk_usage < 80 else 'warning' if health.disk_usage < 90 else 'danger' }}">
+                            {{ health.disk_usage }}%
+                        </span>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

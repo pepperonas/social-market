@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+
+{% block title %}{{ category }} - Products{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-12">
+        <h2>Category: {{ category }}</h2>
+        <p class="text-muted">{{ products.total if products else 0 }} product(s) in this category</p>
+    </div>
+</div>
+
+<div class="row">
+    {% if products and products.items %}
+        {% for product in products.items %}
+        <div class="col-md-4 mb-4">
+            <div class="card h-100">
+                {% if product.images %}
+                <img src="{{ product.images[0] }}" class="card-img-top" alt="{{ product.title }}" style="height: 200px; object-fit: cover;">
+                {% else %}
+                <div class="card-img-top bg-secondary d-flex align-items-center justify-content-center" style="height: 200px;">
+                    <span class="text-white">No Image</span>
+                </div>
+                {% endif %}
+                <div class="card-body">
+                    <h5 class="card-title">{{ product.title }}</h5>
+                    <p class="card-text text-truncate">{{ product.description }}</p>
+                    <p class="card-text">
+                        <strong>Price:</strong> ${{ "%.2f"|format(product.price) }}
+                    </p>
+                    <a href="{{ url_for('marketplace.product_detail', product_id=product.id) }}" class="btn btn-primary btn-sm">View Details</a>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    {% else %}
+        <div class="col-md-12">
+            <div class="alert alert-info">
+                <p class="mb-0">No products in this category yet.</p>
+            </div>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

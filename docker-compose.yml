@@ -1,0 +1,305 @@
+# EDUCATIONAL SECURITY TRAINING ENVIRONMENT
+# Local, isolated deployment for IT security training
+
+version: '3.8'
+
+services:
+  # =============================================================================
+  # PostgreSQL Database with pgcrypto
+  # =============================================================================
+  postgres:
+    image: postgres:15-alpine
+    container_name: marketplace_postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      DB_ENCRYPTION_KEY: ${DB_ENCRYPTION_KEY}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql
+      - ./postgres/pgcrypto-setup.sql:/docker-entrypoint-initdb.d/02-pgcrypto.sql
+      - ./postgres/audit-logging.sql:/docker-entrypoint-initdb.d/03-audit.sql
+    networks:
+      - backend
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 1G
+
+  # =============================================================================
+  # Redis for Sessions, Cache, and Rate Limiting
+  # =============================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: marketplace_redis
+    command: redis-server --requirepass ${REDIS_PASSWORD} --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    networks:
+      - backend
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+
+  # =============================================================================
+  # Flask Application
+  # =============================================================================
+  app:
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+    container_name: marketplace_app
+    ports:
+      - "5001:5000"
+    environment:
+      FLASK_APP: ${FLASK_APP}
+      FLASK_ENV: ${FLASK_ENV}
+      SECRET_KEY: ${SECRET_KEY}
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      DB_ENCRYPTION_KEY: ${DB_ENCRYPTION_KEY}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND}
+    volumes:
+      - ./app:/app
+      - uploads:/app/uploads
+      - logs:/var/log/marketplace
+    networks:
+      - frontend
+      - backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    command: gunicorn --bind 0.0.0.0:5000 --workers ${GUNICORN_WORKERS:-2} --worker-class sync --timeout ${GUNICORN_TIMEOUT:-30} --access-logfile - --error-logfile - "app:create_app()"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 1G
+
+  # =============================================================================
+  # Celery Worker for Background Tasks
+  # =============================================================================
+  celery:
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+    container_name: marketplace_celery
+    environment:
+      FLASK_APP: ${FLASK_APP}
+      FLASK_ENV: ${FLASK_ENV}
+      SECRET_KEY: ${SECRET_KEY}
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      DB_ENCRYPTION_KEY: ${DB_ENCRYPTION_KEY}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND}
+    volumes:
+      - ./app:/app
+      - logs:/var/log/marketplace
+    networks:
+      - backend
+    depends_on:
+      - redis
+      - postgres
+    restart: unless-stopped
+    command: celery -A app.celery worker --loglevel=info --logfile=/var/log/marketplace/celery.log
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+
+  # =============================================================================
+  # Celery Beat for Scheduled Tasks
+  # =============================================================================
+  celery-beat:
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+    container_name: marketplace_celery_beat
+    environment:
+      FLASK_APP: ${FLASK_APP}
+      FLASK_ENV: ${FLASK_ENV}
+      SECRET_KEY: ${SECRET_KEY}
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      DB_ENCRYPTION_KEY: ${DB_ENCRYPTION_KEY}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND}
+    volumes:
+      - ./app:/app
+      - logs:/var/log/marketplace
+    networks:
+      - backend
+    depends_on:
+      - redis
+      - postgres
+    restart: unless-stopped
+    command: celery -A app.celery beat --loglevel=info --schedule=/tmp/celerybeat-schedule
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+
+  # =============================================================================
+  # Nginx Reverse Proxy with Security Headers
+  # =============================================================================
+  nginx:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    container_name: marketplace_nginx
+    ports:
+      - "8080:80"
+      - "8443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/security-headers.conf:/etc/nginx/security-headers.conf:ro
+      - ./nginx/rate-limiting.conf:/etc/nginx/rate-limiting.conf:ro
+      - logs:/var/log/nginx
+    networks:
+      - frontend
+    depends_on:
+      - app
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 256M
+
+  # =============================================================================
+  # Tor Hidden Service
+  # =============================================================================
+  tor:
+    build:
+      context: ./tor
+      dockerfile: Dockerfile
+    container_name: marketplace_tor
+    volumes:
+      - tor_data:/var/lib/tor
+      - ./tor/torrc:/etc/tor/torrc:ro
+    networks:
+      - frontend
+      - isolated
+    depends_on:
+      - nginx
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 256M
+
+  # =============================================================================
+  # Security Monitoring Service
+  # =============================================================================
+  monitor:
+    build:
+      context: ./monitoring
+      dockerfile: Dockerfile
+    container_name: marketplace_monitor
+    environment:
+      FLASK_APP: ${FLASK_APP}
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      MONITOR_CHECK_INTERVAL: ${MONITOR_CHECK_INTERVAL:-300}
+      FIM_CHECK_INTERVAL: ${FIM_CHECK_INTERVAL:-3600}
+    volumes:
+      - ./monitoring:/app/monitoring
+      - ./app:/app/watched
+      - logs:/var/log/marketplace
+      - backups:/backups
+    networks:
+      - backend
+    depends_on:
+      - postgres
+      - redis
+    restart: unless-stopped
+    command: python /app/monitoring/security_monitor.py
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+
+# =============================================================================
+# Networks
+# =============================================================================
+networks:
+  frontend:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/24
+  backend:
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.21.0.0/24
+  isolated:
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.22.0.0/24
+
+# =============================================================================
+# Volumes
+# =============================================================================
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  tor_data:
+    driver: local
+  uploads:
+    driver: local
+  backups:
+    driver: local
+  logs:
+    driver: local

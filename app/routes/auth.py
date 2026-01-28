@@ -1,0 +1,428 @@
+"""
+EDUCATIONAL SECURITY TRAINING ENVIRONMENT
+Authentication Routes
+Purpose: User authentication with security features
+"""
+
+from flask import Blueprint, render_template, redirect, url_for, flash, request, session, current_app
+from flask_login import login_user, logout_user, login_required, current_user
+from werkzeug.security import check_password_hash
+from sqlalchemy import text
+
+from app import db, limiter
+from app.models.user import User
+
+auth_bp = Blueprint('auth', __name__)
+
+
+@auth_bp.route('/login', methods=['GET', 'POST'])
+@limiter.limit("20 per minute")
+def login():
+    """
+    User login with security features:
+    - Rate limiting (20 req/min)
+    - Account lockout after failed attempts
+    - 2FA support
+    - Audit logging
+    - IP tracking
+    """
+    if current_user.is_authenticated:
+        return redirect(url_for('marketplace.index'))
+
+    if request.method == 'POST':
+        username = request.form.get('username', '').strip()
+        password = request.form.get('password', '')
+        remember = request.form.get('remember', False)
+
+        # Input validation
+        if not username or not password:
+            flash('Username and password are required', 'error')
+            return render_template('auth/login.html')
+
+        # Find user
+        user = User.query.filter_by(username=username).first()
+
+        # Get client IP
+        client_ip = request.remote_addr
+
+        if user:
+            # Check if account is locked
+            if user.is_account_locked():
+                # Log failed attempt
+                _log_auth_event(username, user.id, 'login_failed_locked', client_ip)
+
+                flash('Account is temporarily locked due to multiple failed login attempts', 'error')
+                return render_template('auth/login.html')
+
+            # Verify password
+            if user.check_password(password):
+                # Check if 2FA is enabled
+                if user.two_factor_enabled:
+                    # Store user ID in session for 2FA verification
+                    session['pending_2fa_user_id'] = str(user.id)
+                    session['pending_2fa_remember'] = remember
+                    return redirect(url_for('auth.verify_2fa'))
+
+                # Check if account is active
+                if not user.is_active:
+                    _log_auth_event(username, user.id, 'login_failed_inactive', client_ip)
+                    flash('Account is not active', 'error')
+                    return render_template('auth/login.html')
+
+                # Successful login
+                login_user(user, remember=remember)
+                user.record_successful_login(client_ip)
+
+                # Commit database changes
+                db.session.commit()
+
+                # Mark session as modified to ensure it's saved
+                session.modified = True
+
+                # Log successful login
+                _log_auth_event(username, user.id, 'login_success', client_ip, session.get('session_id'))
+
+                # Redirect to next page or dashboard
+                next_page = request.args.get('next')
+                if next_page:
+                    return redirect(next_page)
+
+                if user.is_vendor():
+                    return redirect(url_for('vendor.dashboard'))
+                elif user.is_admin():
+                    return redirect(url_for('admin.dashboard'))
+                else:
+                    return redirect(url_for('marketplace.index'))
+            else:
+                # Failed login - record attempt
+                user.record_failed_login(client_ip)
+                _log_auth_event(username, user.id, 'login_failed_password', client_ip,
+                               failure_reason='Invalid password')
+        else:
+            # User not found
+            _log_auth_event(username, None, 'login_failed_user_not_found', client_ip,
+                           failure_reason='User not found')
+
+        flash('Invalid username or password', 'error')
+
+    return render_template('auth/login.html')
+
+
+@auth_bp.route('/verify-2fa', methods=['GET', 'POST'])
+@limiter.limit("5 per minute")
+def verify_2fa():
+    """
+    2FA verification (TOTP)
+    """
+    # Check if user is pending 2FA verification
+    pending_user_id = session.get('pending_2fa_user_id')
+    if not pending_user_id:
+        return redirect(url_for('auth.login'))
+
+    user = User.query.get(pending_user_id)
+    if not user:
+        session.pop('pending_2fa_user_id', None)
+        return redirect(url_for('auth.login'))
+
+    if request.method == 'POST':
+        token = request.form.get('token', '').strip()
+
+        if not token:
+            flash('2FA token is required', 'error')
+            return render_template('auth/verify_2fa.html')
+
+        # Verify TOTP token
+        if user.verify_totp(token):
+            # Successful 2FA
+            remember = session.get('pending_2fa_remember', False)
+            login_user(user, remember=remember)
+            user.record_successful_login(request.remote_addr)
+
+            # Log successful login
+            _log_auth_event(user.username, user.id, '2fa_success', request.remote_addr,
+                           session.get('session_id'))
+
+            # Clean up session
+            session.pop('pending_2fa_user_id', None)
+            session.pop('pending_2fa_remember', None)
+
+            flash('Login successful', 'success')
+
+            # Redirect based on role
+            if user.is_vendor():
+                return redirect(url_for('vendor.dashboard'))
+            elif user.is_admin():
+                return redirect(url_for('admin.dashboard'))
+            else:
+                return redirect(url_for('marketplace.index'))
+        else:
+            # Failed 2FA
+            _log_auth_event(user.username, user.id, '2fa_failed', request.remote_addr,
+                           failure_reason='Invalid token')
+            flash('Invalid 2FA token', 'error')
+
+    return render_template('auth/verify_2fa.html')
+
+
+@auth_bp.route('/logout')
+@login_required
+def logout():
+    """User logout"""
+    # Log logout
+    _log_auth_event(current_user.username, current_user.id, 'logout',
+                   request.remote_addr, session.get('session_id'))
+
+    logout_user()
+    session.clear()
+    flash('You have been logged out', 'info')
+    return redirect(url_for('marketplace.index'))
+
+
+@auth_bp.route('/register', methods=['GET', 'POST'])
+@limiter.limit("10 per hour")
+def register():
+    """
+    User registration with security features:
+    - Rate limiting (1 req/hour per IP)
+    - Password policy enforcement
+    - Email verification (optional)
+    - Terms acceptance
+    """
+    if current_user.is_authenticated:
+        return redirect(url_for('marketplace.index'))
+
+    if not current_app.config.get('ENABLE_REGISTRATION', True):
+        flash('Registration is currently disabled', 'error')
+        return redirect(url_for('marketplace.index'))
+
+    if request.method == 'POST':
+        username = request.form.get('username', '').strip()
+        email = request.form.get('email', '').strip().lower()
+        password = request.form.get('password', '')
+        password_confirm = request.form.get('password_confirm', '')
+        role = request.form.get('role', 'buyer')
+        terms_accepted = request.form.get('terms_accepted', False)
+
+        # Input validation
+        if not username or not email or not password:
+            flash('All fields are required', 'error')
+            return render_template('auth/register.html')
+
+        if password != password_confirm:
+            flash('Passwords do not match', 'error')
+            return render_template('auth/register.html')
+
+        # Check terms acceptance
+        if current_app.config.get('REQUIRE_TERMS_ACCEPTANCE') and not terms_accepted:
+            flash('You must accept the terms and conditions', 'error')
+            return render_template('auth/register.html')
+
+        # Validate role
+        if role not in ['buyer', 'vendor']:
+            role = 'buyer'
+
+        # Check if vendor registration is enabled
+        if role == 'vendor' and not current_app.config.get('ENABLE_VENDOR_REGISTRATION', True):
+            flash('Vendor registration is currently disabled', 'error')
+            return render_template('auth/register.html')
+
+        # Check if username exists
+        if User.query.filter_by(username=username).first():
+            flash('Username already exists', 'error')
+            return render_template('auth/register.html')
+
+        # Check if email exists
+        if User.query.filter_by(email=email).first():
+            flash('Email already registered', 'error')
+            return render_template('auth/register.html')
+
+        try:
+            # Create user
+            user = User(
+                username=username,
+                email=email,
+                role=role,
+                terms_accepted=terms_accepted,
+                terms_version=current_app.config.get('TERMS_VERSION', '1.0')
+            )
+
+            # Set password (validates against policy)
+            user.set_password(password)
+
+            db.session.add(user)
+            db.session.commit()
+
+            # Log registration
+            _log_auth_event(username, user.id, 'user_registered', request.remote_addr)
+
+            flash('Registration successful! Please log in.', 'success')
+            return redirect(url_for('auth.login'))
+
+        except ValueError as e:
+            # Password policy violation
+            flash(str(e), 'error')
+            return render_template('auth/register.html')
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error(f'Registration error: {e}')
+            flash('An error occurred during registration', 'error')
+            return render_template('auth/register.html')
+
+    return render_template('auth/register.html')
+
+
+@auth_bp.route('/profile')
+@login_required
+def profile():
+    """User profile"""
+    return render_template('auth/profile.html', user=current_user)
+
+
+@auth_bp.route('/profile/edit', methods=['GET', 'POST'])
+@login_required
+def edit_profile():
+    """Edit user profile"""
+    if request.method == 'POST':
+        display_name = request.form.get('display_name', '').strip()
+        bio = request.form.get('bio', '').strip()
+
+        current_user.display_name = display_name
+        current_user.bio = bio
+
+        if current_user.is_vendor():
+            vendor_description = request.form.get('vendor_description', '').strip()
+            current_user.vendor_description = vendor_description
+
+        db.session.commit()
+        flash('Profile updated successfully', 'success')
+        return redirect(url_for('auth.profile'))
+
+    return render_template('auth/edit_profile.html')
+
+
+@auth_bp.route('/profile/pgp', methods=['GET', 'POST'])
+@login_required
+def pgp_settings():
+    """PGP key management"""
+    if request.method == 'POST':
+        pgp_public_key = request.form.get('pgp_public_key', '').strip()
+
+        if not pgp_public_key:
+            flash('PGP public key is required', 'error')
+            return render_template('auth/pgp_settings.html')
+
+        try:
+            current_user.set_pgp_key(pgp_public_key)
+            flash('PGP public key updated successfully', 'success')
+            return redirect(url_for('auth.profile'))
+        except ValueError as e:
+            flash(str(e), 'error')
+
+    return render_template('auth/pgp_settings.html')
+
+
+@auth_bp.route('/profile/2fa/enable', methods=['GET', 'POST'])
+@login_required
+def enable_2fa():
+    """Enable 2FA"""
+    if current_user.two_factor_enabled:
+        flash('2FA is already enabled', 'info')
+        return redirect(url_for('auth.profile'))
+
+    if request.method == 'POST':
+        token = request.form.get('token', '').strip()
+
+        if not token:
+            flash('Verification code is required', 'error')
+            return render_template('auth/enable_2fa.html')
+
+        # Verify token
+        if current_user.verify_totp(token):
+            # 2FA successfully enabled
+            flash('2FA enabled successfully', 'success')
+            _log_auth_event(current_user.username, current_user.id, '2fa_enabled',
+                           request.remote_addr)
+            return redirect(url_for('auth.profile'))
+        else:
+            flash('Invalid verification code', 'error')
+
+    # Generate QR code
+    provisioning_uri = current_user.enable_two_factor()
+
+    # Generate QR code for display
+    import qrcode
+    import io
+    import base64
+
+    qr = qrcode.QRCode(version=1, box_size=10, border=5)
+    qr.add_data(provisioning_uri)
+    qr.make(fit=True)
+
+    img = qr.make_image(fill_color="black", back_color="white")
+    buf = io.BytesIO()
+    img.save(buf, format='PNG')
+    qr_code_base64 = base64.b64encode(buf.getvalue()).decode()
+
+    return render_template('auth/enable_2fa.html',
+                          qr_code=qr_code_base64,
+                          secret=current_user.two_factor_secret)
+
+
+@auth_bp.route('/profile/2fa/disable', methods=['POST'])
+@login_required
+def disable_2fa():
+    """Disable 2FA"""
+    password = request.form.get('password', '')
+
+    if not password:
+        flash('Password is required to disable 2FA', 'error')
+        return redirect(url_for('auth.profile'))
+
+    if not current_user.check_password(password):
+        flash('Invalid password', 'error')
+        return redirect(url_for('auth.profile'))
+
+    current_user.disable_two_factor()
+    _log_auth_event(current_user.username, current_user.id, '2fa_disabled',
+                   request.remote_addr)
+
+    flash('2FA disabled successfully', 'success')
+    return redirect(url_for('auth.profile'))
+
+
+# =============================================================================
+# Helper Functions
+# =============================================================================
+
+def _log_auth_event(username, user_id, action, ip_address, session_id=None, failure_reason=None):
+    """
+    Log authentication event to database
+
+    Args:
+        username: Username
+        user_id: User ID (if known)
+        action: Action type
+        ip_address: Client IP address
+        session_id: Session ID (optional)
+        failure_reason: Failure reason (optional)
+    """
+    try:
+        db.session.execute(
+            text(
+                "SELECT log_auth_event(:username, :user_id, :action, :ip_address, "
+                ":user_agent, :session_id, :failure_reason, NULL)"
+            ),
+            {
+                'username': username,
+                'user_id': user_id,
+                'action': action,
+                'ip_address': ip_address,
+                'user_agent': request.headers.get('User-Agent', ''),
+                'session_id': session_id,
+                'failure_reason': failure_reason
+            }
+        )
+        db.session.commit()
+    except Exception as e:
+        current_app.logger.error(f'Failed to log auth event: {e}')
+        db.session.rollback()

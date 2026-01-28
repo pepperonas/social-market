@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+
+{% block title %}2FA Verification{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h4>Two-Factor Authentication</h4>
+            </div>
+            <div class="card-body">
+                <p class="text-muted">Enter the verification code from your authenticator app.</p>
+
+                <form method="POST" action="{{ url_for('auth.verify_2fa') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+
+                    <div class="mb-3">
+                        <label for="token" class="form-label">Verification Code</label>
+                        <input type="text" class="form-control form-control-lg text-center" id="token" name="token" pattern="[0-9]{6}" maxlength="6" required autofocus>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary w-100">Verify</button>
+                </form>
+
+                <hr class="my-4">
+
+                <p class="text-center mb-0">
+                    <a href="{{ url_for('auth.logout') }}">Cancel and Logout</a>
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

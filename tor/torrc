@@ -1,0 +1,170 @@
+# EDUCATIONAL SECURITY TRAINING ENVIRONMENT
+# Tor Configuration
+# Purpose: Hidden service for marketplace training environment
+
+# =============================================================================
+# Basic Configuration
+# =============================================================================
+
+# Run as daemon
+RunAsDaemon 0
+
+# Data directory
+DataDirectory /var/lib/tor
+
+# Logging
+Log notice stdout
+Log notice file /var/lib/tor/notices.log
+
+# =============================================================================
+# SOCKS Proxy Configuration
+# =============================================================================
+
+# SOCKS proxy port (for outbound connections)
+SOCKSPort 0.0.0.0:9050
+
+# SOCKS policy (allow from Docker network)
+SOCKSPolicy accept 172.0.0.0/8
+SOCKSPolicy reject *
+
+# =============================================================================
+# Control Port Configuration (Optional)
+# =============================================================================
+
+# Control port disabled for security (unauthenticated access is unsafe)
+# To enable: uncomment and set HashedControlPassword
+# ControlPort 127.0.0.1:9051
+# HashedControlPassword 16:YOUR_HASHED_PASSWORD_HERE
+
+# =============================================================================
+# Hidden Service Configuration (v3 Onion)
+# =============================================================================
+
+# Hidden service directory
+HiddenServiceDir /var/lib/tor/hidden_service/
+
+# Hidden service port mapping
+# Map hidden service port 80 to app (bypassing nginx for Tor traffic)
+HiddenServicePort 80 app:5000
+
+# Use v3 onions (more secure, longer addresses)
+HiddenServiceVersion 3
+
+# Single onion service mode (optional - faster but loses anonymity)
+# HiddenServiceSingleHopMode 1
+# HiddenServiceNonAnonymousMode 1
+
+# Maximum streams per circuit
+HiddenServiceMaxStreams 10
+
+# Maximum streams per circuit (limit per connection)
+HiddenServiceMaxStreamsCloseCircuit 1
+
+# =============================================================================
+# Security & Privacy Settings
+# =============================================================================
+
+# Disable client port binding
+ClientOnly 0
+
+# Disable directory caching
+DirCache 0
+
+# Avoid nodes in certain countries (optional)
+# ExcludeNodes {US},{GB},{AU},{CA},{NZ},{FR},{DE}
+# StrictNodes 1
+
+# Entry/Exit node restrictions (optional)
+# EntryNodes {CH},{IS},{SE}
+
+# Circuit build timeout
+CircuitBuildTimeout 60
+
+# Number of introduction points
+HiddenServiceNumIntroductionPoints 3
+
+# =============================================================================
+# Performance Tuning
+# =============================================================================
+
+# Circuit idle timeout removed (obsolete option)
+
+# Connection idle timeout
+KeepalivePeriod 1 minute
+
+# Bandwidth limits (optional, for training environment)
+# BandwidthRate 1 MB
+# BandwidthBurst 2 MB
+
+# =============================================================================
+# Denial of Service Protection
+# =============================================================================
+
+# Maximum circuit dirtiness
+MaxCircuitDirtiness 10 minutes
+
+# Maximum client circuits
+MaxClientCircuitsPending 32
+
+# Connection limits
+ConnLimit 1000
+
+# =============================================================================
+# Logging & Monitoring
+# =============================================================================
+
+# Log level: debug, info, notice, warn, err
+LogTimeGranularity 1
+
+# Disable safe logging (show full addresses in logs)
+# SafeLogging 0
+
+# Enable safe logging (hide addresses in logs)
+SafeLogging 1
+
+# =============================================================================
+# Educational Notice
+# =============================================================================
+
+# Nickname (optional, for educational context, max 19 chars)
+Nickname MarketplaceNode
+
+# Contact info (optional)
+# ContactInfo Educational Training Environment <training@example.com>
+
+# =============================================================================
+# Security Warnings
+# =============================================================================
+
+# Warn about unsafe SOCKS proxy usage (obsolete option removed)
+
+# Warn about clock skew
+EnforceDistinctSubnets 1
+
+# =============================================================================
+# Shutdown Configuration
+# =============================================================================
+
+# Graceful shutdown timeout
+ShutdownWaitLength 30 seconds
+
+# =============================================================================
+# Additional Security Options
+# =============================================================================
+
+# Disable automatic circuit building
+# LeaveStreamsUnattached 0
+
+# Disable client DNS
+ClientDNSRejectInternalAddresses 1
+
+# Reject applications that only work with old SOCKS protocol
+ClientRejectInternalAddresses 1
+
+# =============================================================================
+# Notice
+# =============================================================================
+
+# This configuration is for educational and training purposes only
+# Do not use for illegal activities
+# Tor provides anonymity, not immunity from legal consequences

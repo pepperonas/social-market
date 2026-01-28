@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+
+{% block title %}Profile{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h4>User Profile</h4>
+            </div>
+            <div class="card-body">
+                <table class="table table-borderless">
+                    <tr>
+                        <th width="200">Username:</th>
+                        <td>{{ current_user.username }}</td>
+                    </tr>
+                    <tr>
+                        <th>Email:</th>
+                        <td>{{ current_user.email }}</td>
+                    </tr>
+                    <tr>
+                        <th>Role:</th>
+                        <td>
+                            <span class="badge bg-primary">{{ current_user.role }}</span>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>2FA Status:</th>
+                        <td>
+                            {% if current_user.two_factor_enabled %}
+                                <span class="badge bg-success">Enabled</span>
+                            {% else %}
+                                <span class="badge bg-warning">Disabled</span>
+                                <a href="{{ url_for('auth.enable_2fa') }}" class="btn btn-sm btn-primary ms-2">Enable 2FA</a>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>PGP Key:</th>
+                        <td>
+                            {% if current_user.pgp_public_key %}
+                                <span class="badge bg-success">Configured</span>
+                                <a href="{{ url_for('auth.pgp_settings') }}" class="btn btn-sm btn-secondary ms-2">View/Update</a>
+                            {% else %}
+                                <span class="badge bg-warning">Not Set</span>
+                                <a href="{{ url_for('auth.pgp_settings') }}" class="btn btn-sm btn-primary ms-2">Configure PGP</a>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>Member Since:</th>
+                        <td>{{ current_user.created_at.strftime('%Y-%m-%d') }}</td>
+                    </tr>
+                </table>
+
+                <hr>
+
+                <a href="{{ url_for('auth.edit_profile') }}" class="btn btn-primary">Edit Profile</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h5>Security Tips</h5>
+            </div>
+            <div class="card-body">
+                <ul class="small">
+                    <li>Enable 2FA for additional security</li>
+                    <li>Configure PGP for encrypted messages</li>
+                    <li>Use a strong, unique password</li>
+                    <li>Never share your credentials</li>
+                    <li>Review your activity regularly</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

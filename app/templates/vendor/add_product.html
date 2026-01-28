@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+
+{% block title %}Add New Product{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="d-flex justify-content-between align-items-center">
+            <h2>Add New Product</h2>
+            <a href="{{ url_for('vendor.products') }}" class="btn btn-secondary">Back to Products</a>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('vendor.add_product') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+
+                    <div class="mb-3">
+                        <label for="title" class="form-label">Product Title *</label>
+                        <input type="text" class="form-control" id="title" name="title" required maxlength="200" placeholder="Enter product title">
+                        <div class="form-text">Minimum 3 characters</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="description" class="form-label">Description *</label>
+                        <textarea class="form-control" id="description" name="description" rows="6" required placeholder="Detailed product description"></textarea>
+                        <div class="form-text">Minimum 10 characters</div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="price" class="form-label">Price (USD) *</label>
+                                <input type="number" class="form-control" id="price" name="price" step="0.01" min="0.01" required placeholder="0.00">
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="category_id" class="form-label">Category *</label>
+                                <select class="form-select" id="category_id" name="category_id" required>
+                                    <option value="">Select category</option>
+                                    {% for category in categories %}
+                                    <option value="{{ category.id }}">{{ category.name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="quantity" class="form-label">Quantity</label>
+                                <input type="number" class="form-control" id="quantity" name="quantity" min="0" value="0" placeholder="0">
+                                <div class="form-text">Leave at 0 for digital products</div>
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label d-block">Product Type</label>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="is_digital" name="is_digital">
+                                    <label class="form-check-label" for="is_digital">
+                                        Digital Product (no inventory tracking)
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="tags" class="form-label">Tags (optional)</label>
+                        <input type="text" class="form-control" id="tags" name="tags" placeholder="tag1, tag2, tag3">
+                        <div class="form-text">Comma-separated tags for better discoverability</div>
+                    </div>
+
+                    <div class="alert alert-info">
+                        <strong>Note:</strong> Products are automatically approved in this training environment.
+                        In production, admin approval would be required.
+                    </div>
+
+                    <button type="submit" class="btn btn-primary btn-lg">Create Product</button>
+                    <a href="{{ url_for('vendor.products') }}" class="btn btn-secondary btn-lg">Cancel</a>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h5>Product Guidelines</h5>
+            </div>
+            <div class="card-body">
+                <h6>Allowed Categories:</h6>
+                <ul class="small">
+                    <li>Books</li>
+                    <li>Art</li>
+                    <li>Digital Goods</li>
+                    <li>Services</li>
+                </ul>
+
+                <h6 class="mt-3">Best Practices:</h6>
+                <ul class="small">
+                    <li>Use clear, descriptive titles</li>
+                    <li>Provide detailed descriptions</li>
+                    <li>Set realistic pricing</li>
+                    <li>Add relevant tags</li>
+                    <li>Keep inventory updated</li>
+                </ul>
+
+                <div class="alert alert-warning small mt-3">
+                    <strong>Training Environment</strong><br>
+                    This is for educational purposes only.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

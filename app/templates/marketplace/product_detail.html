@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+
+{% block title %}{{ product.title }}{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-body">
+                {% if product.images %}
+                <img src="{{ product.images[0] }}" class="img-fluid mb-3" alt="{{ product.title }}" style="max-height: 400px; width: 100%; object-fit: cover;">
+                {% else %}
+                <div class="bg-secondary d-flex align-items-center justify-content-center mb-3" style="height: 400px;">
+                    <span class="text-white">No Image Available</span>
+                </div>
+                {% endif %}
+
+                <h2>{{ product.title }}</h2>
+
+                <div class="mb-3">
+                    <span class="badge bg-secondary">{{ product.category }}</span>
+                    <span class="badge bg-{{ 'success' if product.active else 'danger' }}">{{ 'Active' if product.active else 'Inactive' }}</span>
+                </div>
+
+                <h4 class="text-primary">${{ "%.2f"|format(product.price) }}</h4>
+
+                <hr>
+
+                <h5>Description</h5>
+                <p>{{ product.description }}</p>
+
+                {% if product.shipping_info %}
+                <hr>
+                <h5>Shipping Information</h5>
+                <p>{{ product.shipping_info }}</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card mb-3">
+            <div class="card-header">
+                <h5>Vendor Information</h5>
+            </div>
+            <div class="card-body">
+                <p>
+                    <strong>Vendor:</strong> <a href="{{ url_for('marketplace.vendor_profile', vendor_id=product.vendor.id) }}">{{ product.vendor.username }}</a>
+                </p>
+                {% if product.vendor.vendor_rating %}
+                <p><strong>Rating:</strong> {{ "%.1f"|format(product.vendor.vendor_rating) }} / 5.0</p>
+                {% endif %}
+            </div>
+        </div>
+
+        {% if current_user.is_authenticated and current_user.id != product.vendor_id %}
+        <div class="card">
+            <div class="card-header">
+                <h5>Purchase</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('buyer.create_order') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <input type="hidden" name="product_id" value="{{ product.id }}"/>
+
+                    <div class="mb-3">
+                        <label for="quantity" class="form-label">Quantity</label>
+                        <input type="number" class="form-control" id="quantity" name="quantity" min="1" value="1" required>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary w-100">Place Order</button>
+                </form>
+
+                <hr>
+
+                <a href="{{ url_for('messages.new_thread', recipient_id=product.vendor.id) }}" class="btn btn-secondary w-100">Contact Vendor</a>
+            </div>
+        </div>
+        {% elif not current_user.is_authenticated %}
+        <div class="card">
+            <div class="card-body">
+                <p class="text-center">
+                    <a href="{{ url_for('auth.login') }}" class="btn btn-primary w-100">Login to Purchase</a>
+                </p>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
