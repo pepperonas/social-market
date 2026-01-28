@@ -84,7 +84,13 @@ class Config:
     PASSWORD_REQUIRE_DIGITS = os.environ.get('PASSWORD_REQUIRE_DIGITS', 'true').lower() == 'true'
     PASSWORD_REQUIRE_SPECIAL = os.environ.get('PASSWORD_REQUIRE_SPECIAL', 'true').lower() == 'true'
 
-    # Bcrypt rounds (higher = more secure but slower)
+    # Password Hashing - Argon2id with Pepper
+    # Pepper: Secret server-side value added to passwords before hashing
+    # CRITICAL: Generate with: python3 -c "import secrets; print(secrets.token_hex(32))"
+    # Store securely in environment, never commit to git
+    PASSWORD_PEPPER = os.environ.get('PASSWORD_PEPPER') or 'dev-pepper-CHANGE-ME-IN-PRODUCTION'
+
+    # Bcrypt rounds (legacy, kept for migration compatibility)
     BCRYPT_LOG_ROUNDS = int(os.environ.get('BCRYPT_LOG_ROUNDS', 12))
 
     # Failed login attempts

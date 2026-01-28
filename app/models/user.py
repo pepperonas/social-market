@@ -102,28 +102,39 @@ class User(UserMixin, db.Model):
 
     def set_password(self, password):
         """
-        Hash password using bcrypt with configurable rounds
+        Hash password using Argon2id with pepper
+
+        Security:
+        - Argon2id: Winner of Password Hashing Competition
+        - Memory-hard: Resistant to GPU/ASIC attacks
+        - Pepper: Secret server-side salt from environment
+        - Salt: Random per-password salt (automatic)
+
+        Hash Format: Argon2id(password + pepper, salt)
 
         Args:
             password: Plain text password
 
         Raises:
             ValueError: If password doesn't meet policy requirements
+            RuntimeError: If pepper not configured
         """
+        from app.services.password_service import get_password_service
+
         # Validate password against policy (only check minimum length)
         if len(password) < 8:
             raise ValueError('Password must be at least 8 characters')
 
-        # Generate hash with bcrypt
-        self.password_hash = generate_password_hash(
-            password,
-            method='pbkdf2:sha256',
-            salt_length=16
-        )
+        # Hash with Argon2id + pepper
+        password_service = get_password_service()
+        self.password_hash = password_service.hash_password(password)
 
     def check_password(self, password):
         """
-        Verify password against hash
+        Verify password against Argon2id hash
+
+        Also checks if hash needs rehashing (e.g., after parameter updates)
+        and rehashes automatically on next login
 
         Args:
             password: Plain text password to verify
@@ -131,7 +142,36 @@ class User(UserMixin, db.Model):
         Returns:
             bool: True if password matches, False otherwise
         """
-        return check_password_hash(self.password_hash, password)
+        from app.services.password_service import get_password_service
+
+        if not self.password_hash:
+            return False
+
+        password_service = get_password_service()
+
+        # Check for legacy hashes (werkzeug format)
+        if self.password_hash.startswith('pbkdf2:') or self.password_hash.startswith('scrypt:'):
+            # Legacy hash - verify with werkzeug
+            is_valid = check_password_hash(self.password_hash, password)
+
+            # If valid, upgrade to Argon2id
+            if is_valid:
+                current_app.logger.info(f'Upgrading password hash to Argon2id for user {self.username}')
+                self.set_password(password)
+                db.session.commit()
+
+            return is_valid
+
+        # Verify Argon2id hash
+        is_valid = password_service.verify_password(password, self.password_hash)
+
+        # Check if hash needs rehashing (parameters changed)
+        if is_valid and password_service.needs_rehash(self.password_hash):
+            current_app.logger.info(f'Rehashing password with updated parameters for user {self.username}')
+            self.set_password(password)
+            db.session.commit()
+
+        return is_valid
 
     def _validate_password(self, password):
         """
