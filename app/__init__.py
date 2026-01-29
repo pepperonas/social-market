@@ -26,8 +26,8 @@ session = Session()
 csrf = CSRFProtect()
 limiter = Limiter(
     key_func=get_remote_address,
-    default_limits=["10 per second"]
-    # storage_uri will be set from app.config['RATELIMIT_STORAGE_URL'] in init_app
+    default_limits=["10 per second"],
+    storage_uri="redis://redis:6379/1"  # Use Redis for rate limit storage
 )
 celery = Celery()
 
