@@ -6,23 +6,15 @@ Purpose: Secure communication between users with mandatory encryption
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
 from flask_login import login_required, current_user
-from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
 from sqlalchemy import or_, and_
 import uuid
 
-from app import db
+from app import db, limiter
 from app.models.message import Message, MessageThread
 from app.models.user import User
 from app.services.pgp_service import PGPService
 
 messages_bp = Blueprint('messages', __name__)
-
-# Initialize rate limiter
-limiter = Limiter(
-    key_func=get_remote_address,
-    default_limits=["100 per hour"]
-)
 
 
 @messages_bp.route('/')
