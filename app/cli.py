@@ -291,6 +291,119 @@ def backup_now():
         click.echo(result.stderr)
 
 
+@click.command('generate-pgp-keys')
+@click.option('--username', prompt=True, help='Username to generate keys for')
+@click.option('--passphrase', prompt=True, hide_input=True, confirmation_prompt=True, help='Passphrase to protect private key')
+@click.option('--save-private', is_flag=True, help='Save private key to file (INSECURE - for testing only)')
+def generate_pgp_keys(username, passphrase, save_private):
+    """Generate PGP key pair for a user"""
+    from app.services.pgp_service import PGPService
+    import os
+
+    # Get user
+    user = User.query.filter_by(username=username).first()
+    if not user:
+        click.echo(f'✗ User {username} not found')
+        return
+
+    # Check if user already has key
+    if user.pgp_public_key:
+        click.echo(f'⚠️  User {username} already has a PGP key')
+        overwrite = click.confirm('Overwrite existing key?')
+        if not overwrite:
+            return
+
+    click.echo(f'🔐 Generating PGP key pair for {username}...')
+
+    # Generate keys
+    pgp_service = PGPService(use_temp_home=True)
+    result = pgp_service.generate_keypair(
+        name=username,
+        email=user.email,
+        passphrase=passphrase
+    )
+
+    if not result['success']:
+        click.echo(f'✗ Key generation failed: {result.get("error", "Unknown error")}')
+        return
+
+    public_key = result['public_key']
+    private_key = result['private_key']
+    fingerprint = result.get('fingerprint', 'N/A')
+
+    # Save public key to database
+    user.pgp_public_key = public_key
+    db.session.commit()
+
+    click.echo(f'✅ PGP keys generated successfully!')
+    click.echo(f'✓ Public key saved to database')
+    click.echo(f'✓ Key fingerprint: {fingerprint}')
+
+    # Display public key
+    click.echo('\n📋 Public Key:')
+    click.echo('─' * 80)
+    click.echo(public_key)
+    click.echo('─' * 80)
+
+    # Save private key to file if requested
+    if save_private:
+        filename = f'{username}_private_key.asc'
+        with open(filename, 'w') as f:
+            f.write(private_key)
+        click.echo(f'\n⚠️  Private key saved to: {filename}')
+        click.echo('⚠️  SECURITY WARNING: Delete this file after copying to secure storage!')
+    else:
+        click.echo('\n🔐 Private Key (SAVE THIS SECURELY - will not be shown again):')
+        click.echo('─' * 80)
+        click.echo(private_key)
+        click.echo('─' * 80)
+        click.echo('\n⚠️  Copy this private key to a secure location NOW!')
+        click.echo('⚠️  Recommended: USB stick, password manager, or hardware key')
+        click.echo('⚠️  DO NOT store in cloud, email, or unencrypted locations')
+
+
+@click.command('upload-pgp-key')
+@click.option('--username', prompt=True, help='Username to upload key for')
+@click.option('--key-file', prompt=True, help='Path to public key file')
+def upload_pgp_key(username, key_file):
+    """Upload existing PGP public key for a user"""
+    # Get user
+    user = User.query.filter_by(username=username).first()
+    if not user:
+        click.echo(f'✗ User {username} not found')
+        return
+
+    # Check if user already has key
+    if user.pgp_public_key:
+        click.echo(f'⚠️  User {username} already has a PGP key')
+        overwrite = click.confirm('Overwrite existing key?')
+        if not overwrite:
+            return
+
+    # Read key file
+    try:
+        with open(key_file, 'r') as f:
+            public_key = f.read()
+    except FileNotFoundError:
+        click.echo(f'✗ Key file not found: {key_file}')
+        return
+    except Exception as e:
+        click.echo(f'✗ Error reading key file: {e}')
+        return
+
+    # Validate key format
+    if not public_key.startswith('-----BEGIN PGP PUBLIC KEY BLOCK-----'):
+        click.echo('✗ Invalid PGP public key format')
+        return
+
+    # Save to database
+    user.pgp_public_key = public_key
+    db.session.commit()
+
+    click.echo(f'✅ PGP public key uploaded for {username}')
+    click.echo(f'✓ Key saved to database')
+
+
 @click.command('security-check')
 def security_check():
     """Run security checks"""
@@ -334,3 +447,5 @@ def register_commands(app):
     app.cli.add_command(seed_data)
     app.cli.add_command(backup_now)
     app.cli.add_command(security_check)
+    app.cli.add_command(generate_pgp_keys)
+    app.cli.add_command(upload_pgp_key)
