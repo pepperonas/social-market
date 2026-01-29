@@ -108,7 +108,7 @@
     </div>
 </div>
 
-<script>
+<script nonce="{{ csp_nonce() }}">
 // Toggle encryption mode UI
 document.getElementById('mode_auto').addEventListener('change', function() {
     document.getElementById('auto_mode_input').classList.remove('d-none');

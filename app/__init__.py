@@ -227,9 +227,10 @@ def setup_security(app):
     """Setup security middleware and headers"""
 
     # Security headers (Talisman)
+    # Use nonce-based CSP for inline scripts
     csp = {
         'default-src': "'self'",
-        'script-src': "'none'",  # No scripts allowed
+        'script-src': "'self'",  # Allow scripts from same origin + nonce
         'style-src': ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net"],  # Allow Bootstrap CDN for training
         'img-src': ["'self'", "data:"],
         'font-src': "'self'",
@@ -245,7 +246,7 @@ def setup_security(app):
         strict_transport_security=True,
         strict_transport_security_max_age=31536000,
         content_security_policy=csp,
-        content_security_policy_nonce_in=[],  # Don't use nonce with 'none'
+        content_security_policy_nonce_in=['script-src'],  # Use nonce for scripts
         referrer_policy='no-referrer',
         feature_policy={
             'geolocation': "'none'",
