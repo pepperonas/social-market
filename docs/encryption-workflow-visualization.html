@@ -1,0 +1,849 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verschlüsselungs-Workflow Visualisierung - Social Market</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+
+        h1 {
+            text-align: center;
+            color: #764ba2;
+            margin-bottom: 10px;
+            font-size: 2.5em;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 40px;
+            font-size: 1.2em;
+        }
+
+        .section {
+            margin-bottom: 50px;
+        }
+
+        h2 {
+            color: #667eea;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 3px solid #667eea;
+            font-size: 1.8em;
+        }
+
+        h3 {
+            color: #764ba2;
+            margin: 25px 0 15px 0;
+            font-size: 1.4em;
+        }
+
+        .roles-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .role-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 25px;
+            border-radius: 10px;
+            text-align: center;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+
+        .role-card h3 {
+            color: white;
+            margin: 10px 0;
+        }
+
+        .role-icon {
+            font-size: 3em;
+            margin-bottom: 10px;
+        }
+
+        .flow-container {
+            background: #f8f9fa;
+            padding: 30px;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+
+        .flow-step {
+            background: white;
+            border-left: 4px solid #667eea;
+            padding: 20px;
+            margin: 15px 0;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
+        .flow-step strong {
+            color: #764ba2;
+            display: block;
+            margin-bottom: 10px;
+            font-size: 1.1em;
+        }
+
+        .arrow {
+            text-align: center;
+            font-size: 2em;
+            color: #667eea;
+            margin: 10px 0;
+        }
+
+        .key-visual {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin: 20px 0;
+        }
+
+        .key-box {
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+        }
+
+        .public-key {
+            background: #d4edda;
+            border: 3px solid #28a745;
+        }
+
+        .private-key {
+            background: #f8d7da;
+            border: 3px solid #dc3545;
+        }
+
+        .key-icon {
+            font-size: 3em;
+            margin-bottom: 10px;
+        }
+
+        .comparison-table {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin: 20px 0;
+        }
+
+        .comparison-box {
+            padding: 20px;
+            border-radius: 10px;
+        }
+
+        .bad-practice {
+            background: #f8d7da;
+            border: 3px solid #dc3545;
+        }
+
+        .good-practice {
+            background: #d4edda;
+            border: 3px solid #28a745;
+        }
+
+        .comparison-box h4 {
+            margin-bottom: 15px;
+            font-size: 1.2em;
+        }
+
+        .bad-practice h4 {
+            color: #dc3545;
+        }
+
+        .good-practice h4 {
+            color: #28a745;
+        }
+
+        .message-flow {
+            background: white;
+            border: 2px solid #667eea;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+
+        .message-step {
+            display: flex;
+            align-items: center;
+            margin: 15px 0;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 5px;
+        }
+
+        .message-step-icon {
+            font-size: 2em;
+            margin-right: 15px;
+            min-width: 50px;
+            text-align: center;
+        }
+
+        .encrypted {
+            background: #fff3cd;
+            border: 2px solid #ffc107;
+        }
+
+        .decrypted {
+            background: #d4edda;
+            border: 2px solid #28a745;
+        }
+
+        .warning-box {
+            background: #fff3cd;
+            border-left: 5px solid #ffc107;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 5px;
+        }
+
+        .info-box {
+            background: #d1ecf1;
+            border-left: 5px solid #17a2b8;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 5px;
+        }
+
+        .success-box {
+            background: #d4edda;
+            border-left: 5px solid #28a745;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 5px;
+        }
+
+        .scenario {
+            background: #f8f9fa;
+            padding: 25px;
+            border-radius: 10px;
+            margin: 20px 0;
+            border: 2px solid #667eea;
+        }
+
+        .scenario-title {
+            color: #764ba2;
+            font-weight: bold;
+            font-size: 1.2em;
+            margin-bottom: 15px;
+        }
+
+        .user-badge {
+            display: inline-block;
+            padding: 5px 15px;
+            border-radius: 20px;
+            color: white;
+            font-weight: bold;
+            margin: 5px;
+        }
+
+        .badge-admin { background: #dc3545; }
+        .badge-vendor { background: #28a745; }
+        .badge-buyer { background: #007bff; }
+
+        code {
+            background: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            color: #e83e8c;
+        }
+
+        .timeline {
+            position: relative;
+            padding-left: 50px;
+            margin: 20px 0;
+        }
+
+        .timeline::before {
+            content: '';
+            position: absolute;
+            left: 20px;
+            top: 0;
+            bottom: 0;
+            width: 3px;
+            background: #667eea;
+        }
+
+        .timeline-item {
+            position: relative;
+            margin-bottom: 30px;
+        }
+
+        .timeline-item::before {
+            content: '';
+            position: absolute;
+            left: -38px;
+            top: 5px;
+            width: 15px;
+            height: 15px;
+            border-radius: 50%;
+            background: #764ba2;
+            border: 3px solid white;
+            box-shadow: 0 0 0 3px #667eea;
+        }
+
+        .mode-selector {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin: 20px 0;
+        }
+
+        .mode-card {
+            padding: 25px;
+            border-radius: 10px;
+            text-align: center;
+            cursor: pointer;
+            transition: transform 0.3s;
+        }
+
+        .mode-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .mode-auto {
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+            color: white;
+        }
+
+        .mode-manual {
+            background: linear-gradient(135deg, #ffc107 0%, #fd7e14 100%);
+            color: white;
+        }
+
+        .mode-card h4 {
+            margin-bottom: 10px;
+            font-size: 1.3em;
+        }
+
+        .security-layer {
+            background: white;
+            border: 2px solid #667eea;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+            display: flex;
+            align-items: center;
+        }
+
+        .layer-number {
+            background: #667eea;
+            color: white;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            margin-right: 15px;
+            flex-shrink: 0;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 20px;
+            }
+
+            h1 {
+                font-size: 1.8em;
+            }
+
+            .key-visual,
+            .comparison-table,
+            .mode-selector {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔐 Verschlüsselungs-Workflow</h1>
+        <p class="subtitle">Social Market - Sichere Kommunikation für alle Rollen</p>
+
+        <!-- Rollen Übersicht -->
+        <div class="section">
+            <h2>👥 Die drei Rollen im System</h2>
+            <div class="roles-grid">
+                <div class="role-card">
+                    <div class="role-icon">👨‍💼</div>
+                    <h3>Admin</h3>
+                    <p>Kann mit allen Nutzern kommunizieren (Vendor & Buyer)</p>
+                </div>
+                <div class="role-card">
+                    <div class="role-icon">🏪</div>
+                    <h3>Vendor</h3>
+                    <p>Kann mit Admin und Buyers kommunizieren</p>
+                </div>
+                <div class="role-card">
+                    <div class="role-icon">🛒</div>
+                    <h3>Buyer</h3>
+                    <p>Kann mit Admin und Vendors kommunizieren</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- PGP Grundlagen -->
+        <div class="section">
+            <h2>🔑 PGP-Verschlüsselung einfach erklärt</h2>
+
+            <div class="info-box">
+                <strong>Was ist PGP?</strong>
+                <p>PGP (Pretty Good Privacy) ist wie ein digitales Schloss mit zwei Schlüsseln:</p>
+            </div>
+
+            <div class="key-visual">
+                <div class="key-box public-key">
+                    <div class="key-icon">🔓</div>
+                    <h4>Public Key (Öffentlich)</h4>
+                    <p><strong>Zum Verschlüsseln</strong></p>
+                    <p>✅ Wird im System gespeichert</p>
+                    <p>✅ Jeder kann ihn sehen</p>
+                    <p>✅ Kann nur verschlüsseln (nicht entschlüsseln)</p>
+                    <p style="margin-top: 10px; font-weight: bold;">Wie ein Briefkasten: Jeder kann Briefe einwerfen</p>
+                </div>
+                <div class="key-box private-key">
+                    <div class="key-icon">🔐</div>
+                    <h4>Private Key (Geheim)</h4>
+                    <p><strong>Zum Entschlüsseln</strong></p>
+                    <p>❌ NIEMALS im System gespeichert</p>
+                    <p>❌ Nur der Besitzer kennt ihn</p>
+                    <p>❌ Kann nur entschlüsseln (nicht verschlüsseln)</p>
+                    <p style="margin-top: 10px; font-weight: bold;">Wie ein Briefkastenschlüssel: Nur der Besitzer kann öffnen</p>
+                </div>
+            </div>
+
+            <div class="warning-box">
+                <strong>⚠️ Wichtig:</strong> Der Private Key bleibt IMMER beim Nutzer (auf USB-Stick, Hardware-Key, verschlüsseltem Speicher). Das System kennt ihn nie!
+            </div>
+        </div>
+
+        <!-- Encryption Modi -->
+        <div class="section">
+            <h2>✉️ Zwei Wege zum Verschlüsseln</h2>
+
+            <div class="mode-selector">
+                <div class="mode-card mode-auto">
+                    <div style="font-size: 3em; margin-bottom: 10px;">🔐</div>
+                    <h4>Auto-Encrypt Modus</h4>
+                    <p>Das System verschlüsselt automatisch</p>
+                    <div style="margin-top: 15px; text-align: left;">
+                        <p>✅ Einfach zu benutzen</p>
+                        <p>✅ Keine externe Software nötig</p>
+                        <p>✅ Klartext eingeben → System verschlüsselt</p>
+                        <p>⚠️ Empfänger muss Public Key hinterlegt haben</p>
+                    </div>
+                </div>
+                <div class="mode-card mode-manual">
+                    <div style="font-size: 3em; margin-bottom: 10px;">📝</div>
+                    <h4>Manual Modus</h4>
+                    <p>Bereits verschlüsselte Nachricht einfügen</p>
+                    <div style="margin-top: 15px; text-align: left;">
+                        <p>✅ Maximale Kontrolle</p>
+                        <p>✅ Verschlüsselung auf eigenem Gerät</p>
+                        <p>✅ Funktioniert auch ohne Public Key im System</p>
+                        <p>⚠️ Externe PGP-Software erforderlich</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Encryption Flow -->
+        <div class="section">
+            <h2>📤 Nachricht verschicken (Encryption Flow)</h2>
+
+            <h3>Modus 1: Auto-Encrypt (Automatisch)</h3>
+            <div class="flow-container">
+                <div class="flow-step">
+                    <strong>Schritt 1: Klartext eingeben</strong>
+                    Du schreibst: "Ihre Bestellung wurde versandt"
+                </div>
+                <div class="arrow">⬇️</div>
+                <div class="flow-step">
+                    <strong>Schritt 2: System holt Public Key des Empfängers</strong>
+                    System lädt Public Key von Alice aus der Datenbank
+                </div>
+                <div class="arrow">⬇️</div>
+                <div class="flow-step encrypted">
+                    <strong>Schritt 3: Verschlüsselung</strong>
+                    System verschlüsselt mit Public Key → <code>-----BEGIN PGP MESSAGE-----...</code>
+                </div>
+                <div class="arrow">⬇️</div>
+                <div class="flow-step">
+                    <strong>Schritt 4: Verschlüsselte Nachricht speichern</strong>
+                    Nur die verschlüsselte Version wird in der Datenbank gespeichert ✅
+                </div>
+            </div>
+
+            <h3>Modus 2: Manual (Manuell verschlüsselt)</h3>
+            <div class="flow-container">
+                <div class="flow-step">
+                    <strong>Schritt 1: Nachricht extern verschlüsseln</strong>
+                    Du verwendest deine eigene PGP-Software (z.B. GPG, Kleopatra)
+                </div>
+                <div class="arrow">⬇️</div>
+                <div class="flow-step encrypted">
+                    <strong>Schritt 2: Verschlüsselten Text einfügen</strong>
+                    Du fügst ein: <code>-----BEGIN PGP MESSAGE----- hQEMA... -----END PGP MESSAGE-----</code>
+                </div>
+                <div class="arrow">⬇️</div>
+                <div class="flow-step">
+                    <strong>Schritt 3: System validiert Format</strong>
+                    System prüft: Beginnt mit <code>-----BEGIN PGP MESSAGE-----</code>? ✅
+                </div>
+                <div class="arrow">⬇️</div>
+                <div class="flow-step">
+                    <strong>Schritt 4: Speichern</strong>
+                    Verschlüsselte Nachricht wird gespeichert ✅
+                </div>
+            </div>
+
+            <div class="success-box">
+                <strong>✅ Sicherheits-Check:</strong> Das System akzeptiert KEINE Klartextnachrichten. Jede Nachricht wird vor dem Speichern geprüft. Ist sie nicht verschlüsselt, wird sie abgelehnt!
+            </div>
+        </div>
+
+        <!-- Decryption Flow -->
+        <div class="section">
+            <h2>📥 Nachricht lesen (Decryption Flow)</h2>
+
+            <div class="flow-container">
+                <div class="flow-step">
+                    <strong>Schritt 1: Thread öffnen</strong>
+                    Du siehst: <code>-----BEGIN PGP MESSAGE----- hQEMA... -----END PGP MESSAGE-----</code>
+                </div>
+                <div class="arrow">⬇️</div>
+                <div class="flow-step">
+                    <strong>Schritt 2: "🔓 Decrypt Message" klicken</strong>
+                    Ein Modal-Fenster öffnet sich
+                </div>
+                <div class="arrow">⬇️</div>
+                <div class="flow-step">
+                    <strong>Schritt 3: Private Key + Passphrase eingeben</strong>
+                    Du fügst deinen Private Key ein (z.B. von USB-Stick kopiert)<br>
+                    Optional: Passphrase falls dein Key verschlüsselt ist
+                </div>
+                <div class="arrow">⬇️</div>
+                <div class="flow-step">
+                    <strong>Schritt 4: AJAX Request an Server</strong>
+                    Browser sendet: Private Key + Passphrase + Message ID an Server
+                </div>
+                <div class="arrow">⬇️</div>
+                <div class="flow-step encrypted">
+                    <strong>Schritt 5: Server entschlüsselt (temporär)</strong>
+                    Server erstellt temporäres GPG-Verzeichnis (~100ms)<br>
+                    Importiert Private Key → Entschlüsselt → Gibt Klartext zurück
+                </div>
+                <div class="arrow">⬇️</div>
+                <div class="flow-step decrypted">
+                    <strong>Schritt 6: Klartext anzeigen</strong>
+                    Browser zeigt: "Ihre Bestellung wurde versandt" ✅
+                </div>
+                <div class="arrow">⬇️</div>
+                <div class="flow-step">
+                    <strong>Schritt 7: Cleanup (Aufräumen)</strong>
+                    <strong>Server:</strong> Temporäres GPG-Verzeichnis gelöscht ✅<br>
+                    <strong>Browser:</strong> Private Key Input-Feld geleert ✅
+                </div>
+            </div>
+
+            <div class="warning-box">
+                <strong>⚠️ Zero-Knowledge Prinzip:</strong> Der Private Key existiert nur für ~100 Millisekunden auf dem Server und wird NIEMALS gespeichert. Danach ist er komplett gelöscht!
+            </div>
+        </div>
+
+        <!-- Beispiel-Szenarien -->
+        <div class="section">
+            <h2>🎭 Praxis-Beispiele</h2>
+
+            <div class="scenario">
+                <div class="scenario-title">
+                    Szenario 1: Admin schreibt Vendor
+                </div>
+                <div class="timeline">
+                    <div class="timeline-item">
+                        <strong><span class="user-badge badge-admin">Admin</span> will Nachricht senden</strong>
+                        <p>Nachricht: "Ihr Account wurde verifiziert"</p>
+                    </div>
+                    <div class="timeline-item">
+                        <strong>System holt Vendor's Public Key</strong>
+                        <p>Public Key von <span class="user-badge badge-vendor">Vendor</span> aus Datenbank geladen</p>
+                    </div>
+                    <div class="timeline-item">
+                        <strong>Verschlüsselung</strong>
+                        <p>Nachricht wird mit Vendor's Public Key verschlüsselt ✅</p>
+                    </div>
+                    <div class="timeline-item">
+                        <strong>Speichern</strong>
+                        <p>Verschlüsselte Nachricht in DB gespeichert</p>
+                    </div>
+                    <div class="timeline-item">
+                        <strong><span class="user-badge badge-vendor">Vendor</span> empfängt Nachricht</strong>
+                        <p>Sieht: <code>-----BEGIN PGP MESSAGE----- hQEMA...</code></p>
+                    </div>
+                    <div class="timeline-item">
+                        <strong>Vendor entschlüsselt</strong>
+                        <p>Verwendet seinen Private Key → Liest: "Ihr Account wurde verifiziert" ✅</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="scenario">
+                <div class="scenario-title">
+                    Szenario 2: Buyer schreibt Vendor (Manual Mode)
+                </div>
+                <div class="timeline">
+                    <div class="timeline-item">
+                        <strong><span class="user-badge badge-buyer">Buyer</span> hat externe PGP-Software</strong>
+                        <p>Verwendet GPG/Kleopatra auf eigenem Computer</p>
+                    </div>
+                    <div class="timeline-item">
+                        <strong>Buyer verschlüsselt extern</strong>
+                        <p>Verschlüsselt "Wann kommt die Lieferung?" mit Vendor's Public Key</p>
+                    </div>
+                    <div class="timeline-item">
+                        <strong>Encrypted Message kopieren</strong>
+                        <p>Kopiert: <code>-----BEGIN PGP MESSAGE----- hQEMA...</code></p>
+                    </div>
+                    <div class="timeline-item">
+                        <strong>In Manual Mode einfügen</strong>
+                        <p>Fügt verschlüsselten Text im System ein</p>
+                    </div>
+                    <div class="timeline-item">
+                        <strong>System validiert & speichert</strong>
+                        <p>Format geprüft ✅ → Verschlüsselte Nachricht gespeichert</p>
+                    </div>
+                    <div class="timeline-item">
+                        <strong><span class="user-badge badge-vendor">Vendor</span> entschlüsselt</strong>
+                        <p>Liest: "Wann kommt die Lieferung?" ✅</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="scenario">
+                <div class="scenario-title">
+                    Szenario 3: Vendor antwortet Buyer
+                </div>
+                <div class="timeline">
+                    <div class="timeline-item">
+                        <strong><span class="user-badge badge-vendor">Vendor</span> öffnet Thread</strong>
+                        <p>Sieht verschlüsselte Buyer-Nachricht</p>
+                    </div>
+                    <div class="timeline-item">
+                        <strong>Vendor entschlüsselt (temporär)</strong>
+                        <p>Gibt Private Key ein → Liest Frage: "Wann kommt die Lieferung?"</p>
+                    </div>
+                    <div class="timeline-item">
+                        <strong>Vendor schreibt Antwort</strong>
+                        <p>Schreibt: "Die Lieferung kommt morgen"</p>
+                    </div>
+                    <div class="timeline-item">
+                        <strong>Auto-Encrypt mit Buyer's Public Key</strong>
+                        <p>System verschlüsselt mit Buyer's Public Key ✅</p>
+                    </div>
+                    <div class="timeline-item">
+                        <strong><span class="user-badge badge-buyer">Buyer</span> empfängt Antwort</strong>
+                        <p>Entschlüsselt mit seinem Private Key → Liest: "Die Lieferung kommt morgen" ✅</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Security Comparison -->
+        <div class="section">
+            <h2>🛡️ Warum Private Keys NIEMALS gespeichert werden</h2>
+
+            <div class="comparison-table">
+                <div class="comparison-box bad-practice">
+                    <h4>❌ Wenn Private Keys AUF Server (UNSICHER)</h4>
+                    <div style="margin-top: 15px;">
+                        <p><strong>Angriffs-Szenario: Datenbank-Hack</strong></p>
+                        <div style="margin: 15px 0; padding: 15px; background: rgba(255,255,255,0.3); border-radius: 5px;">
+                            <p>1️⃣ Angreifer erhält DB-Zugriff</p>
+                            <p style="margin: 8px 0;">⬇️</p>
+                            <p>2️⃣ Bekommt ALLE Private Keys</p>
+                            <p style="margin: 8px 0;">⬇️</p>
+                            <p>3️⃣ Bekommt ALLE verschlüsselten Nachrichten</p>
+                            <p style="margin: 8px 0;">⬇️</p>
+                            <p>4️⃣ Kann ALLES entschlüsseln</p>
+                            <p style="margin: 8px 0;">⬇️</p>
+                            <p><strong>💥 TOTALE KOMPROMITTIERUNG</strong></p>
+                        </div>
+                        <p style="margin-top: 15px;"><strong>Single Point of Failure: SERVER</strong></p>
+                        <p>Wenn Server kompromittiert = ALLE Nachrichten lesbar</p>
+                    </div>
+                </div>
+
+                <div class="comparison-box good-practice">
+                    <h4>✅ Private Keys OFF Server (SICHER - Aktuelles System)</h4>
+                    <div style="margin-top: 15px;">
+                        <p><strong>Angriffs-Szenario: Datenbank-Hack</strong></p>
+                        <div style="margin: 15px 0; padding: 15px; background: rgba(255,255,255,0.3); border-radius: 5px;">
+                            <p>1️⃣ Angreifer erhält DB-Zugriff</p>
+                            <p style="margin: 8px 0;">⬇️</p>
+                            <p>2️⃣ Bekommt Public Keys (nutzlos allein)</p>
+                            <p style="margin: 8px 0;">⬇️</p>
+                            <p>3️⃣ Bekommt verschlüsselte Nachrichten</p>
+                            <p style="margin: 8px 0;">⬇️</p>
+                            <p>4️⃣ KANN NICHT entschlüsseln (keine Private Keys)</p>
+                            <p style="margin: 8px 0;">⬇️</p>
+                            <p><strong>✅ Nachrichten bleiben SICHER</strong></p>
+                        </div>
+                        <p style="margin-top: 15px;"><strong>Zero-Knowledge: ✅</strong></p>
+                        <p>Server kann Nachrichten nicht lesen</p>
+                        <p>Selbst mit vollem DB-Zugriff bleiben Nachrichten unleserlich</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="info-box">
+                <strong>📊 Was der Server weiß vs. nicht weiß:</strong>
+                <div style="margin-top: 15px;">
+                    <p><strong>✅ Server WEISS:</strong></p>
+                    <ul style="margin-left: 20px;">
+                        <li>Wer mit wem kommuniziert (Metadaten)</li>
+                        <li>Wann Nachrichten gesendet wurden</li>
+                        <li>Public Keys aller Nutzer</li>
+                        <li>Länge der verschlüsselten Nachrichten</li>
+                    </ul>
+                    <p style="margin-top: 15px;"><strong>❌ Server WEISS NICHT:</strong></p>
+                    <ul style="margin-left: 20px;">
+                        <li>Inhalt der Nachrichten</li>
+                        <li>Private Keys der Nutzer</li>
+                        <li>Passphrasen</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Defense in Depth -->
+        <div class="section">
+            <h2>🏰 Defense in Depth - Mehrschichtige Sicherheit</h2>
+            <p>Das System verwendet mehrere Sicherheitsebenen (wie Zwiebelschalen):</p>
+
+            <div style="margin-top: 20px;">
+                <div class="security-layer">
+                    <div class="layer-number">1</div>
+                    <div>
+                        <strong>Eingabe-Validierung</strong>
+                        <p>Nur gültige PGP-Nachrichten werden akzeptiert</p>
+                    </div>
+                </div>
+
+                <div class="security-layer">
+                    <div class="layer-number">2</div>
+                    <div>
+                        <strong>Code-Level Checks</strong>
+                        <p>Vor dem Speichern: <code>if not message.is_encrypted: raise ValueError</code></p>
+                    </div>
+                </div>
+
+                <div class="security-layer">
+                    <div class="layer-number">3</div>
+                    <div>
+                        <strong>Datenbank-Verschlüsselung</strong>
+                        <p>Nachrichten als BYTEA (verschlüsselt) gespeichert, nicht als TEXT</p>
+                    </div>
+                </div>
+
+                <div class="security-layer">
+                    <div class="layer-number">4</div>
+                    <div>
+                        <strong>Zero-Knowledge Decryption</strong>
+                        <p>Private Key nur temporär (~100ms), dann gelöscht</p>
+                    </div>
+                </div>
+
+                <div class="security-layer">
+                    <div class="layer-number">5</div>
+                    <div>
+                        <strong>Access Control</strong>
+                        <p>Nur Empfänger kann entschlüsseln (recipient_id Check)</p>
+                    </div>
+                </div>
+
+                <div class="security-layer">
+                    <div class="layer-number">6</div>
+                    <div>
+                        <strong>Rate Limiting</strong>
+                        <p>10 neue Threads/Stunde, 20 Antworten/Stunde (verhindert Spam)</p>
+                    </div>
+                </div>
+
+                <div class="security-layer">
+                    <div class="layer-number">7</div>
+                    <div>
+                        <strong>Auto-Deletion</strong>
+                        <p>Nachrichten werden nach 30 Tagen automatisch gelöscht (OPSEC)</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Best Practices -->
+        <div class="section">
+            <h2>💡 Best Practices für Nutzer</h2>
+
+            <h3>✅ EMPFOHLEN:</h3>
+            <div class="success-box">
+                <ul style="margin-left: 20px;">
+                    <li><strong>Hardware Security Key</strong> - YubiKey, Nitrokey</li>
+                    <li><strong>Verschlüsselter USB-Stick</strong> - VeraCrypt Container</li>
+                    <li><strong>Password Manager</strong> - 1Password, Bitwarden (verschlüsselt)</li>
+                    <li><strong>Offline Computer</strong> - Air-Gapped System für Schlüsselverwaltung</li>
+                    <li><strong>Starke Passphrase</strong> - Mindestens 20 Zeichen für Private Key</li>
+                    <li><strong>Backup</strong> - Verschlüsselte Kopien an mehreren sicheren Orten</li>
+                </ul>
+            </div>
+
+            <h3>❌ NIEMALS:</h3>
+            <div class="warning-box">
+                <ul style="margin-left: 20px;">
+                    <li>❌ Private Key in Cloud-Speicher (Google Drive, Dropbox, etc.)</li>
+                    <li>❌ Private Key per E-Mail versenden</li>
+                    <li>❌ Private Key unverschlüsselt auf Festplatte speichern</li>
+                    <li>❌ Private Key in Screenshots</li>
+                    <li>❌ Private Key auf öffentlichen Computern eingeben</li>
+                    <li>❌ Private Key mit anderen Personen teilen</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div style="margin-top: 50px; padding-top: 30px; border-top: 2px solid #e0e0e0; text-align: center; color: #666;">
+            <p><strong>Social Market - Educational Security Training Environment</strong></p>
+            <p>Diese Visualisierung ist Teil einer IT-Security Trainingsumgebung</p>
+            <p style="margin-top: 10px; font-size: 0.9em;">
+                Zweck: Verständnis für sichere Systemarchitektur und End-to-End-Verschlüsselung<br>
+                NICHT FÜR: Produktion, illegale Aktivitäten, oder öffentliches Deployment
+            </p>
+        </div>
+    </div>
+</body>
+</html>
