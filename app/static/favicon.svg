@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- Educational Security Training Icon -->
+  <!-- Lock symbol representing security -->
+  <rect width="100" height="100" fill="#667eea" rx="15"/>
+
+  <!-- Lock body -->
+  <rect x="30" y="45" width="40" height="35" rx="3" fill="#ffffff"/>
+
+  <!-- Lock shackle -->
+  <path d="M 35 45 L 35 35 Q 35 25 50 25 Q 65 25 65 35 L 65 45"
+        stroke="#ffffff"
+        stroke-width="6"
+        fill="none"
+        stroke-linecap="round"/>
+
+  <!-- Keyhole -->
+  <circle cx="50" cy="57" r="4" fill="#667eea"/>
+  <rect x="48" y="57" width="4" height="8" fill="#667eea"/>
+
+  <!-- Training/Education indicator (small "T" badge) -->
+  <circle cx="75" cy="25" r="12" fill="#28a745"/>
+  <text x="75" y="31" font-family="Arial, sans-serif" font-size="16" font-weight="bold" fill="white" text-anchor="middle">T</text>
+</svg>

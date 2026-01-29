@@ -80,6 +80,18 @@ def create_app(config_name=None):
             'disclaimer': 'Educational security training environment only'
         }), 200
 
+    # Favicon route (redirect .ico requests to SVG)
+    @app.route('/favicon.ico')
+    def favicon():
+        """Serve favicon"""
+        from flask import send_from_directory
+        import os
+        return send_from_directory(
+            os.path.join(app.root_path, 'static'),
+            'favicon.svg',
+            mimetype='image/svg+xml'
+        )
+
     return app
 
 
