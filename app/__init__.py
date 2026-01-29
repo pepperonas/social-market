@@ -27,7 +27,7 @@ csrf = CSRFProtect()
 limiter = Limiter(
     key_func=get_remote_address,
     default_limits=["10 per second"],
-    storage_uri="redis://redis:6379/1"  # Use Redis for rate limit storage
+    storage_uri=os.getenv('RATELIMIT_STORAGE_URL', 'redis://:***REMOVED-REDIS-PASSWORD***@redis:6379/1')
 )
 celery = Celery()
 
