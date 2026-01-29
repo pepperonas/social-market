@@ -50,6 +50,10 @@ class User(UserMixin, db.Model):
     # PGP key (for encrypted messaging)
     pgp_public_key = db.Column(db.Text, nullable=True)
     pgp_fingerprint = db.Column(db.String(40), nullable=True)
+    pgp_key_created_at = db.Column(db.DateTime, nullable=True)
+    pgp_key_updated_at = db.Column(db.DateTime, nullable=True)
+    pgp_key_created_by = db.Column(db.String(50), nullable=True)  # 'user', 'admin', 'cli'
+    pgp_key_source = db.Column(db.String(50), nullable=True)      # 'generated', 'uploaded', 'imported'
 
     # Account security
     failed_login_attempts = db.Column(db.Integer, default=0)
@@ -309,19 +313,25 @@ class User(UserMixin, db.Model):
     # PGP Key Management
     # =============================================================================
 
-    def set_pgp_key(self, public_key):
+    def set_pgp_key(self, public_key, source='uploaded', created_by='user'):
         """
-        Set user's PGP public key
+        Set user's PGP public key with audit logging
 
         Args:
             public_key: PGP public key in ASCII armor format
+            source: How key was created (uploaded, generated, imported)
+            created_by: Who created the key (user, admin, cli)
 
         Raises:
             ValueError: If key format is invalid
         """
         import gnupg
+        from datetime import datetime
 
         gpg = gnupg.GPG()
+
+        # Check if this is an update
+        is_update = self.pgp_public_key is not None
 
         # Verify key format
         try:
@@ -331,11 +341,39 @@ class User(UserMixin, db.Model):
 
             self.pgp_public_key = public_key
             self.pgp_fingerprint = imported.fingerprints[0]
+            self.pgp_key_source = source
+            self.pgp_key_created_by = created_by
+
+            # Set timestamps
+            if not is_update:
+                self.pgp_key_created_at = datetime.utcnow()
+            else:
+                self.pgp_key_updated_at = datetime.utcnow()
 
         except Exception as e:
             raise ValueError(f'Failed to import PGP key: {str(e)}')
 
         db.session.commit()
+
+        # Log audit event
+        try:
+            from app.services.audit_service import log_pgp_key_event
+            action = 'pgp_key_updated' if is_update else 'pgp_key_uploaded'
+            log_pgp_key_event(
+                user_id=self.id,
+                action=action,
+                key_fingerprint=self.pgp_fingerprint,
+                created_by=created_by,
+                source=source,
+                metadata={
+                    'username': self.username,
+                    'email': self.email
+                }
+            )
+        except Exception as e:
+            # Don't fail the key update if audit logging fails
+            from flask import current_app
+            current_app.logger.error(f'Failed to log PGP key audit event: {e}')
 
     # =============================================================================
     # Authorization

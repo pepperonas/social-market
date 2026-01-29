@@ -474,12 +474,29 @@ def generate_pgp_key():
             flash(f"Key generation failed: {result.get('error', 'Unknown error')}", 'danger')
             return redirect(url_for('auth.pgp_keys'))
 
-        # Log key generation event
+        # Log key generation event (general auth log)
         _log_auth_event(
             current_user.username,
             current_user.id,
             'pgp_key_generated',
             request.remote_addr
+        )
+
+        # Log PGP-specific audit event
+        from app.services.audit_service import log_pgp_key_event
+        log_pgp_key_event(
+            user_id=current_user.id,
+            action='pgp_key_generated',
+            key_fingerprint=result['fingerprint'],
+            created_by='user',
+            source='generated',
+            metadata={
+                'username': current_user.username,
+                'email': key_email,
+                'key_length': str(key_length),
+                'algorithm': 'RSA',
+                'expire_date': expire_date
+            }
         )
 
         current_app.logger.info(f'Successfully generated keypair for {current_user.username}: {result["fingerprint"]}')

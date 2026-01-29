@@ -298,6 +298,8 @@ def backup_now():
 def generate_pgp_keys(username, passphrase, save_private):
     """Generate PGP key pair for a user"""
     from app.services.pgp_service import PGPService
+    from app.services.audit_service import log_pgp_key_event
+    from datetime import datetime
     import os
 
     # Get user
@@ -307,11 +309,13 @@ def generate_pgp_keys(username, passphrase, save_private):
         return
 
     # Check if user already has key
+    is_update = False
     if user.pgp_public_key:
         click.echo(f'⚠️  User {username} already has a PGP key')
         overwrite = click.confirm('Overwrite existing key?')
         if not overwrite:
             return
+        is_update = True
 
     click.echo(f'🔐 Generating PGP key pair for {username}...')
 
@@ -331,13 +335,39 @@ def generate_pgp_keys(username, passphrase, save_private):
     private_key = result['private_key']
     fingerprint = result.get('fingerprint', 'N/A')
 
-    # Save public key to database
+    # Save public key to database with timestamps
     user.pgp_public_key = public_key
+    user.pgp_fingerprint = fingerprint
+    user.pgp_key_created_by = 'cli'
+    user.pgp_key_source = 'generated'
+
+    if not is_update:
+        user.pgp_key_created_at = datetime.utcnow()
+    else:
+        user.pgp_key_updated_at = datetime.utcnow()
+
     db.session.commit()
+
+    # Log audit event
+    action = 'pgp_key_updated' if is_update else 'pgp_key_generated'
+    log_pgp_key_event(
+        user_id=user.id,
+        action=action,
+        key_fingerprint=fingerprint,
+        created_by='cli',
+        source='generated',
+        metadata={
+            'username': username,
+            'email': user.email,
+            'key_length': '4096',
+            'algorithm': 'RSA'
+        }
+    )
 
     click.echo(f'✅ PGP keys generated successfully!')
     click.echo(f'✓ Public key saved to database')
     click.echo(f'✓ Key fingerprint: {fingerprint}')
+    click.echo(f'✓ Audit log created')
 
     # Display public key
     click.echo('\n📋 Public Key:')
@@ -367,6 +397,10 @@ def generate_pgp_keys(username, passphrase, save_private):
 @click.option('--key-file', prompt=True, help='Path to public key file')
 def upload_pgp_key(username, key_file):
     """Upload existing PGP public key for a user"""
+    from app.services.pgp_service import PGPService
+    from app.services.audit_service import log_pgp_key_event
+    from datetime import datetime
+
     # Get user
     user = User.query.filter_by(username=username).first()
     if not user:
@@ -374,11 +408,13 @@ def upload_pgp_key(username, key_file):
         return
 
     # Check if user already has key
+    is_update = False
     if user.pgp_public_key:
         click.echo(f'⚠️  User {username} already has a PGP key')
         overwrite = click.confirm('Overwrite existing key?')
         if not overwrite:
             return
+        is_update = True
 
     # Read key file
     try:
@@ -396,12 +432,147 @@ def upload_pgp_key(username, key_file):
         click.echo('✗ Invalid PGP public key format')
         return
 
-    # Save to database
+    # Extract fingerprint using PGP service
+    pgp_service = PGPService(use_temp_home=True)
+    fingerprint = None
+    try:
+        # Import key temporarily to get fingerprint
+        import_result = pgp_service.gpg.import_keys(public_key)
+        if import_result.count > 0:
+            fingerprint = import_result.fingerprints[0]
+    except Exception as e:
+        click.echo(f'⚠️  Could not extract fingerprint: {e}')
+
+    # Save to database with timestamps
     user.pgp_public_key = public_key
+    user.pgp_fingerprint = fingerprint
+    user.pgp_key_created_by = 'cli'
+    user.pgp_key_source = 'uploaded'
+
+    if not is_update:
+        user.pgp_key_created_at = datetime.utcnow()
+    else:
+        user.pgp_key_updated_at = datetime.utcnow()
+
     db.session.commit()
+
+    # Log audit event
+    action = 'pgp_key_updated' if is_update else 'pgp_key_uploaded'
+    log_pgp_key_event(
+        user_id=user.id,
+        action=action,
+        key_fingerprint=fingerprint,
+        created_by='cli',
+        source='uploaded',
+        metadata={
+            'username': username,
+            'email': user.email,
+            'key_file': key_file
+        }
+    )
 
     click.echo(f'✅ PGP public key uploaded for {username}')
     click.echo(f'✓ Key saved to database')
+    if fingerprint:
+        click.echo(f'✓ Key fingerprint: {fingerprint}')
+    click.echo(f'✓ Audit log created')
+
+
+@click.command('show-pgp-audit')
+@click.option('--username', help='Filter by username (optional)')
+@click.option('--limit', default=50, help='Number of entries to show')
+def show_pgp_audit(username, limit):
+    """Show PGP key audit log"""
+    from sqlalchemy import text
+    import json
+
+    click.echo('🔍 PGP Key Audit Log')
+    click.echo('=' * 100)
+
+    try:
+        # Build query
+        if username:
+            # Get user ID
+            user = User.query.filter_by(username=username).first()
+            if not user:
+                click.echo(f'✗ User {username} not found')
+                return
+
+            query = text("""
+                SELECT
+                    al.timestamp,
+                    u.username,
+                    al.action,
+                    al.new_values->>'fingerprint' as fingerprint,
+                    al.new_values->>'source' as source,
+                    al.new_values->>'created_by' as created_by,
+                    al.status,
+                    al.ip_address
+                FROM audit_log al
+                JOIN users u ON al.user_id = u.id
+                WHERE al.action LIKE 'pgp_key%'
+                  AND al.user_id = :user_id
+                ORDER BY al.timestamp DESC
+                LIMIT :limit
+            """)
+            result = db.session.execute(query, {'user_id': user.id, 'limit': limit})
+        else:
+            query = text("""
+                SELECT
+                    al.timestamp,
+                    u.username,
+                    al.action,
+                    al.new_values->>'fingerprint' as fingerprint,
+                    al.new_values->>'source' as source,
+                    al.new_values->>'created_by' as created_by,
+                    al.status,
+                    al.ip_address
+                FROM audit_log al
+                JOIN users u ON al.user_id = u.id
+                WHERE al.action LIKE 'pgp_key%'
+                ORDER BY al.timestamp DESC
+                LIMIT :limit
+            """)
+            result = db.session.execute(query, {'limit': limit})
+
+        rows = result.fetchall()
+
+        if not rows:
+            click.echo('No PGP key audit entries found.')
+            return
+
+        click.echo(f'\nFound {len(rows)} audit entries:\n')
+
+        for row in rows:
+            timestamp = row[0].strftime('%Y-%m-%d %H:%M:%S')
+            username = row[1]
+            action = row[2]
+            fingerprint = row[3] or 'N/A'
+            source = row[4] or 'N/A'
+            created_by = row[5] or 'N/A'
+            status = row[6]
+            ip_address = row[7] or 'N/A'
+
+            # Color code by action
+            if 'generated' in action:
+                icon = '🔐'
+            elif 'uploaded' in action:
+                icon = '📤'
+            elif 'updated' in action:
+                icon = '🔄'
+            elif 'deleted' in action:
+                icon = '🗑️'
+            else:
+                icon = '📝'
+
+            click.echo(f'{icon} {timestamp} | {username:15} | {action:20}')
+            click.echo(f'   Fingerprint: {fingerprint[:16]}...')
+            click.echo(f'   Source: {source:12} | Created by: {created_by:8} | IP: {ip_address}')
+            click.echo(f'   Status: {status}')
+            click.echo('-' * 100)
+
+    except Exception as e:
+        click.echo(f'✗ Error reading audit log: {e}')
 
 
 @click.command('security-check')
@@ -449,3 +620,4 @@ def register_commands(app):
     app.cli.add_command(security_check)
     app.cli.add_command(generate_pgp_keys)
     app.cli.add_command(upload_pgp_key)
+    app.cli.add_command(show_pgp_audit)

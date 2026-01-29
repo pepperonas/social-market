@@ -218,6 +218,64 @@ def get_user_audit_log(user_id, limit=100):
         return []
 
 
+def log_pgp_key_event(user_id, action, key_fingerprint=None, created_by='user', source='generated', metadata=None):
+    """
+    Log PGP key event for audit trail
+
+    Args:
+        user_id: User ID
+        action: Action type (key_generated, key_uploaded, key_updated, key_deleted)
+        key_fingerprint: PGP key fingerprint (optional)
+        created_by: Who created the key (user, admin, cli)
+        source: How key was created (generated, uploaded, imported)
+        metadata: Additional metadata (optional)
+    """
+    try:
+        import json
+
+        # Build metadata
+        audit_metadata = {
+            'created_by': created_by,
+            'source': source
+        }
+
+        if key_fingerprint:
+            audit_metadata['fingerprint'] = key_fingerprint
+
+        if metadata:
+            audit_metadata.update(metadata)
+
+        # Log to general audit_log
+        db.session.execute(
+            text(
+                "INSERT INTO audit_log (user_id, action, table_name, record_id, "
+                "new_values, status, severity, metadata, ip_address, user_agent) "
+                "VALUES (:user_id, :action, 'users', :record_id, :new_values, "
+                "'success', 'info', :metadata, :ip_address, :user_agent)"
+            ),
+            {
+                'user_id': user_id,
+                'action': action,
+                'record_id': user_id,
+                'new_values': json.dumps({
+                    'fingerprint': key_fingerprint,
+                    'source': source,
+                    'created_by': created_by
+                }),
+                'metadata': json.dumps(audit_metadata),
+                'ip_address': request.remote_addr if request else None,
+                'user_agent': request.headers.get('User-Agent', '') if request else 'CLI'
+            }
+        )
+
+        db.session.commit()
+        current_app.logger.info(f'PGP key event logged: {action} for user {user_id}')
+
+    except Exception as e:
+        current_app.logger.error(f'Failed to log PGP key event: {e}')
+        db.session.rollback()
+
+
 def get_recent_security_events(hours=24, severity=None):
     """
     Get recent security events
