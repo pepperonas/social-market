@@ -25,6 +25,7 @@ cp .env.example .env
 # Generate secure secrets
 python3 -c "import secrets; print('SECRET_KEY=' + secrets.token_hex(32))" >> .env
 python3 -c "import secrets; print('DB_ENCRYPTION_KEY=' + secrets.token_hex(32))" >> .env
+python3 -c "import secrets; print('PASSWORD_PEPPER=' + secrets.token_hex(32))" >> .env
 ```
 
 ### 2. Edit .env File
@@ -305,6 +306,51 @@ docker-compose down -v
 docker-compose down --rmi all
 ```
 
+## Key Security Features
+
+### Argon2id Password Hashing
+
+The platform uses **Argon2id** (winner of Password Hashing Competition 2015) with pepper for password security:
+
+**Features:**
+- Memory-hard algorithm: 64 MB per hash (GPU/ASIC resistant)
+- Time-cost: 3 iterations (~0.2-0.5s per hash)
+- Pepper: Secret server-side value (configured in .env)
+- Automatic migration from legacy hashes
+
+**Documentation:** See `docs/PASSWORD_SECURITY.md` for complete details
+
+**Configuration:**
+```bash
+# PASSWORD_PEPPER must be set in .env
+PASSWORD_PEPPER=<64-character-hex-string>
+```
+
+### RSA-4096 PGP Key Generation
+
+Users can generate PGP keypairs directly in the web interface:
+
+**Features:**
+- RSA-4096 bit keys (industry standard for high security)
+- Web-based key creation
+- Strong passphrase validation (min 12 characters)
+- No server-side key storage
+- OpenPGP standard compatible
+- Rate limited (3 generations per hour)
+
+**Access:** Navigate to "🔐 PGP Keys" after login
+
+**Documentation:** See `docs/PGP_KEYS.md` for usage guide
+
+### Additional Security
+
+- **2FA via TOTP:** Time-based one-time passwords
+- **Session Security:** Redis-backed with HTTPOnly cookies
+- **Rate Limiting:** Multi-tier protection against abuse
+- **CSRF Protection:** Token-based for all state changes
+- **Audit Logging:** Complete activity trail
+- **Input Validation:** SQL injection prevention
+
 ## Getting Help
 
 - Check logs: `docker-compose logs`
@@ -314,14 +360,19 @@ docker-compose down --rmi all
 
 ## Next Steps
 
-1. Explore the application
-2. Review security features
-3. Test authentication and 2FA
-4. Try the escrow system
-5. Send encrypted messages
-6. Monitor security events
-7. Create backups
-8. Study the codebase
+1. **Change default admin password** (critical!)
+2. **Generate PGP keys:** Navigate to "🔐 PGP Keys" and create RSA-4096 keypair
+3. **Test password security:** Create accounts to verify Argon2id hashing
+4. **Enable 2FA:** Set up two-factor authentication for admin account
+5. **Explore marketplace:** Browse products, create listings (vendor role)
+6. **Test encrypted messaging:** Send PGP-encrypted messages
+7. **Review security logs:** Check audit logs in admin dashboard
+8. **Create backups:** Test encrypted backup and restore
+9. **Study documentation:**
+   - `docs/PASSWORD_SECURITY.md` - Argon2id implementation
+   - `docs/PGP_KEYS.md` - PGP key generation guide
+   - `docs/SECURITY.md` - Security architecture
+10. **Analyze codebase:** Review security implementations
 
 ---
 

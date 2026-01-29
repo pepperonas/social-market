@@ -34,6 +34,8 @@ This project implements a fully-featured, security-hardened marketplace platform
 
 - **Defense-in-Depth Architecture** - Multiple layers of security controls
 - **Zero-Trust Security Model** - Verify everything, trust nothing
+- **Argon2id Password Hashing** - Memory-hard, GPU-resistant with pepper
+- **RSA-4096 PGP Key Generation** - Web-based keypair generation
 - **Encryption at Rest & in Transit** - pgcrypto, TLS 1.3, PGP messaging
 - **Secure Session Management** - Redis-backed, HTTPOnly cookies
 - **Rate Limiting & DDoS Protection** - Multi-tier rate limiting
@@ -52,10 +54,14 @@ This project implements a fully-featured, security-hardened marketplace platform
 - Celery for async task processing
 
 ### Security & Crypto
-- pgcrypto for database encryption
-- python-gnupg for PGP messaging
-- cryptography library for Python
-- bcrypt for password hashing (12 rounds)
+- **Argon2id** for password hashing (Winner of Password Hashing Competition)
+  - Memory-hard: 64 MB per hash (GPU/ASIC resistant)
+  - Time-cost: 3 iterations (~0.2-0.5s per hash)
+  - Pepper: Secret server-side salt for additional security
+- **RSA-4096 PGP** key generation (OpenPGP standard)
+- **pgcrypto** for database field encryption
+- **python-gnupg** for PGP messaging
+- **cryptography** library for Python crypto operations
 
 ### Infrastructure
 - Docker Compose for all services
@@ -84,7 +90,10 @@ This project implements a fully-featured, security-hardened marketplace platform
    ```bash
    python3 -c "import secrets; print(secrets.token_hex(32))"  # For SECRET_KEY
    python3 -c "import secrets; print(secrets.token_hex(32))"  # For DB_ENCRYPTION_KEY
+   python3 -c "import secrets; print(secrets.token_hex(32))"  # For PASSWORD_PEPPER
    ```
+
+   Update `.env` with generated values
 
 3. **Build and start services:**
    ```bash
@@ -130,8 +139,20 @@ Internet (Tor)
 ## Security Features
 
 ### Application Security
+- **Argon2id Password Hashing:**
+  - Memory-hard algorithm (64 MB per hash)
+  - GPU/ASIC attack resistance
+  - Pepper + salt protection
+  - Automatic migration from legacy hashes
+  - OWASP & NIST compliant
+- **PGP Key Generation:**
+  - RSA-4096 keypair generation
+  - Web-based key creation
+  - OpenPGP standard compatible
+  - Strong passphrase validation
+  - No server-side key storage
 - **Security Headers:** CSP, HSTS, X-Frame-Options, etc.
-- **Rate Limiting:** Multi-tier (general, login, registration)
+- **Rate Limiting:** Multi-tier (general, login, registration, PGP: 3/hour)
 - **CSRF Protection:** Token-based for all state-changing operations
 - **Input Validation:** SQLAlchemy ORM, Werkzeug sanitization
 - **Session Security:** HTTPOnly, Secure, SameSite cookies
@@ -157,11 +178,23 @@ Internet (Tor)
 ## Core Features
 
 ### User Management
-- Vendor/Buyer/Admin roles
-- PGP key management for encrypted communication
-- 2FA via TOTP
-- Password requirements and bcrypt hashing
-- Account recovery with PGP-encrypted backup codes
+- **Multi-role system:** Vendor/Buyer/Admin with distinct permissions
+- **Argon2id password hashing:**
+  - Memory-hard algorithm (64 MB per hash)
+  - Pepper + salt protection
+  - GPU/ASIC attack resistance
+  - Automatic migration from legacy hashes
+- **RSA-4096 PGP key generation:**
+  - Web-based keypair creation
+  - 2048/3072/4096-bit options
+  - Strong passphrase validation
+  - No server-side storage
+  - OpenPGP standard compatible
+- **2FA via TOTP:** Time-based one-time passwords
+- **Account security:**
+  - Failed login attempt tracking
+  - Account lockout (5 attempts, 15 min)
+  - Session management with Redis
 
 ### Marketplace
 - Product listings (legal categories only: Books, Art, Digital Goods, Services)
@@ -307,10 +340,30 @@ See `docs/TRAINING-GUIDE.md` for:
 
 ## Documentation
 
+### Core Documentation
 - `docs/ARCHITECTURE.md` - Detailed system architecture
 - `docs/SECURITY.md` - Security controls and threat model
-- `docs/API.md` - API endpoints and authentication
-- `docs/TRAINING-GUIDE.md` - Training scenarios and exercises
+- `SETUP.md` - Comprehensive setup guide
+
+### Security Features
+- **`docs/PASSWORD_SECURITY.md`** - Argon2id password hashing with pepper
+  - Algorithm explanation
+  - Security comparison vs other algorithms
+  - Best practices for pepper management
+  - Migration strategy
+  - Threat model and attack defenses
+  - Performance considerations
+  - Compliance (OWASP, NIST, PCI-DSS, GDPR)
+
+- **`docs/PGP_KEYS.md`** - RSA-4096 PGP key generation
+  - Web-based key generation guide
+  - Security features and best practices
+  - Import instructions for various clients
+  - Use cases (email, files, signatures)
+  - Troubleshooting
+
+### User Guides
+- `LOGIN_CREDENTIALS.md` - Default accounts and access information
 
 ## Troubleshooting
 
