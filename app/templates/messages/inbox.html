@@ -1,48 +1,76 @@
 {% extends "base.html" %}
 
-{% block title %}Messages{% endblock %}
+{% block title %}Inbox - Social Market{% endblock %}
 
 {% block content %}
-<div class="row mb-4">
-    <div class="col-md-12">
-        <h2>Messages</h2>
-    </div>
-</div>
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-md-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2>📨 Inbox</h2>
+                {% if current_user.role == 'admin' %}
+                <a href="{{ url_for('messages.admin_user_list') }}" class="btn btn-primary">
+                    💬 Message User
+                </a>
+                {% endif %}
+            </div>
 
-<div class="row">
-    <div class="col-md-12">
-        {% if threads %}
-        <div class="list-group">
-            {% for thread in threads %}
-            <a href="{{ url_for('messages.thread', thread_id=thread.id) }}" class="list-group-item list-group-item-action">
-                <div class="d-flex w-100 justify-content-between">
-                    <h5 class="mb-1">
-                        {% if thread.sender_id == current_user.id %}
-                        To: {{ thread.recipient.username }}
-                        {% else %}
-                        From: {{ thread.sender.username }}
-                        {% endif %}
-                        {% if thread.unread %}
-                        <span class="badge bg-primary">New</span>
-                        {% endif %}
-                    </h5>
-                    <small>{{ thread.created_at.strftime('%Y-%m-%d %H:%M') }}</small>
-                </div>
-                <p class="mb-1 text-truncate">{{ thread.subject if thread.subject else '(No subject)' }}</p>
-                <small class="text-muted">
-                    {% if thread.encrypted %}
-                    <span class="badge bg-success">🔒 Encrypted</span>
+            {% if threads %}
+            <div class="list-group">
+                {% for item in threads %}
+                <a href="{{ url_for('messages.thread', thread_id=item.thread.id) }}"
+                   class="list-group-item list-group-item-action {% if item.unread_count > 0 %}list-group-item-warning{% endif %}">
+                    <div class="d-flex w-100 justify-content-between">
+                        <h5 class="mb-1">
+                            <span class="badge
+                                {% if item.participant.role == 'admin' %}bg-danger
+                                {% elif item.participant.role == 'vendor' %}bg-success
+                                {% else %}bg-primary{% endif %}">
+                                {{ item.participant.role|title }}
+                            </span>
+                            {{ item.participant.username }}
+                            {% if item.unread_count > 0 %}
+                            <span class="badge bg-warning text-dark">{{ item.unread_count }} new</span>
+                            {% endif %}
+                        </h5>
+                        <small class="text-muted">
+                            {{ item.thread.last_message_at.strftime('%Y-%m-%d %H:%M') if item.thread.last_message_at else '' }}
+                        </small>
+                    </div>
+                    {% if item.thread.subject %}
+                    <p class="mb-1"><strong>{{ item.thread.subject }}</strong></p>
                     {% endif %}
-                    {{ thread.message_count }} message(s)
-                </small>
-            </a>
-            {% endfor %}
+                    {% if item.last_message %}
+                    <small class="text-muted">
+                        🔒 Last message: {{ item.last_message.created_at.strftime('%Y-%m-%d %H:%M') }}
+                        (encrypted)
+                    </small>
+                    {% endif %}
+                </a>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="alert alert-info">
+                <h4>No Messages</h4>
+                <p>You don't have any messages yet.</p>
+                {% if current_user.role == 'admin' %}
+                <p>As an admin, you can <a href="{{ url_for('messages.admin_user_list') }}">message any user</a>.</p>
+                {% elif current_user.role == 'buyer' %}
+                <p>Browse the <a href="{{ url_for('marketplace.index') }}">marketplace</a> and contact vendors.</p>
+                {% elif current_user.role == 'vendor' %}
+                <p>Buyers will be able to contact you about your products.</p>
+                {% endif %}
+            </div>
+            {% endif %}
+
+            <div class="alert alert-warning mt-4">
+                <h5>🔒 Encryption Notice</h5>
+                <p class="mb-0">
+                    All messages are encrypted with PGP. To read messages, you'll need your private key.
+                    Make sure you have <a href="{{ url_for('auth.pgp_keys') }}">generated your PGP keys</a>.
+                </p>
+            </div>
         </div>
-        {% else %}
-        <div class="alert alert-info">
-            <p class="mb-0">No messages yet.</p>
-        </div>
-        {% endif %}
     </div>
 </div>
 {% endblock %}

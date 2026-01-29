@@ -14,16 +14,25 @@ from app import db
 
 class MessageThread(db.Model):
     """
-    Message thread between buyer and vendor
+    Message thread between any two users (buyer-vendor, admin-user, etc.)
+    Supports:
+    - Admin ↔ Buyer
+    - Admin ↔ Vendor
+    - Buyer ↔ Vendor
+    - Admin ↔ Admin
     """
 
     __tablename__ = 'message_threads'
 
     id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
-    # Participants
-    buyer_id = db.Column(UUID(as_uuid=True), db.ForeignKey('users.id'), nullable=False)
-    vendor_id = db.Column(UUID(as_uuid=True), db.ForeignKey('users.id'), nullable=False)
+    # Participants (flexible - any user can message any user)
+    participant_1_id = db.Column(UUID(as_uuid=True), db.ForeignKey('users.id'), nullable=False)
+    participant_2_id = db.Column(UUID(as_uuid=True), db.ForeignKey('users.id'), nullable=False)
+
+    # Legacy fields (for backwards compatibility during migration)
+    buyer_id = db.Column(UUID(as_uuid=True), db.ForeignKey('users.id'), nullable=True)
+    vendor_id = db.Column(UUID(as_uuid=True), db.ForeignKey('users.id'), nullable=True)
 
     # Optional order association
     order_id = db.Column(UUID(as_uuid=True), db.ForeignKey('orders.id'), nullable=True)
@@ -41,15 +50,20 @@ class MessageThread(db.Model):
                               cascade='all, delete-orphan',
                               order_by='Message.created_at.desc()')
 
+    participant_1 = db.relationship('User', foreign_keys=[participant_1_id])
+    participant_2 = db.relationship('User', foreign_keys=[participant_2_id])
+
+    # Legacy relationships
     buyer = db.relationship('User', foreign_keys=[buyer_id])
     vendor = db.relationship('User', foreign_keys=[vendor_id])
 
     # Indexes
     __table_args__ = (
-        Index('idx_thread_buyer', buyer_id),
-        Index('idx_thread_vendor', vendor_id),
+        Index('idx_thread_participant_1', participant_1_id),
+        Index('idx_thread_participant_2', participant_2_id),
         Index('idx_thread_order', order_id),
-        db.UniqueConstraint('buyer_id', 'vendor_id', 'order_id', name='uq_thread_participants_order'),
+        # Ensure unique thread per participant pair (ordered)
+        db.CheckConstraint('participant_1_id != participant_2_id', name='chk_different_participants'),
     )
 
     def __repr__(self):
@@ -65,9 +79,9 @@ class MessageThread(db.Model):
         Returns:
             User: The other participant
         """
-        if str(self.buyer_id) == str(user_id):
-            return self.vendor
-        return self.buyer
+        if str(self.participant_1_id) == str(user_id):
+            return self.participant_2
+        return self.participant_1
 
     def get_unread_count(self, user_id):
         """
@@ -96,6 +110,69 @@ class MessageThread(db.Model):
             is_read=False
         ).update({'is_read': True, 'read_at': datetime.utcnow()})
         db.session.commit()
+
+    def is_participant(self, user_id):
+        """
+        Check if user is participant in thread
+
+        Args:
+            user_id: User ID to check
+
+        Returns:
+            bool: True if user is participant
+        """
+        return str(self.participant_1_id) == str(user_id) or \
+               str(self.participant_2_id) == str(user_id)
+
+    @staticmethod
+    def find_or_create_thread(participant_1_id, participant_2_id, order_id=None, subject=None):
+        """
+        Find existing thread or create new one
+
+        Args:
+            participant_1_id: First participant ID
+            participant_2_id: Second participant ID
+            order_id: Optional order ID
+            subject: Optional thread subject
+
+        Returns:
+            MessageThread: Existing or new thread
+        """
+        # Ensure consistent ordering (lower UUID first)
+        if str(participant_1_id) > str(participant_2_id):
+            participant_1_id, participant_2_id = participant_2_id, participant_1_id
+
+        # Try to find existing thread
+        thread = MessageThread.query.filter(
+            db.or_(
+                db.and_(
+                    MessageThread.participant_1_id == participant_1_id,
+                    MessageThread.participant_2_id == participant_2_id
+                ),
+                db.and_(
+                    MessageThread.participant_1_id == participant_2_id,
+                    MessageThread.participant_2_id == participant_1_id
+                )
+            )
+        ).first()
+
+        if thread:
+            return thread
+
+        # Create new thread
+        thread = MessageThread(
+            id=uuid.uuid4(),
+            participant_1_id=participant_1_id,
+            participant_2_id=participant_2_id,
+            order_id=order_id,
+            subject=subject,
+            is_active=True
+        )
+
+        db.session.add(thread)
+        db.session.commit()
+
+        return thread
 
     def to_dict(self, current_user_id=None):
         """Convert thread to dictionary"""

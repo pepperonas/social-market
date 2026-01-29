@@ -1,115 +1,253 @@
 {% extends "base.html" %}
 
-{% block title %}Message Thread{% endblock %}
+{% block title %}Thread with {{ other_participant.username }} - Social Market{% endblock %}
 
 {% block content %}
-<div class="row mb-4">
-    <div class="col-md-12">
-        <h2>Message Thread</h2>
-        <p class="text-muted">
-            Conversation with
-            {% if thread.sender_id == current_user.id %}
-            {{ thread.recipient.username }}
-            {% else %}
-            {{ thread.sender.username }}
-            {% endif %}
-        </p>
-    </div>
-</div>
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-md-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2>
+                    💬 Conversation with
+                    <span class="badge
+                        {% if other_participant.role == 'admin' %}bg-danger
+                        {% elif other_participant.role == 'vendor' %}bg-success
+                        {% else %}bg-primary{% endif %}">
+                        {{ other_participant.role|title }}
+                    </span>
+                    {{ other_participant.username }}
+                </h2>
+                <a href="{{ url_for('messages.inbox') }}" class="btn btn-secondary">← Back to Inbox</a>
+            </div>
 
-<div class="row">
-    <div class="col-md-8">
-        <div class="card mb-4">
-            <div class="card-body" style="max-height: 500px; overflow-y: auto;">
-                {% if messages %}
+            {% if thread.subject %}
+            <div class="alert alert-info">
+                <strong>Subject:</strong> {{ thread.subject }}
+            </div>
+            {% endif %}
+
+            <!-- Messages -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5>Messages (All Encrypted 🔒)</h5>
+                </div>
+                <div class="card-body" style="max-height: 500px; overflow-y: auto;">
+                    {% if messages %}
                     {% for message in messages %}
-                    <div class="mb-3 {% if message.sender_id == current_user.id %}text-end{% endif %}">
-                        <div class="d-inline-block text-start" style="max-width: 80%;">
-                            <div class="card {% if message.sender_id == current_user.id %}bg-primary text-white{% else %}bg-light{% endif %}">
-                                <div class="card-body py-2">
-                                    <div class="small mb-1">
-                                        <strong>{{ message.sender.username }}</strong>
-                                        <span class="text-muted">{{ message.created_at.strftime('%Y-%m-%d %H:%M') }}</span>
-                                        {% if message.encrypted %}
-                                        <span class="badge bg-success">🔒</span>
-                                        {% endif %}
-                                    </div>
-                                    {% if message.encrypted %}
-                                    <div class="small">
-                                        <details>
-                                            <summary>Encrypted Message (Click to view)</summary>
-                                            <pre class="mt-2 mb-0" style="white-space: pre-wrap; word-wrap: break-word; font-size: 10px;">{{ message.content }}</pre>
-                                        </details>
-                                        <p class="mb-0 mt-2"><em>Use your PGP private key to decrypt this message.</em></p>
-                                    </div>
-                                    {% else %}
-                                    <p class="mb-0">{{ message.content }}</p>
-                                    {% endif %}
-                                </div>
-                            </div>
+                    <div class="message mb-3 p-3 {% if message.sender_id == current_user.id %}bg-light{% else %}bg-white border{% endif %}">
+                        <div class="d-flex justify-content-between mb-2">
+                            <strong>
+                                {% if message.sender_id == current_user.id %}
+                                You
+                                {% else %}
+                                {{ other_participant.username }}
+                                {% endif %}
+                            </strong>
+                            <small class="text-muted">{{ message.created_at.strftime('%Y-%m-%d %H:%M') }}</small>
                         </div>
+
+                        <!-- Encrypted content preview -->
+                        <div class="encrypted-content mb-2" id="encrypted-{{ message.id }}">
+                            <code class="text-muted small">
+                                {{ message.content_encrypted.decode('utf-8')[:100] }}...
+                            </code>
+                            <br>
+                            <span class="badge bg-success">🔒 Encrypted</span>
+                        </div>
+
+                        <!-- Decrypted content (hidden initially) -->
+                        <div class="decrypted-content d-none" id="decrypted-{{ message.id }}">
+                            <p class="mb-0" id="message-text-{{ message.id }}"></p>
+                        </div>
+
+                        <!-- Decrypt button (only for recipient) -->
+                        {% if message.recipient_id == current_user.id %}
+                        <button class="btn btn-sm btn-primary decrypt-btn" data-message-id="{{ message.id }}">
+                            🔓 Decrypt Message
+                        </button>
+                        {% endif %}
+
+                        <!-- Delete button -->
+                        <form method="POST" action="{{ url_for('messages.delete_message', message_id=message.id) }}" style="display: inline;">
+                            <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Delete this message?')">
+                                🗑️ Delete
+                            </button>
+                        </form>
                     </div>
                     {% endfor %}
-                {% else %}
-                    <p class="text-muted">No messages in this thread yet.</p>
-                {% endif %}
+                    {% else %}
+                    <p class="text-muted">No messages yet. Start the conversation below.</p>
+                    {% endif %}
+                </div>
             </div>
-        </div>
 
-        <div class="card">
-            <div class="card-header">
-                <h5>Send Message</h5>
-            </div>
-            <div class="card-body">
-                <form method="POST" action="{{ url_for('messages.send', thread_id=thread.id) }}">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+            <!-- Send Message Form -->
+            <div class="card">
+                <div class="card-header">
+                    <h5>Send Message</h5>
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="{{ url_for('messages.send_message', thread_id=thread.id) }}">
+                        <!-- Encryption Mode Selector -->
+                        <div class="mb-3">
+                            <label class="form-label">Encryption Mode</label>
+                            <div class="btn-group w-100" role="group">
+                                <input type="radio" class="btn-check" name="encryption_mode" id="mode_auto" value="auto" checked>
+                                <label class="btn btn-outline-success" for="mode_auto">
+                                    🔐 Auto-Encrypt
+                                    <small class="d-block">System encrypts with recipient's public key</small>
+                                </label>
 
-                    <div class="mb-3">
-                        <label for="content" class="form-label">Message</label>
-                        <textarea class="form-control" id="content" name="content" rows="4" required></textarea>
-                    </div>
+                                <input type="radio" class="btn-check" name="encryption_mode" id="mode_manual" value="manual">
+                                <label class="btn btn-outline-warning" for="mode_manual">
+                                    📝 Manual
+                                    <small class="d-block">Paste pre-encrypted message</small>
+                                </label>
+                            </div>
+                        </div>
 
-                    <div class="mb-3 form-check">
-                        <input type="checkbox" class="form-check-input" id="encrypt" name="encrypt" {% if recipient_has_pgp %}checked{% endif %}>
-                        <label class="form-check-label" for="encrypt">
-                            Encrypt with PGP
-                            {% if not recipient_has_pgp %}
-                            <span class="text-muted">(Recipient has no PGP key)</span>
+                        <!-- Message Input -->
+                        <div class="mb-3" id="auto_mode_input">
+                            <label for="message" class="form-label">Message (Plaintext - will be encrypted)</label>
+                            <textarea class="form-control" id="message" name="message" rows="5" required></textarea>
+                            <small class="text-muted">Max 10,000 characters. Will be encrypted with {{ other_participant.username }}'s public key.</small>
+                            {% if not other_participant.pgp_public_key %}
+                            <div class="alert alert-warning mt-2">
+                                ⚠️ Recipient doesn't have a PGP public key. Auto-encryption won't work. Use manual mode or ask them to generate a key.
+                            </div>
                             {% endif %}
-                        </label>
-                    </div>
+                        </div>
 
-                    <button type="submit" class="btn btn-primary">Send Message</button>
-                    <a href="{{ url_for('messages.inbox') }}" class="btn btn-secondary">Back to Inbox</a>
-                </form>
-            </div>
-        </div>
-    </div>
+                        <div class="mb-3 d-none" id="manual_mode_input">
+                            <label for="message_manual" class="form-label">Pre-Encrypted Message (PGP Format)</label>
+                            <textarea class="form-control" id="message_manual" name="message" rows="10"></textarea>
+                            <small class="text-muted">
+                                Paste your PGP-encrypted message here (must start with -----BEGIN PGP MESSAGE-----)
+                            </small>
+                        </div>
 
-    <div class="col-md-4">
-        <div class="card">
-            <div class="card-header">
-                <h6>Thread Information</h6>
-            </div>
-            <div class="card-body">
-                <p><strong>Subject:</strong> {{ thread.subject if thread.subject else '(No subject)' }}</p>
-                <p><strong>Started:</strong> {{ thread.created_at.strftime('%Y-%m-%d') }}</p>
-                <p><strong>Messages:</strong> {{ messages|length }}</p>
-                {% if thread.encrypted %}
-                <p><span class="badge bg-success">🔒 Encrypted Thread</span></p>
-                {% endif %}
-            </div>
-        </div>
-
-        <div class="card mt-3">
-            <div class="card-header">
-                <h6>Privacy Notice</h6>
-            </div>
-            <div class="card-body small">
-                <p>PGP encryption ensures only the recipient can read your messages.</p>
-                <p class="mb-0">Messages are automatically deleted after 30 days.</p>
+                        <button type="submit" class="btn btn-primary">
+                            🚀 Send Encrypted Message
+                        </button>
+                    </form>
+                </div>
             </div>
         </div>
     </div>
 </div>
+
+<!-- Decryption Modal -->
+<div class="modal fade" id="decryptModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">🔓 Decrypt Message</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Enter your PGP private key and passphrase to decrypt this message.</p>
+
+                <div class="mb-3">
+                    <label for="private_key" class="form-label">Private Key</label>
+                    <textarea class="form-control" id="private_key" rows="10" placeholder="-----BEGIN PGP PRIVATE KEY BLOCK-----"></textarea>
+                </div>
+
+                <div class="mb-3">
+                    <label for="passphrase" class="form-label">Passphrase</label>
+                    <input type="password" class="form-control" id="passphrase" placeholder="Your private key passphrase">
+                </div>
+
+                <div id="decrypt_error" class="alert alert-danger d-none"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="decrypt_submit">Decrypt</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Toggle encryption mode UI
+document.getElementById('mode_auto').addEventListener('change', function() {
+    document.getElementById('auto_mode_input').classList.remove('d-none');
+    document.getElementById('manual_mode_input').classList.add('d-none');
+    document.getElementById('message').required = true;
+    document.getElementById('message_manual').required = false;
+});
+
+document.getElementById('mode_manual').addEventListener('change', function() {
+    document.getElementById('auto_mode_input').classList.add('d-none');
+    document.getElementById('manual_mode_input').classList.remove('d-none');
+    document.getElementById('message').required = false;
+    document.getElementById('message_manual').required = true;
+});
+
+// Decryption functionality
+let currentMessageId = null;
+const decryptModal = new bootstrap.Modal(document.getElementById('decryptModal'));
+
+document.querySelectorAll('.decrypt-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        currentMessageId = this.dataset.messageId;
+        decryptModal.show();
+    });
+});
+
+document.getElementById('decrypt_submit').addEventListener('click', async function() {
+    const privateKey = document.getElementById('private_key').value;
+    const passphrase = document.getElementById('passphrase').value;
+    const errorDiv = document.getElementById('decrypt_error');
+
+    if (!privateKey) {
+        errorDiv.textContent = 'Please enter your private key';
+        errorDiv.classList.remove('d-none');
+        return;
+    }
+
+    errorDiv.classList.add('d-none');
+
+    try {
+        const response = await fetch('/messages/decrypt', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                message_id: currentMessageId,
+                private_key: privateKey,
+                passphrase: passphrase
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            // Hide encrypted content
+            document.getElementById('encrypted-' + currentMessageId).classList.add('d-none');
+
+            // Show decrypted content
+            const decryptedDiv = document.getElementById('decrypted-' + currentMessageId);
+            const messageText = document.getElementById('message-text-' + currentMessageId);
+            messageText.textContent = data.decrypted_message;
+            decryptedDiv.classList.remove('d-none');
+
+            // Hide decrypt button
+            document.querySelector(`[data-message-id="${currentMessageId}"]`).classList.add('d-none');
+
+            decryptModal.hide();
+
+            // Clear sensitive data
+            document.getElementById('private_key').value = '';
+            document.getElementById('passphrase').value = '';
+        } else {
+            errorDiv.textContent = 'Decryption failed: ' + data.error;
+            errorDiv.classList.remove('d-none');
+        }
+    } catch (error) {
+        errorDiv.textContent = 'Error: ' + error.message;
+        errorDiv.classList.remove('d-none');
+    }
+});
+</script>
 {% endblock %}

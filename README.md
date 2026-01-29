@@ -210,10 +210,21 @@ Internet (Tor)
 - Commission calculation (3%)
 
 ### Messaging System
-- PGP-encrypted messages between buyer/vendor
-- Public key exchange
-- Message threading
-- Auto-deletion after 30 days (OPSEC)
+- **Mandatory PGP encryption:** All messages MUST be encrypted (no plaintext allowed)
+- **Two encryption modes:**
+  - Auto-encrypt: System encrypts with recipient's public key
+  - Manual: User provides pre-encrypted PGP message
+- **Flexible communication:**
+  - Admin ↔ All users (support/moderation)
+  - Vendor ↔ Buyers (customer service)
+  - Users ↔ Admin (support requests)
+- **Zero-knowledge architecture:** Messages stored encrypted, server cannot decrypt
+- **Message threading:** Organized conversations per participant pair
+- **Auto-deletion:** Messages expire after 30 days (OPSEC)
+- **Soft delete:** Per-user deletion, permanent only when both delete
+- **Rate limiting:** 10 new threads/hour, 20 replies/hour
+- **AJAX decryption:** User provides private key to decrypt in browser
+- See `docs/MESSAGING.md` for complete documentation
 
 ### Admin Dashboard
 - User management
@@ -361,6 +372,14 @@ See `docs/TRAINING-GUIDE.md` for:
   - Import instructions for various clients
   - Use cases (email, files, signatures)
   - Troubleshooting
+
+- **`docs/MESSAGING.md`** - Encrypted messaging system
+  - Mandatory PGP encryption architecture
+  - Auto-encrypt vs manual modes
+  - Communication matrix (who can message whom)
+  - Zero-knowledge design
+  - Database schema and API endpoints
+  - Security best practices and troubleshooting
 
 ### User Guides
 - `LOGIN_CREDENTIALS.md` - Default accounts and access information
