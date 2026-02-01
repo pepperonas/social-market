@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+
+{% block title %}Login Alerts - Social Market{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <h1 class="mb-4"><i class="bi bi-bell"></i> Login Alerts</h1>
+    
+    <div class="row">
+        <div class="col-lg-8">
+            <!-- Alert Summary -->
+            <div class="card mb-4 shadow-sm">
+                <div class="card-header bg-dark text-white">
+                    <h5 class="mb-0"><i class="bi bi-shield-exclamation"></i> Failed Login Attempts</h5>
+                </div>
+                <div class="card-body p-0">
+                    {% if alerts %}
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Time</th>
+                                    <th>Type</th>
+                                    <th>IP Address</th>
+                                    <th>Reason</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for alert in alerts %}
+                                <tr>
+                                    <td>{{ alert.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                                    <td>
+                                        <span class="badge bg-danger">{{ alert.action }}</span>
+                                    </td>
+                                    <td>
+                                        <code>{{ alert.ip_address }}</code>
+                                    </td>
+                                    <td class="small text-muted">{{ alert.failure_reason or 'N/A' }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center py-5">
+                        <i class="bi bi-check-circle text-success display-4"></i>
+                        <h5 class="mt-3 text-success">No Failed Login Attempts</h5>
+                        <p class="text-muted">Your account has no recent failed login attempts.</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            
+            {% if alerts %}
+            <!-- Security Recommendations -->
+            <div class="card shadow-sm">
+                <div class="card-header bg-warning">
+                    <h5 class="mb-0"><i class="bi bi-lightbulb"></i> Security Recommendations</h5>
+                </div>
+                <div class="card-body">
+                    <p>Based on the failed login attempts, we recommend:</p>
+                    <ol>
+                        <li><strong>Check IP addresses</strong> - Do you recognize them?</li>
+                        <li><strong>Change your password</strong> if you see many attempts</li>
+                        <li><strong>Enable 2FA</strong> for additional protection</li>
+                        <li><strong>Report suspicious activity</strong> to administrators</li>
+                    </ol>
+                    <div class="d-flex gap-2 flex-wrap">
+                        <a href="{{ url_for('account.change_password') }}" class="btn btn-outline-primary">
+                            <i class="bi bi-key"></i> Change Password
+                        </a>
+                        {% if not current_user.two_factor_enabled %}
+                        <a href="{{ url_for('auth.enable_2fa') }}" class="btn btn-outline-success">
+                            <i class="bi bi-shield-check"></i> Enable 2FA
+                        </a>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+        
+        <!-- Sidebar -->
+        <div class="col-lg-4">
+            <!-- Quick Stats -->
+            <div class="card mb-4 shadow-sm">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-graph-up"></i> Statistics</h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>Failed Attempts:</span>
+                        <strong class="{% if alerts|length > 5 %}text-danger{% else %}text-success{% endif %}">
+                            {{ alerts|length }}
+                        </strong>
+                    </div>
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>2FA Status:</span>
+                        <strong class="{% if current_user.two_factor_enabled %}text-success{% else %}text-warning{% endif %}">
+                            {% if current_user.two_factor_enabled %}Enabled{% else %}Disabled{% endif %}
+                        </strong>
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <span>Account Locked:</span>
+                        <strong class="{% if current_user.account_locked_until %}text-danger{% else %}text-success{% endif %}">
+                            {% if current_user.account_locked_until %}Yes{% else %}No{% endif %}
+                        </strong>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Actions -->
+            <div class="card shadow-sm">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-lightning"></i> Quick Actions</h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-grid gap-2">
+                        <a href="{{ url_for('account.security_settings') }}" class="btn btn-outline-primary">
+                            <i class="bi bi-shield-lock"></i> Security Settings
+                        </a>
+                        <a href="{{ url_for('account.active_sessions') }}" class="btn btn-outline-secondary">
+                            <i class="bi bi-laptop"></i> Active Sessions
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

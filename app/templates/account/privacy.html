@@ -1,0 +1,197 @@
+{% extends "base.html" %}
+
+{% block title %}Privacy Settings - Social Market{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <h1 class="mb-4"><i class="bi bi-shield-check"></i> Privacy Settings</h1>
+    
+    <div class="row">
+        <div class="col-lg-8">
+            <!-- Data You Provide -->
+            <div class="card mb-4 shadow-sm">
+                <div class="card-header bg-dark text-white">
+                    <h5 class="mb-0"><i class="bi bi-person-badge"></i> Your Data</h5>
+                </div>
+                <div class="card-body">
+                    <p>We collect and process the following data about you:</p>
+                    <ul>
+                        <li><strong>Account Information:</strong> Username, email, password (hashed)</li>
+                        <li><strong>Profile Data:</strong> Display name, bio, vendor description</li>
+                        <li><strong>Security Data:</strong> 2FA secrets, PGP keys, login history</li>
+                        <li><strong>Transaction Data:</strong> Orders, payments, shipping info (encrypted)</li>
+                        <li><strong>Communications:</strong> Messages (PGP encrypted)</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <!-- Your Rights -->
+            <div class="card mb-4 shadow-sm">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-shield-fill-check"></i> Your Privacy Rights (GDPR)</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <div class="card h-100">
+                                <div class="card-body">
+                                    <h6><i class="bi bi-download text-primary"></i> Right to Access</h6>
+                                    <p class="small text-muted mb-2">
+                                        Request a copy of all data we hold about you.
+                                    </p>
+                                    <form action="{{ url_for('account.export_data') }}" method="POST">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <button type="submit" class="btn btn-sm btn-outline-primary">
+                                            Export My Data
+                                        </button>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <div class="card h-100">
+                                <div class="card-body">
+                                    <h6><i class="bi bi-pencil text-primary"></i> Right to Rectification</h6>
+                                    <p class="small text-muted mb-2">
+                                        Update or correct your personal information.
+                                    </p>
+                                    <a href="{{ url_for('auth.edit_profile') }}" class="btn btn-sm btn-outline-primary">
+                                        Edit Profile
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <div class="card h-100">
+                                <div class="card-body">
+                                    <h6><i class="bi bi-trash text-danger"></i> Right to Erasure</h6>
+                                    <p class="small text-muted mb-2">
+                                        Request deletion of your account and data.
+                                    </p>
+                                    <a href="{{ url_for('account.delete_account') }}" class="btn btn-sm btn-outline-danger">
+                                        Delete Account
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <div class="card h-100">
+                                <div class="card-body">
+                                    <h6><i class="bi bi-arrow-left-right text-primary"></i> Right to Portability</h6>
+                                    <p class="small text-muted mb-2">
+                                        Receive your data in a machine-readable format.
+                                    </p>
+                                    <form action="{{ url_for('account.export_data') }}" method="POST">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <button type="submit" class="btn btn-sm btn-outline-primary">
+                                            Export as JSON
+                                        </button>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Data Retention -->
+            <div class="card mb-4 shadow-sm">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-clock-history"></i> Data Retention</h5>
+                </div>
+                <div class="card-body">
+                    <table class="table mb-0">
+                        <thead>
+                            <tr>
+                                <th>Data Type</th>
+                                <th>Retention Period</th>
+                                <th>Notes</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>Account Data</td>
+                                <td>Until deletion</td>
+                                <td>Required for account functionality</td>
+                            </tr>
+                            <tr>
+                                <td>Messages</td>
+                                <td>30 days</td>
+                                <td>Auto-deleted for OPSEC</td>
+                            </tr>
+                            <tr>
+                                <td>Order History</td>
+                                <td>365 days</td>
+                                <td>Required for disputes/auditing</td>
+                            </tr>
+                            <tr>
+                                <td>Login Logs</td>
+                                <td>90 days</td>
+                                <td>Security monitoring</td>
+                            </tr>
+                            <tr>
+                                <td>Audit Logs</td>
+                                <td>365 days</td>
+                                <td>Compliance requirements</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Sidebar -->
+        <div class="col-lg-4">
+            <!-- Encryption Info -->
+            <div class="card mb-4 shadow-sm">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0"><i class="bi bi-lock"></i> Encryption Status</h5>
+                </div>
+                <div class="card-body">
+                    <ul class="list-unstyled mb-0">
+                        <li class="mb-2">
+                            <i class="bi bi-check-circle-fill text-success me-2"></i>
+                            <strong>Password:</strong> Argon2id + Pepper
+                        </li>
+                        <li class="mb-2">
+                            <i class="bi bi-check-circle-fill text-success me-2"></i>
+                            <strong>Messages:</strong> PGP Encrypted
+                        </li>
+                        <li class="mb-2">
+                            <i class="bi bi-check-circle-fill text-success me-2"></i>
+                            <strong>Shipping:</strong> pgcrypto AES-256
+                        </li>
+                        <li class="mb-2">
+                            <i class="bi bi-check-circle-fill text-success me-2"></i>
+                            <strong>Transport:</strong> TLS 1.3
+                        </li>
+                        <li>
+                            <i class="bi bi-check-circle-fill text-success me-2"></i>
+                            <strong>Sessions:</strong> Signed Cookies
+                        </li>
+                    </ul>
+                </div>
+            </div>
+            
+            <!-- Contact -->
+            <div class="card shadow-sm">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-envelope"></i> Privacy Contact</h5>
+                </div>
+                <div class="card-body">
+                    <p class="small text-muted">
+                        For privacy-related inquiries or to exercise your rights, contact:
+                    </p>
+                    <p class="mb-0">
+                        <strong>Data Protection Officer</strong><br>
+                        <a href="mailto:privacy@marketplace.local">privacy@marketplace.local</a>
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

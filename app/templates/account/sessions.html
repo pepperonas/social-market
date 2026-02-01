@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+
+{% block title %}Active Sessions - Social Market{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <h1 class="mb-4"><i class="bi bi-laptop"></i> Active Sessions</h1>
+    
+    <div class="row">
+        <div class="col-lg-8">
+            <!-- Current Session -->
+            <div class="card mb-4 shadow-sm border-success">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0"><i class="bi bi-check-circle"></i> Current Session</h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-flex align-items-center">
+                        <div class="bg-success text-white rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 50px; height: 50px;">
+                            <i class="bi bi-laptop fs-5"></i>
+                        </div>
+                        <div>
+                            <h6 class="mb-0">This Device</h6>
+                            <small class="text-muted">
+                                IP: {{ request.remote_addr }} • 
+                                {{ request.user_agent.browser|default('Unknown Browser') }} on 
+                                {{ request.user_agent.platform|default('Unknown OS') }}
+                            </small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Recent Login Sessions -->
+            <div class="card mb-4 shadow-sm">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-clock-history"></i> Recent Login History</h5>
+                </div>
+                <div class="card-body p-0">
+                    {% if sessions %}
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Time</th>
+                                    <th>IP Address</th>
+                                    <th>Device</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for session in sessions %}
+                                <tr>
+                                    <td>{{ session.timestamp.strftime('%Y-%m-%d %H:%M') }}</td>
+                                    <td><code>{{ session.ip_address }}</code></td>
+                                    <td class="small text-muted">{{ session.user_agent[:60] }}...</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="text-center py-4 text-muted mb-0">No login history available</p>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <!-- Terminate Sessions -->
+            <div class="card shadow-sm">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-shield-exclamation"></i> Security Actions</h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted">
+                        If you notice any suspicious activity, you can terminate all other sessions. 
+                        This will sign you out of all devices except this one.
+                    </p>
+                    <form action="{{ url_for('account.terminate_all_sessions') }}" method="POST">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn btn-warning" 
+                                onclick="return confirm('This will sign you out of all other devices. Continue?')">
+                            <i class="bi bi-power"></i> Sign Out All Other Sessions
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Sidebar -->
+        <div class="col-lg-4">
+            <div class="card shadow-sm">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0"><i class="bi bi-lightbulb"></i> Session Security</h5>
+                </div>
+                <div class="card-body">
+                    <p class="small text-muted">
+                        For maximum security, we recommend:
+                    </p>
+                    <ul class="small mb-0">
+                        <li>Always log out when finished</li>
+                        <li>Don't use "remember me" on shared computers</li>
+                        <li>Review login history regularly</li>
+                        <li>Terminate unknown sessions immediately</li>
+                        <li>Enable 2FA for additional protection</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

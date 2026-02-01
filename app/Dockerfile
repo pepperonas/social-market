@@ -13,10 +13,12 @@ RUN groupadd -r marketplace && useradd -r -g marketplace marketplace
 # Install system dependencies including gosu for entrypoint
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
+    python3-dev \
     libpq-dev \
     gnupg \
     curl \
     gosu \
+    libmagic1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Set working directory to root

@@ -1,0 +1,261 @@
+{% extends "base.html" %}
+
+{% block title %}Security Settings - Social Market{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <h1 class="mb-4"><i class="bi bi-shield-lock"></i> Security Settings</h1>
+    
+    <div class="row">
+        <div class="col-lg-8">
+            <!-- Security Overview -->
+            <div class="card mb-4 shadow-sm">
+                <div class="card-header bg-dark text-white">
+                    <h5 class="mb-0"><i class="bi bi-speedometer2"></i> Security Overview</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row g-4">
+                        <!-- 2FA Status -->
+                        <div class="col-md-6">
+                            <div class="d-flex align-items-center">
+                                {% if current_user.two_factor_enabled %}
+                                <div class="bg-success text-white rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 48px; height: 48px;">
+                                    <i class="bi bi-shield-check fs-5"></i>
+                                </div>
+                                <div>
+                                    <strong class="text-success">2FA Enabled</strong>
+                                    <p class="mb-0 small text-muted">Your account is protected</p>
+                                </div>
+                                {% else %}
+                                <div class="bg-warning text-dark rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 48px; height: 48px;">
+                                    <i class="bi bi-shield-exclamation fs-5"></i>
+                                </div>
+                                <div>
+                                    <strong class="text-warning">2FA Disabled</strong>
+                                    <p class="mb-0 small text-muted">
+                                        <a href="{{ url_for('auth.enable_2fa') }}">Enable now</a>
+                                    </p>
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        
+                        <!-- PGP Key Status -->
+                        <div class="col-md-6">
+                            <div class="d-flex align-items-center">
+                                {% if current_user.pgp_fingerprint %}
+                                <div class="bg-success text-white rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 48px; height: 48px;">
+                                    <i class="bi bi-key fs-5"></i>
+                                </div>
+                                <div>
+                                    <strong class="text-success">PGP Key Set</strong>
+                                    <p class="mb-0 small text-muted">{{ current_user.pgp_fingerprint[:16] }}...</p>
+                                </div>
+                                {% else %}
+                                <div class="bg-secondary text-white rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 48px; height: 48px;">
+                                    <i class="bi bi-key fs-5"></i>
+                                </div>
+                                <div>
+                                    <strong class="text-secondary">No PGP Key</strong>
+                                    <p class="mb-0 small text-muted">
+                                        <a href="{{ url_for('auth.pgp_keys') }}">Generate key</a>
+                                    </p>
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        
+                        <!-- Password Age -->
+                        <div class="col-md-6">
+                            <div class="d-flex align-items-center">
+                                {% if password_age_days and password_age_days > 90 %}
+                                <div class="bg-warning text-dark rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 48px; height: 48px;">
+                                    <i class="bi bi-clock-history fs-5"></i>
+                                </div>
+                                <div>
+                                    <strong class="text-warning">Password Aging</strong>
+                                    <p class="mb-0 small text-muted">{{ password_age_days }} days old</p>
+                                </div>
+                                {% else %}
+                                <div class="bg-success text-white rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 48px; height: 48px;">
+                                    <i class="bi bi-clock fs-5"></i>
+                                </div>
+                                <div>
+                                    <strong class="text-success">Password Current</strong>
+                                    <p class="mb-0 small text-muted">{{ password_age_days or 0 }} days old</p>
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        
+                        <!-- Last Login -->
+                        <div class="col-md-6">
+                            <div class="d-flex align-items-center">
+                                <div class="bg-info text-white rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 48px; height: 48px;">
+                                    <i class="bi bi-person-check fs-5"></i>
+                                </div>
+                                <div>
+                                    <strong>Last Login</strong>
+                                    <p class="mb-0 small text-muted">
+                                        {% if current_user.last_login %}
+                                        {{ current_user.last_login.strftime('%Y-%m-%d %H:%M') }}
+                                        {% else %}
+                                        First session
+                                        {% endif %}
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Quick Actions -->
+            <div class="card mb-4 shadow-sm">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-lightning"></i> Quick Actions</h5>
+                </div>
+                <div class="card-body">
+                    <div class="list-group list-group-flush">
+                        <a href="{{ url_for('account.change_password') }}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                            <div>
+                                <i class="bi bi-key me-2"></i> Change Password
+                                <p class="mb-0 small text-muted">Update your account password</p>
+                            </div>
+                            <i class="bi bi-chevron-right"></i>
+                        </a>
+                        <a href="{{ url_for('auth.enable_2fa') }}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                            <div>
+                                <i class="bi bi-shield-check me-2"></i> Two-Factor Authentication
+                                <p class="mb-0 small text-muted">{% if current_user.two_factor_enabled %}Manage{% else %}Enable{% endif %} 2FA</p>
+                            </div>
+                            <i class="bi bi-chevron-right"></i>
+                        </a>
+                        <a href="{{ url_for('auth.pgp_keys') }}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                            <div>
+                                <i class="bi bi-file-earmark-lock me-2"></i> PGP Keys
+                                <p class="mb-0 small text-muted">Generate or manage encryption keys</p>
+                            </div>
+                            <i class="bi bi-chevron-right"></i>
+                        </a>
+                        <a href="{{ url_for('account.active_sessions') }}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                            <div>
+                                <i class="bi bi-laptop me-2"></i> Active Sessions
+                                <p class="mb-0 small text-muted">View and manage login sessions</p>
+                            </div>
+                            <i class="bi bi-chevron-right"></i>
+                        </a>
+                        <a href="{{ url_for('account.login_alerts') }}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                            <div>
+                                <i class="bi bi-bell me-2"></i> Login Alerts
+                                <p class="mb-0 small text-muted">View failed login attempts</p>
+                            </div>
+                            <i class="bi bi-chevron-right"></i>
+                        </a>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Recent Login Activity -->
+            <div class="card mb-4 shadow-sm">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-clock-history"></i> Recent Activity</h5>
+                </div>
+                <div class="card-body p-0">
+                    {% if recent_logins %}
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Time</th>
+                                    <th>Action</th>
+                                    <th>IP Address</th>
+                                    <th>Device</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for login in recent_logins %}
+                                <tr>
+                                    <td>{{ login.timestamp.strftime('%Y-%m-%d %H:%M') }}</td>
+                                    <td>
+                                        {% if 'success' in login.action %}
+                                        <span class="badge bg-success">{{ login.action }}</span>
+                                        {% elif 'failed' in login.action %}
+                                        <span class="badge bg-danger">{{ login.action }}</span>
+                                        {% else %}
+                                        <span class="badge bg-secondary">{{ login.action }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td><code>{{ login.ip_address }}</code></td>
+                                    <td class="small text-muted">{{ login.user_agent[:50] }}...</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="text-center py-4 text-muted mb-0">No recent activity logged</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        
+        <!-- Sidebar -->
+        <div class="col-lg-4">
+            <!-- Security Tips -->
+            <div class="card mb-4 shadow-sm">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0"><i class="bi bi-lightbulb"></i> Security Tips</h5>
+                </div>
+                <div class="card-body">
+                    <ul class="list-unstyled mb-0">
+                        <li class="mb-2">
+                            <i class="bi bi-check-circle text-success me-2"></i>
+                            Enable 2FA for extra protection
+                        </li>
+                        <li class="mb-2">
+                            <i class="bi bi-check-circle text-success me-2"></i>
+                            Use unique, strong passwords
+                        </li>
+                        <li class="mb-2">
+                            <i class="bi bi-check-circle text-success me-2"></i>
+                            Generate PGP keys for messaging
+                        </li>
+                        <li class="mb-2">
+                            <i class="bi bi-check-circle text-success me-2"></i>
+                            Review login activity regularly
+                        </li>
+                        <li>
+                            <i class="bi bi-check-circle text-success me-2"></i>
+                            Log out after each session
+                        </li>
+                    </ul>
+                </div>
+            </div>
+            
+            <!-- Privacy & Data -->
+            <div class="card shadow-sm">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-file-earmark-person"></i> Privacy & Data</h5>
+                </div>
+                <div class="card-body">
+                    <div class="list-group list-group-flush">
+                        <a href="{{ url_for('account.privacy_settings') }}" class="list-group-item list-group-item-action">
+                            <i class="bi bi-gear me-2"></i> Privacy Settings
+                        </a>
+                        <a href="#" onclick="document.getElementById('exportForm').submit(); return false;" class="list-group-item list-group-item-action">
+                            <i class="bi bi-download me-2"></i> Export My Data
+                        </a>
+                        <a href="{{ url_for('account.delete_account') }}" class="list-group-item list-group-item-action text-danger">
+                            <i class="bi bi-trash me-2"></i> Delete Account
+                        </a>
+                    </div>
+                    <form id="exportForm" action="{{ url_for('account.export_data') }}" method="POST" class="d-none">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

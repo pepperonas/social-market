@@ -113,12 +113,18 @@ This project implements a fully-featured, security-hardened marketplace platform
      docker-compose logs tor | grep "hostname"
      ```
 
-### Default Admin Account
+### Default Accounts
 
-**Username:** `admin`
-**Password:** `ChangeMe123!` (⚠️ Change immediately!)
+| Role | Username | Password |
+|------|----------|----------|
+| **Admin** | `admin` | `password123` |
+| **Buyers** | `buyer1` - `buyer10` | `password123` |
+| **Vendors** | `vendor1` - `vendor5` | `password123` |
 
-Access admin panel at: http://localhost:8080/admin
+⚠️ **Change passwords immediately in production environments!**
+
+- **Login:** http://localhost:8080/auth/login
+- **Admin Panel:** http://localhost:8080/admin
 
 ## Architecture
 

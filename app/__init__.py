@@ -151,6 +151,9 @@ def register_blueprints(app):
     from app.routes.buyer import buyer_bp
     from app.routes.admin import admin_bp
     from app.routes.messages import messages_bp
+    from app.routes.cart import cart_bp
+    from app.routes.account import account_bp
+    from app.routes.notifications import notifications_bp
 
     app.register_blueprint(auth_bp, url_prefix='/auth')
     app.register_blueprint(marketplace_bp, url_prefix='/')
@@ -158,6 +161,9 @@ def register_blueprints(app):
     app.register_blueprint(buyer_bp, url_prefix='/buyer')
     app.register_blueprint(admin_bp, url_prefix='/admin')
     app.register_blueprint(messages_bp, url_prefix='/messages')
+    app.register_blueprint(cart_bp, url_prefix='/cart')
+    app.register_blueprint(account_bp, url_prefix='/account')
+    app.register_blueprint(notifications_bp, url_prefix='/notifications')
 
 
 def register_error_handlers(app):

@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block title %}Delete Account - Social Market{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card shadow border-danger">
+                <div class="card-header bg-danger text-white">
+                    <h5 class="mb-0"><i class="bi bi-exclamation-triangle"></i> Delete Account</h5>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-danger">
+                        <h6><i class="bi bi-exclamation-octagon"></i> Warning: This action is irreversible!</h6>
+                        <p class="mb-0">Deleting your account will:</p>
+                        <ul class="mb-0 mt-2">
+                            <li>Permanently remove your profile information</li>
+                            <li>Anonymize your order history</li>
+                            <li>Delete your messages</li>
+                            <li>Remove all products (if vendor)</li>
+                            <li>Invalidate any pending transactions</li>
+                        </ul>
+                    </div>
+                    
+                    <form method="POST" action="{{ url_for('account.delete_account') }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        
+                        <div class="mb-3">
+                            <label for="password" class="form-label">Enter your password</label>
+                            <input type="password" class="form-control" id="password" 
+                                   name="password" required>
+                        </div>
+                        
+                        <div class="mb-4">
+                            <label for="confirmation" class="form-label">
+                                Type <code>DELETE {{ current_user.username }}</code> to confirm
+                            </label>
+                            <input type="text" class="form-control" id="confirmation" 
+                                   name="confirmation" required
+                                   placeholder="DELETE {{ current_user.username }}">
+                        </div>
+                        
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-danger">
+                                <i class="bi bi-trash"></i> Permanently Delete My Account
+                            </button>
+                            <a href="{{ url_for('account.privacy_settings') }}" class="btn btn-outline-secondary">
+                                <i class="bi bi-arrow-left"></i> Cancel
+                            </a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

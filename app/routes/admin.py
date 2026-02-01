@@ -4,7 +4,7 @@ Admin Routes - Placeholder
 Purpose: Admin dashboard and moderation
 """
 
-from flask import Blueprint, render_template, redirect, url_for, flash
+from flask import Blueprint, render_template, redirect, url_for, flash, request, current_app
 from flask_login import login_required, current_user
 from functools import wraps
 from app import db
@@ -116,20 +116,213 @@ def security():
 @login_required
 @admin_required
 def audit_logs():
-    """Audit logs viewer"""
-    # TODO: Implement audit log viewing
-    # For now, redirect to security page
-    return redirect(url_for('admin.security'))
+    """
+    Audit logs viewer with filtering
+    - Auth events
+    - Security events
+    - Admin actions
+    - Transaction events
+    """
+    from flask import request
+    from sqlalchemy import text
+    
+    log_type = request.args.get('type', 'auth')
+    page = request.args.get('page', 1, type=int)
+    per_page = 50
+    offset = (page - 1) * per_page
+    
+    logs = []
+    total_count = 0
+    
+    try:
+        if log_type == 'auth':
+            # Auth logs
+            result = db.session.execute(
+                text("""
+                    SELECT id, username, user_id, action, ip_address, user_agent, 
+                           failure_reason, timestamp
+                    FROM auth_log 
+                    ORDER BY timestamp DESC
+                    LIMIT :limit OFFSET :offset
+                """),
+                {'limit': per_page, 'offset': offset}
+            )
+            logs = result.fetchall()
+            
+            count_result = db.session.execute(text("SELECT COUNT(*) FROM auth_log"))
+            total_count = count_result.scalar()
+            
+        elif log_type == 'security':
+            # Security events
+            result = db.session.execute(
+                text("""
+                    SELECT id, event_type, severity, source, user_id, ip_address, 
+                           description, timestamp
+                    FROM security_events 
+                    ORDER BY timestamp DESC
+                    LIMIT :limit OFFSET :offset
+                """),
+                {'limit': per_page, 'offset': offset}
+            )
+            logs = result.fetchall()
+            
+            count_result = db.session.execute(text("SELECT COUNT(*) FROM security_events"))
+            total_count = count_result.scalar()
+            
+        elif log_type == 'admin':
+            # Admin actions
+            result = db.session.execute(
+                text("""
+                    SELECT id, admin_user_id, action, target_type, target_id, 
+                           reason, ip_address, timestamp
+                    FROM admin_actions 
+                    ORDER BY timestamp DESC
+                    LIMIT :limit OFFSET :offset
+                """),
+                {'limit': per_page, 'offset': offset}
+            )
+            logs = result.fetchall()
+            
+            count_result = db.session.execute(text("SELECT COUNT(*) FROM admin_actions"))
+            total_count = count_result.scalar()
+            
+        elif log_type == 'audit':
+            # General audit log
+            result = db.session.execute(
+                text("""
+                    SELECT id, user_id, action, table_name, record_id, 
+                           status, severity, timestamp
+                    FROM audit_log 
+                    ORDER BY timestamp DESC
+                    LIMIT :limit OFFSET :offset
+                """),
+                {'limit': per_page, 'offset': offset}
+            )
+            logs = result.fetchall()
+            
+            count_result = db.session.execute(text("SELECT COUNT(*) FROM audit_log"))
+            total_count = count_result.scalar()
+            
+    except Exception as e:
+        flash(f'Error loading logs: {str(e)}', 'danger')
+    
+    total_pages = (total_count + per_page - 1) // per_page
+    
+    return render_template('admin/audit_logs.html', 
+                         logs=logs, 
+                         log_type=log_type,
+                         page=page,
+                         total_pages=total_pages,
+                         total_count=total_count)
 
 
 @admin_bp.route('/system-health')
 @login_required
 @admin_required
 def system_health():
-    """System health monitoring"""
-    # TODO: Implement system health checks
-    # For now, redirect to security page
-    return redirect(url_for('admin.security'))
+    """
+    System health monitoring dashboard
+    - Database connectivity
+    - Redis status
+    - Disk usage
+    - Memory usage
+    - Service uptime
+    """
+    import os
+    import psutil
+    from datetime import datetime
+    
+    health = {
+        'database': {'status': 'unknown', 'latency': 0},
+        'redis': {'status': 'unknown', 'latency': 0},
+        'disk': {'status': 'unknown', 'usage': 0, 'free': 0},
+        'memory': {'status': 'unknown', 'usage': 0, 'available': 0},
+        'celery': {'status': 'unknown'},
+        'tor': {'status': 'unknown'}
+    }
+    
+    # Check Database
+    try:
+        from sqlalchemy import text
+        import time
+        
+        start = time.time()
+        db.session.execute(text("SELECT 1"))
+        latency = (time.time() - start) * 1000
+        
+        health['database'] = {
+            'status': 'healthy' if latency < 100 else 'degraded',
+            'latency': round(latency, 2)
+        }
+    except Exception as e:
+        health['database'] = {'status': 'unhealthy', 'error': str(e)}
+    
+    # Check Redis
+    try:
+        import redis
+        import time
+        
+        r = redis.from_url(current_app.config['REDIS_URL'])
+        start = time.time()
+        r.ping()
+        latency = (time.time() - start) * 1000
+        
+        health['redis'] = {
+            'status': 'healthy' if latency < 50 else 'degraded',
+            'latency': round(latency, 2)
+        }
+    except Exception as e:
+        health['redis'] = {'status': 'unhealthy', 'error': str(e)}
+    
+    # Check Disk
+    try:
+        disk = psutil.disk_usage('/')
+        usage_percent = disk.percent
+        free_gb = disk.free / (1024 ** 3)
+        
+        status = 'healthy'
+        if usage_percent > 90:
+            status = 'critical'
+        elif usage_percent > 80:
+            status = 'warning'
+        
+        health['disk'] = {
+            'status': status,
+            'usage': usage_percent,
+            'free': round(free_gb, 2)
+        }
+    except Exception as e:
+        health['disk'] = {'status': 'unknown', 'error': str(e)}
+    
+    # Check Memory
+    try:
+        memory = psutil.virtual_memory()
+        usage_percent = memory.percent
+        available_gb = memory.available / (1024 ** 3)
+        
+        status = 'healthy'
+        if usage_percent > 90:
+            status = 'critical'
+        elif usage_percent > 80:
+            status = 'warning'
+        
+        health['memory'] = {
+            'status': status,
+            'usage': usage_percent,
+            'available': round(available_gb, 2)
+        }
+    except Exception as e:
+        health['memory'] = {'status': 'unknown', 'error': str(e)}
+    
+    # Overall health score
+    healthy_count = sum(1 for k, v in health.items() if v.get('status') == 'healthy')
+    total_checks = len(health)
+    health_score = (healthy_count / total_checks) * 100
+    
+    return render_template('admin/system_health.html', 
+                         health=health, 
+                         health_score=health_score,
+                         timestamp=datetime.utcnow())
 
 
 @admin_bp.route('/user/<uuid:user_id>')

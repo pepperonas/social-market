@@ -1,0 +1,193 @@
+{% extends "base.html" %}
+
+{% block title %}Audit Logs - Admin{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <h1 class="mb-4"><i class="bi bi-journal-text"></i> Audit Logs</h1>
+    
+    <!-- Log Type Tabs -->
+    <ul class="nav nav-tabs mb-4">
+        <li class="nav-item">
+            <a class="nav-link {% if log_type == 'auth' %}active{% endif %}" 
+               href="{{ url_for('admin.audit_logs', type='auth') }}">
+                <i class="bi bi-person-check"></i> Auth Events
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link {% if log_type == 'security' %}active{% endif %}" 
+               href="{{ url_for('admin.audit_logs', type='security') }}">
+                <i class="bi bi-shield-exclamation"></i> Security Events
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link {% if log_type == 'admin' %}active{% endif %}" 
+               href="{{ url_for('admin.audit_logs', type='admin') }}">
+                <i class="bi bi-person-gear"></i> Admin Actions
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link {% if log_type == 'audit' %}active{% endif %}" 
+               href="{{ url_for('admin.audit_logs', type='audit') }}">
+                <i class="bi bi-list-check"></i> General Audit
+            </a>
+        </li>
+    </ul>
+    
+    <div class="card shadow-sm">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">{{ log_type|title }} Logs</h5>
+            <span class="badge bg-secondary">{{ total_count }} total entries</span>
+        </div>
+        <div class="card-body p-0">
+            {% if logs %}
+            <div class="table-responsive">
+                <table class="table table-hover table-sm mb-0">
+                    <thead class="table-dark">
+                        {% if log_type == 'auth' %}
+                        <tr>
+                            <th>Timestamp</th>
+                            <th>Username</th>
+                            <th>Action</th>
+                            <th>IP Address</th>
+                            <th>User Agent</th>
+                            <th>Details</th>
+                        </tr>
+                        {% elif log_type == 'security' %}
+                        <tr>
+                            <th>Timestamp</th>
+                            <th>Event Type</th>
+                            <th>Severity</th>
+                            <th>Source</th>
+                            <th>IP Address</th>
+                            <th>Description</th>
+                        </tr>
+                        {% elif log_type == 'admin' %}
+                        <tr>
+                            <th>Timestamp</th>
+                            <th>Admin</th>
+                            <th>Action</th>
+                            <th>Target</th>
+                            <th>IP Address</th>
+                            <th>Reason</th>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <th>Timestamp</th>
+                            <th>User</th>
+                            <th>Action</th>
+                            <th>Table</th>
+                            <th>Status</th>
+                            <th>Severity</th>
+                        </tr>
+                        {% endif %}
+                    </thead>
+                    <tbody>
+                        {% for log in logs %}
+                        <tr>
+                            {% if log_type == 'auth' %}
+                            <td class="small">{{ log.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                            <td><code>{{ log.username }}</code></td>
+                            <td>
+                                <span class="badge 
+                                    {% if 'success' in log.action %}bg-success
+                                    {% elif 'failed' in log.action %}bg-danger
+                                    {% else %}bg-secondary{% endif %}">
+                                    {{ log.action }}
+                                </span>
+                            </td>
+                            <td><code>{{ log.ip_address }}</code></td>
+                            <td class="small text-muted" style="max-width: 200px; overflow: hidden; text-overflow: ellipsis;">
+                                {{ log.user_agent[:50] if log.user_agent else 'N/A' }}...
+                            </td>
+                            <td class="small text-muted">{{ log.failure_reason or '-' }}</td>
+                            
+                            {% elif log_type == 'security' %}
+                            <td class="small">{{ log.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                            <td><strong>{{ log.event_type }}</strong></td>
+                            <td>
+                                <span class="badge 
+                                    {% if log.severity == 'critical' %}bg-danger
+                                    {% elif log.severity == 'high' %}bg-warning text-dark
+                                    {% elif log.severity == 'medium' %}bg-info
+                                    {% else %}bg-secondary{% endif %}">
+                                    {{ log.severity }}
+                                </span>
+                            </td>
+                            <td>{{ log.source }}</td>
+                            <td><code>{{ log.ip_address }}</code></td>
+                            <td class="small">{{ log.description[:100] if log.description else '-' }}</td>
+                            
+                            {% elif log_type == 'admin' %}
+                            <td class="small">{{ log.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                            <td><code>{{ log.admin_user_id|string|truncate(8, True, '') }}</code></td>
+                            <td><strong>{{ log.action }}</strong></td>
+                            <td>{{ log.target_type }}: {{ log.target_id|string|truncate(8, True, '') if log.target_id else '-' }}</td>
+                            <td><code>{{ log.ip_address }}</code></td>
+                            <td class="small">{{ log.reason or '-' }}</td>
+                            
+                            {% else %}
+                            <td class="small">{{ log.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                            <td><code>{{ log.user_id|string|truncate(8, True, '') if log.user_id else '-' }}</code></td>
+                            <td><strong>{{ log.action }}</strong></td>
+                            <td>{{ log.table_name }}</td>
+                            <td>
+                                <span class="badge {% if log.status == 'success' %}bg-success{% else %}bg-warning{% endif %}">
+                                    {{ log.status }}
+                                </span>
+                            </td>
+                            <td>
+                                <span class="badge 
+                                    {% if log.severity == 'critical' %}bg-danger
+                                    {% elif log.severity == 'high' %}bg-warning
+                                    {% else %}bg-info{% endif %}">
+                                    {{ log.severity }}
+                                </span>
+                            </td>
+                            {% endif %}
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            
+            <!-- Pagination -->
+            {% if total_pages > 1 %}
+            <div class="card-footer">
+                <nav aria-label="Log pagination">
+                    <ul class="pagination justify-content-center mb-0">
+                        {% if page > 1 %}
+                        <li class="page-item">
+                            <a class="page-link" href="{{ url_for('admin.audit_logs', type=log_type, page=page-1) }}">
+                                <i class="bi bi-chevron-left"></i>
+                            </a>
+                        </li>
+                        {% endif %}
+                        
+                        <li class="page-item disabled">
+                            <span class="page-link">Page {{ page }} of {{ total_pages }}</span>
+                        </li>
+                        
+                        {% if page < total_pages %}
+                        <li class="page-item">
+                            <a class="page-link" href="{{ url_for('admin.audit_logs', type=log_type, page=page+1) }}">
+                                <i class="bi bi-chevron-right"></i>
+                            </a>
+                        </li>
+                        {% endif %}
+                    </ul>
+                </nav>
+            </div>
+            {% endif %}
+            
+            {% else %}
+            <div class="text-center py-5">
+                <i class="bi bi-journal-x display-1 text-muted"></i>
+                <h5 class="mt-3">No Logs Found</h5>
+                <p class="text-muted">No {{ log_type }} logs recorded yet.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

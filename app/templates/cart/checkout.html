@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+
+{% block title %}Checkout - Social Market{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <h1 class="mb-4"><i class="bi bi-credit-card"></i> Checkout</h1>
+    
+    <div class="row">
+        <!-- Checkout Form -->
+        <div class="col-lg-8">
+            <form action="{{ url_for('cart.checkout') }}" method="POST" id="checkoutForm">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                
+                <!-- Order Review -->
+                <div class="card mb-4 shadow-sm">
+                    <div class="card-header bg-dark text-white">
+                        <h5 class="mb-0"><i class="bi bi-bag-check"></i> Order Review</h5>
+                    </div>
+                    <div class="card-body p-0">
+                        {% for vendor_id, items in items_by_vendor.items() %}
+                        <div class="p-3 {% if not loop.last %}border-bottom{% endif %}">
+                            <h6 class="text-muted mb-2">
+                                <i class="bi bi-shop"></i> From {{ vendors[vendor_id].display_name or vendors[vendor_id].username }}
+                            </h6>
+                            {% for item in items %}
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <div>
+                                    <span>{{ item.product.title }}</span>
+                                    <small class="text-muted">× {{ item.quantity }}</small>
+                                    {% if item.product.is_digital %}
+                                    <span class="badge bg-info ms-1">Digital</span>
+                                    {% endif %}
+                                </div>
+                                <strong>${{ "%.2f"|format(item.total_price) }}</strong>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                
+                <!-- Shipping Information (if physical products) -->
+                {% set has_physical = cart.items|selectattr('product.is_digital', 'equalto', false)|list|length > 0 %}
+                {% if has_physical %}
+                <div class="card mb-4 shadow-sm">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0"><i class="bi bi-truck"></i> Shipping Information</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="alert alert-info mb-3">
+                            <i class="bi bi-shield-lock"></i> 
+                            <strong>Encrypted Shipping:</strong> Your shipping information is encrypted with pgcrypto 
+                            and only visible to the vendor after payment confirmation.
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="shipping_name" class="form-label">Recipient Name <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="shipping_name" name="shipping_name" 
+                                   required minlength="2" maxlength="100"
+                                   placeholder="Full name for delivery">
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="shipping_address" class="form-label">Shipping Address <span class="text-danger">*</span></label>
+                            <textarea class="form-control" id="shipping_address" name="shipping_address" 
+                                      rows="4" required minlength="10" maxlength="500"
+                                      placeholder="Street address, city, state, postal code, country"></textarea>
+                            <div class="form-text">Include complete address for accurate delivery</div>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+                
+                <!-- Additional Notes -->
+                <div class="card mb-4 shadow-sm">
+                    <div class="card-header">
+                        <h5 class="mb-0"><i class="bi bi-chat-left-text"></i> Additional Notes (Optional)</h5>
+                    </div>
+                    <div class="card-body">
+                        <textarea class="form-control" name="buyer_notes" rows="3" maxlength="1000"
+                                  placeholder="Special instructions for the vendor..."></textarea>
+                    </div>
+                </div>
+                
+                <!-- Payment Notice -->
+                <div class="card mb-4 shadow-sm">
+                    <div class="card-header bg-warning">
+                        <h5 class="mb-0"><i class="bi bi-info-circle"></i> Payment Information</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="alert alert-warning mb-0">
+                            <h6><i class="bi bi-shield-fill-check"></i> Secure Escrow System</h6>
+                            <p class="mb-2">This is an <strong>educational training environment</strong>. In a real marketplace:</p>
+                            <ul class="mb-0">
+                                <li>Payment would be held in escrow until delivery confirmation</li>
+                                <li>Cryptocurrency addresses would be generated for each order</li>
+                                <li>Funds are released to vendor only after buyer confirmation</li>
+                                <li>Dispute resolution is available within 7 days of delivery</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Submit -->
+                <div class="d-grid gap-2 mb-4">
+                    <button type="submit" class="btn btn-success btn-lg">
+                        <i class="bi bi-lock"></i> Place Order (Educational Demo)
+                    </button>
+                    <a href="{{ url_for('cart.view_cart') }}" class="btn btn-outline-secondary">
+                        <i class="bi bi-arrow-left"></i> Return to Cart
+                    </a>
+                </div>
+            </form>
+        </div>
+        
+        <!-- Order Summary Sidebar -->
+        <div class="col-lg-4">
+            <div class="card shadow sticky-top" style="top: 20px;">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0"><i class="bi bi-receipt"></i> Order Summary</h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>Items ({{ cart.total_items }}):</span>
+                        <span>${{ "%.2f"|format(cart.subtotal) }}</span>
+                    </div>
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>Platform Fee (3%):</span>
+                        <span>${{ "%.2f"|format(cart.subtotal * 0.03) }}</span>
+                    </div>
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>Shipping:</span>
+                        <span class="text-muted">Varies by vendor</span>
+                    </div>
+                    <hr>
+                    <div class="d-flex justify-content-between">
+                        <strong>Total:</strong>
+                        <strong class="fs-4 text-success">${{ "%.2f"|format(cart.subtotal) }}</strong>
+                    </div>
+                    
+                    <hr>
+                    
+                    <div class="small text-muted">
+                        <p class="mb-2"><i class="bi bi-shield-check"></i> Buyer Protection</p>
+                        <ul class="ps-3 mb-0">
+                            <li>Escrow holds funds until confirmed</li>
+                            <li>7-day dispute window after delivery</li>
+                            <li>Full refund if item not as described</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

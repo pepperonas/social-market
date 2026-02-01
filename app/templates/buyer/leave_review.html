@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+
+{% block title %}Leave Review - Social Market{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <nav aria-label="breadcrumb" class="mb-3">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{{ url_for('buyer.orders') }}">My Orders</a></li>
+            <li class="breadcrumb-item"><a href="{{ url_for('buyer.order_detail', order_id=order.id) }}">Order Details</a></li>
+            <li class="breadcrumb-item active">Leave Review</li>
+        </ol>
+    </nav>
+    
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card shadow">
+                <div class="card-header bg-warning">
+                    <h5 class="mb-0"><i class="bi bi-star"></i> Leave a Review</h5>
+                </div>
+                <div class="card-body">
+                    <!-- Product Info -->
+                    <div class="d-flex align-items-center mb-4 p-3 bg-light rounded">
+                        <div class="flex-shrink-0 me-3">
+                            <div class="bg-secondary text-white rounded d-flex align-items-center justify-content-center" style="width: 60px; height: 60px;">
+                                <i class="bi bi-box fs-4"></i>
+                            </div>
+                        </div>
+                        <div>
+                            <h6 class="mb-0">{{ order.product.title }}</h6>
+                            <small class="text-muted">from {{ order.product.vendor.username }}</small>
+                        </div>
+                    </div>
+                    
+                    <form method="POST" action="{{ url_for('buyer.leave_review', order_id=order.id) }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        
+                        <!-- Star Rating -->
+                        <div class="mb-4">
+                            <label class="form-label">Rating <span class="text-danger">*</span></label>
+                            <div class="star-rating">
+                                {% for i in range(5, 0, -1) %}
+                                <input type="radio" id="star{{ i }}" name="rating" value="{{ i }}" required>
+                                <label for="star{{ i }}" title="{{ i }} stars">
+                                    <i class="bi bi-star-fill"></i>
+                                </label>
+                                {% endfor %}
+                            </div>
+                            <div id="ratingText" class="small text-muted mt-1">Select a rating</div>
+                        </div>
+                        
+                        <!-- Review Title -->
+                        <div class="mb-3">
+                            <label for="title" class="form-label">Review Title (Optional)</label>
+                            <input type="text" class="form-control" id="title" name="title" 
+                                   maxlength="200" placeholder="Summarize your experience...">
+                        </div>
+                        
+                        <!-- Review Text -->
+                        <div class="mb-4">
+                            <label for="review_text" class="form-label">Your Review (Optional)</label>
+                            <textarea class="form-control" id="review_text" name="review_text" 
+                                      rows="5" maxlength="2000"
+                                      placeholder="Share details of your experience with this product and vendor..."></textarea>
+                            <div class="form-text">
+                                <span id="charCount">0</span>/2000 characters
+                            </div>
+                        </div>
+                        
+                        <div class="alert alert-info mb-4">
+                            <i class="bi bi-info-circle"></i>
+                            <strong>Review Guidelines:</strong>
+                            <ul class="mb-0 mt-2 small">
+                                <li>Be honest and fair in your assessment</li>
+                                <li>Focus on the product and service quality</li>
+                                <li>Don't include personal information</li>
+                                <li>Reviews help other buyers make decisions</li>
+                            </ul>
+                        </div>
+                        
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-warning btn-lg">
+                                <i class="bi bi-check-lg"></i> Submit Review
+                            </button>
+                            <a href="{{ url_for('buyer.order_detail', order_id=order.id) }}" class="btn btn-outline-secondary">
+                                <i class="bi bi-arrow-left"></i> Cancel
+                            </a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.star-rating {
+    display: flex;
+    flex-direction: row-reverse;
+    justify-content: flex-end;
+}
+
+.star-rating input {
+    display: none;
+}
+
+.star-rating label {
+    cursor: pointer;
+    font-size: 2rem;
+    color: #ddd;
+    padding: 0 5px;
+    transition: color 0.2s;
+}
+
+.star-rating label:hover,
+.star-rating label:hover ~ label,
+.star-rating input:checked ~ label {
+    color: #ffc107;
+}
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Update rating text
+    const ratingInputs = document.querySelectorAll('input[name="rating"]');
+    const ratingText = document.getElementById('ratingText');
+    const ratingLabels = ['Terrible', 'Poor', 'Average', 'Good', 'Excellent'];
+    
+    ratingInputs.forEach(input => {
+        input.addEventListener('change', function() {
+            const rating = parseInt(this.value);
+            ratingText.textContent = ratingLabels[rating - 1] + ' (' + rating + '/5)';
+        });
+    });
+    
+    // Character counter
+    const reviewText = document.getElementById('review_text');
+    const charCount = document.getElementById('charCount');
+    
+    reviewText.addEventListener('input', function() {
+        charCount.textContent = this.value.length;
+    });
+});
+</script>
+{% endblock %}

@@ -1,0 +1,277 @@
+{% extends "base.html" %}
+
+{% block title %}Order #{{ order.id|string|truncate(8, True, '') }} - Vendor Dashboard{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <nav aria-label="breadcrumb" class="mb-3">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{{ url_for('vendor.dashboard') }}">Dashboard</a></li>
+            <li class="breadcrumb-item"><a href="{{ url_for('vendor.orders') }}">Orders</a></li>
+            <li class="breadcrumb-item active">Order Details</li>
+        </ol>
+    </nav>
+    
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1><i class="bi bi-receipt"></i> Order Details</h1>
+        <span class="badge fs-5 
+            {% if order.status == 'completed' %}bg-success
+            {% elif order.status == 'paid' %}bg-primary
+            {% elif order.status == 'shipped' %}bg-info
+            {% elif order.status == 'pending' %}bg-warning text-dark
+            {% elif order.status == 'disputed' %}bg-danger
+            {% elif order.status == 'cancelled' %}bg-secondary
+            {% else %}bg-dark{% endif %}">
+            {{ order.status|upper }}
+        </span>
+    </div>
+    
+    <div class="row">
+        <div class="col-lg-8">
+            <!-- Order Info -->
+            <div class="card mb-4 shadow-sm">
+                <div class="card-header bg-dark text-white">
+                    <h5 class="mb-0"><i class="bi bi-info-circle"></i> Order Information</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-sm-6">
+                            <label class="text-muted small">Order ID</label>
+                            <p class="mb-0"><code>{{ order.id }}</code></p>
+                        </div>
+                        <div class="col-sm-6">
+                            <label class="text-muted small">Created</label>
+                            <p class="mb-0">{{ order.created_at.strftime('%Y-%m-%d %H:%M') }}</p>
+                        </div>
+                        <div class="col-sm-6">
+                            <label class="text-muted small">Buyer</label>
+                            <p class="mb-0">{{ buyer.username }}</p>
+                        </div>
+                        <div class="col-sm-6">
+                            <label class="text-muted small">Product</label>
+                            <p class="mb-0">
+                                <a href="{{ url_for('marketplace.product_detail', product_id=order.product_id) }}">
+                                    {{ order.product.title }}
+                                </a>
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Product & Pricing -->
+            <div class="card mb-4 shadow-sm">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-bag"></i> Order Items</h5>
+                </div>
+                <div class="card-body">
+                    <table class="table mb-0">
+                        <tbody>
+                            <tr>
+                                <td>
+                                    <strong>{{ order.product.title }}</strong>
+                                    {% if order.is_digital %}
+                                    <span class="badge bg-info">Digital</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-end">${{ "%.2f"|format(order.unit_price) }} × {{ order.quantity }}</td>
+                                <td class="text-end"><strong>${{ "%.2f"|format(order.total_price) }}</strong></td>
+                            </tr>
+                        </tbody>
+                        <tfoot class="table-light">
+                            <tr>
+                                <td colspan="2">Subtotal</td>
+                                <td class="text-end">${{ "%.2f"|format(order.total_price) }}</td>
+                            </tr>
+                            <tr>
+                                <td colspan="2">Platform Commission (3%)</td>
+                                <td class="text-end text-danger">-${{ "%.2f"|format(order.commission) }}</td>
+                            </tr>
+                            <tr class="fw-bold">
+                                <td colspan="2">Your Earnings</td>
+                                <td class="text-end text-success">${{ "%.2f"|format(order.total_price - order.commission) }}</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+            
+            <!-- Shipping Info (only for paid+ orders) -->
+            {% if order.status not in ['pending', 'cancelled'] and not order.is_digital %}
+            <div class="card mb-4 shadow-sm">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0"><i class="bi bi-truck"></i> Shipping Information</h5>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-info mb-3">
+                        <i class="bi bi-shield-lock"></i> This information was encrypted until payment confirmation.
+                    </div>
+                    {% if shipping_name and shipping_address %}
+                    <div class="row">
+                        <div class="col-md-6">
+                            <label class="text-muted small">Recipient Name</label>
+                            <p class="mb-0"><strong>{{ shipping_name }}</strong></p>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="text-muted small">Shipping Address</label>
+                            <p class="mb-0" style="white-space: pre-line;">{{ shipping_address }}</p>
+                        </div>
+                    </div>
+                    {% if order.tracking_number %}
+                    <hr>
+                    <div>
+                        <label class="text-muted small">Tracking Number</label>
+                        <p class="mb-0"><code>{{ order.tracking_number }}</code></p>
+                    </div>
+                    {% endif %}
+                    {% else %}
+                    <p class="text-muted mb-0">Shipping information not available</p>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+            
+            <!-- Notes -->
+            {% if order.buyer_notes or order.vendor_notes %}
+            <div class="card mb-4 shadow-sm">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-chat-left-text"></i> Notes</h5>
+                </div>
+                <div class="card-body">
+                    {% if order.buyer_notes %}
+                    <div class="mb-3">
+                        <label class="text-muted small">Buyer Notes</label>
+                        <p class="mb-0">{{ order.buyer_notes }}</p>
+                    </div>
+                    {% endif %}
+                    {% if order.vendor_notes %}
+                    <div>
+                        <label class="text-muted small">Your Notes</label>
+                        <p class="mb-0">{{ order.vendor_notes }}</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+        </div>
+        
+        <!-- Actions Sidebar -->
+        <div class="col-lg-4">
+            <!-- Order Actions -->
+            <div class="card mb-4 shadow-sm">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-lightning"></i> Actions</h5>
+                </div>
+                <div class="card-body">
+                    {% if order.status == 'paid' %}
+                    <!-- Ship Order Form -->
+                    <form action="{{ url_for('vendor.ship_order', order_id=order.id) }}" method="POST">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        
+                        {% if not order.is_digital %}
+                        <div class="mb-3">
+                            <label for="tracking_number" class="form-label">Tracking Number (Optional)</label>
+                            <input type="text" class="form-control" id="tracking_number" 
+                                   name="tracking_number" placeholder="Enter tracking number">
+                        </div>
+                        {% endif %}
+                        
+                        <div class="mb-3">
+                            <label for="vendor_notes" class="form-label">Notes (Optional)</label>
+                            <textarea class="form-control" id="vendor_notes" name="vendor_notes" 
+                                      rows="2" placeholder="Add shipping notes..."></textarea>
+                        </div>
+                        
+                        <button type="submit" class="btn btn-success w-100">
+                            <i class="bi bi-truck"></i> Mark as Shipped
+                        </button>
+                    </form>
+                    
+                    <hr>
+                    
+                    <!-- Cancel Order -->
+                    <form action="{{ url_for('vendor.cancel_order', order_id=order.id) }}" method="POST"
+                          onsubmit="return confirm('Are you sure you want to cancel this order?')">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="cancel_reason" value="Vendor cancelled">
+                        <button type="submit" class="btn btn-outline-danger w-100">
+                            <i class="bi bi-x-circle"></i> Cancel Order
+                        </button>
+                    </form>
+                    
+                    {% elif order.status == 'pending' %}
+                    <div class="alert alert-warning mb-0">
+                        <i class="bi bi-hourglass-split"></i> Waiting for buyer payment
+                    </div>
+                    
+                    {% elif order.status == 'shipped' %}
+                    <div class="alert alert-info mb-0">
+                        <i class="bi bi-truck"></i> Order shipped, waiting for buyer confirmation
+                    </div>
+                    
+                    {% elif order.status == 'completed' %}
+                    <div class="alert alert-success mb-0">
+                        <i class="bi bi-check-circle"></i> Order completed! Funds released.
+                    </div>
+                    
+                    {% elif order.status == 'disputed' %}
+                    <div class="alert alert-danger mb-0">
+                        <i class="bi bi-exclamation-triangle"></i> This order is under dispute. 
+                        Please contact support.
+                    </div>
+                    
+                    {% elif order.status == 'cancelled' %}
+                    <div class="alert alert-secondary mb-0">
+                        <i class="bi bi-x-circle"></i> This order was cancelled.
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <!-- Order Timeline -->
+            <div class="card shadow-sm">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-clock-history"></i> Timeline</h5>
+                </div>
+                <div class="card-body">
+                    <ul class="list-unstyled mb-0">
+                        <li class="mb-2">
+                            <i class="bi bi-circle-fill text-success me-2" style="font-size: 8px;"></i>
+                            <small class="text-muted">Created:</small>
+                            {{ order.created_at.strftime('%Y-%m-%d %H:%M') }}
+                        </li>
+                        {% if order.paid_at %}
+                        <li class="mb-2">
+                            <i class="bi bi-circle-fill text-primary me-2" style="font-size: 8px;"></i>
+                            <small class="text-muted">Paid:</small>
+                            {{ order.paid_at.strftime('%Y-%m-%d %H:%M') }}
+                        </li>
+                        {% endif %}
+                        {% if order.shipped_at %}
+                        <li class="mb-2">
+                            <i class="bi bi-circle-fill text-info me-2" style="font-size: 8px;"></i>
+                            <small class="text-muted">Shipped:</small>
+                            {{ order.shipped_at.strftime('%Y-%m-%d %H:%M') }}
+                        </li>
+                        {% endif %}
+                        {% if order.delivered_at %}
+                        <li class="mb-2">
+                            <i class="bi bi-circle-fill text-success me-2" style="font-size: 8px;"></i>
+                            <small class="text-muted">Delivered:</small>
+                            {{ order.delivered_at.strftime('%Y-%m-%d %H:%M') }}
+                        </li>
+                        {% endif %}
+                        {% if order.completed_at %}
+                        <li>
+                            <i class="bi bi-circle-fill text-success me-2" style="font-size: 8px;"></i>
+                            <small class="text-muted">Completed:</small>
+                            {{ order.completed_at.strftime('%Y-%m-%d %H:%M') }}
+                        </li>
+                        {% endif %}
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

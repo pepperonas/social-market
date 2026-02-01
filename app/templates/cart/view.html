@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+
+{% block title %}Shopping Cart - Social Market{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <h1 class="mb-4"><i class="bi bi-cart3"></i> Shopping Cart</h1>
+    
+    {% if validation_errors %}
+    <div class="alert alert-warning">
+        <h5><i class="bi bi-exclamation-triangle"></i> Some items need attention:</h5>
+        <ul class="mb-0">
+            {% for error in validation_errors %}
+            <li>{{ error }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+    
+    {% if cart.total_items == 0 %}
+    <div class="text-center py-5">
+        <i class="bi bi-cart-x display-1 text-muted"></i>
+        <h3 class="mt-3">Your cart is empty</h3>
+        <p class="text-muted">Browse our marketplace to find products you love!</p>
+        <a href="{{ url_for('marketplace.index') }}" class="btn btn-primary">
+            <i class="bi bi-shop"></i> Browse Marketplace
+        </a>
+    </div>
+    {% else %}
+    
+    <!-- Cart Items grouped by Vendor -->
+    {% for vendor_id, items in items_by_vendor.items() %}
+    <div class="card mb-4 shadow-sm">
+        <div class="card-header bg-dark text-white">
+            <div class="d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="bi bi-shop"></i> 
+                    {{ vendors[vendor_id].display_name or vendors[vendor_id].username }}
+                </h5>
+                <span class="badge bg-secondary">
+                    {{ vendors[vendor_id].vendor_rating|round(1) }} ★
+                </span>
+            </div>
+        </div>
+        <div class="card-body p-0">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width: 50%">Product</th>
+                        <th style="width: 15%">Price</th>
+                        <th style="width: 15%">Quantity</th>
+                        <th style="width: 15%">Total</th>
+                        <th style="width: 5%"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in items %}
+                    <tr>
+                        <td>
+                            <div class="d-flex align-items-center">
+                                <div class="flex-shrink-0 me-3">
+                                    {% if item.product.is_digital %}
+                                    <div class="bg-info text-white rounded d-flex align-items-center justify-content-center" style="width: 60px; height: 60px;">
+                                        <i class="bi bi-cloud-download fs-4"></i>
+                                    </div>
+                                    {% else %}
+                                    <div class="bg-secondary text-white rounded d-flex align-items-center justify-content-center" style="width: 60px; height: 60px;">
+                                        <i class="bi bi-box fs-4"></i>
+                                    </div>
+                                    {% endif %}
+                                </div>
+                                <div>
+                                    <h6 class="mb-0">
+                                        <a href="{{ url_for('marketplace.product_detail', product_id=item.product.id) }}" class="text-decoration-none">
+                                            {{ item.product.title }}
+                                        </a>
+                                    </h6>
+                                    <small class="text-muted">
+                                        {% if item.product.is_digital %}
+                                        <span class="badge bg-info">Digital</span>
+                                        {% else %}
+                                        <span class="badge bg-secondary">Physical</span>
+                                        {% endif %}
+                                    </small>
+                                </div>
+                            </div>
+                        </td>
+                        <td class="align-middle">
+                            <strong>${{ "%.2f"|format(item.unit_price) }}</strong>
+                        </td>
+                        <td class="align-middle">
+                            <form action="{{ url_for('cart.update_quantity') }}" method="POST" class="d-flex align-items-center">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <input type="hidden" name="product_id" value="{{ item.product_id }}">
+                                <input type="number" name="quantity" value="{{ item.quantity }}" min="0" max="100" 
+                                       class="form-control form-control-sm" style="width: 70px;"
+                                       onchange="this.form.submit()">
+                            </form>
+                        </td>
+                        <td class="align-middle">
+                            <strong>${{ "%.2f"|format(item.total_price) }}</strong>
+                        </td>
+                        <td class="align-middle">
+                            <form action="{{ url_for('cart.remove_from_cart', product_id=item.product_id) }}" method="POST">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="btn btn-outline-danger btn-sm" title="Remove">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endfor %}
+    
+    <!-- Cart Summary -->
+    <div class="row">
+        <div class="col-md-6 offset-md-6">
+            <div class="card shadow">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0"><i class="bi bi-calculator"></i> Order Summary</h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>Items:</span>
+                        <span>{{ cart.total_items }}</span>
+                    </div>
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>Subtotal:</span>
+                        <span>${{ "%.2f"|format(cart.subtotal) }}</span>
+                    </div>
+                    <hr>
+                    <div class="d-flex justify-content-between mb-3">
+                        <strong>Total:</strong>
+                        <strong class="fs-4 text-success">${{ "%.2f"|format(cart.subtotal) }}</strong>
+                    </div>
+                    
+                    <div class="d-grid gap-2">
+                        <a href="{{ url_for('cart.checkout') }}" class="btn btn-success btn-lg">
+                            <i class="bi bi-credit-card"></i> Proceed to Checkout
+                        </a>
+                        <form action="{{ url_for('cart.clear_cart') }}" method="POST">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="btn btn-outline-secondary w-100" 
+                                    onclick="return confirm('Are you sure you want to clear your cart?')">
+                                <i class="bi bi-trash"></i> Clear Cart
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    {% endif %}
+</div>
+{% endblock %}

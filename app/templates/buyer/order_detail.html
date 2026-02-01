@@ -1,131 +1,289 @@
 {% extends "base.html" %}
 
-{% block title %}Order #{{ order.id[:8] }}{% endblock %}
+{% block title %}Order #{{ order.id|string|truncate(8, True, '') }} - Social Market{% endblock %}
 
 {% block content %}
-<div class="row">
-    <div class="col-md-8">
-        <div class="card">
-            <div class="card-header">
-                <h4>Order Details</h4>
-            </div>
-            <div class="card-body">
-                <div class="row mb-3">
-                    <div class="col-md-6">
-                        <strong>Order ID:</strong> #{{ order.id[:8] }}<br>
-                        <strong>Date:</strong> {{ order.created_at.strftime('%Y-%m-%d %H:%M') }}<br>
-                        <strong>Status:</strong> <span class="badge bg-{{ order.status_color }}">{{ order.status }}</span>
-                    </div>
-                    <div class="col-md-6">
-                        <strong>Vendor:</strong> <a href="{{ url_for('marketplace.vendor_profile', user_id=order.vendor_id) }}">{{ order.vendor.username }}</a><br>
-                        <strong>Total:</strong> ${{ "%.2f"|format(order.total_price) }}
-                    </div>
-                </div>
-
-                <hr>
-
-                <h5>Product</h5>
-                <div class="row">
-                    <div class="col-md-3">
-                        {% if order.product.images %}
-                        <img src="{{ order.product.images[0] }}" alt="{{ order.product.title }}" class="img-fluid">
-                        {% else %}
-                        <div class="bg-secondary" style="width: 100%; height: 150px;"></div>
-                        {% endif %}
-                    </div>
-                    <div class="col-md-9">
-                        <h6><a href="{{ url_for('marketplace.product_detail', product_id=order.product_id) }}">{{ order.product.title }}</a></h6>
-                        <p><strong>Price:</strong> ${{ "%.2f"|format(order.product.price) }}</p>
-                        <p><strong>Quantity:</strong> {{ order.quantity }}</p>
-                    </div>
-                </div>
-
-                <hr>
-
-                {% if order.shipping_address %}
-                <h5>Shipping Address</h5>
-                <p>{{ order.shipping_address }}</p>
-                {% endif %}
-
-                {% if order.tracking_number %}
-                <h5>Tracking</h5>
-                <p><strong>Tracking Number:</strong> {{ order.tracking_number }}</p>
-                {% endif %}
-            </div>
-        </div>
+<div class="container py-4">
+    <nav aria-label="breadcrumb" class="mb-3">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{{ url_for('buyer.orders') }}">My Orders</a></li>
+            <li class="breadcrumb-item active">Order Details</li>
+        </ol>
+    </nav>
+    
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1><i class="bi bi-receipt"></i> Order Details</h1>
+        <span class="badge fs-5 
+            {% if order.status == 'completed' %}bg-success
+            {% elif order.status == 'paid' %}bg-primary
+            {% elif order.status == 'shipped' %}bg-info
+            {% elif order.status == 'pending' %}bg-warning text-dark
+            {% elif order.status == 'delivered' %}bg-success
+            {% elif order.status == 'disputed' %}bg-danger
+            {% elif order.status == 'cancelled' %}bg-secondary
+            {% else %}bg-dark{% endif %}">
+            {{ order.status|upper }}
+        </span>
     </div>
-
-    <div class="col-md-4">
-        <div class="card mb-3">
-            <div class="card-header">
-                <h5>Order Status</h5>
+    
+    <div class="row">
+        <div class="col-lg-8">
+            <!-- Order Info -->
+            <div class="card mb-4 shadow-sm">
+                <div class="card-header bg-dark text-white">
+                    <h5 class="mb-0"><i class="bi bi-info-circle"></i> Order Information</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-sm-6">
+                            <label class="text-muted small">Order ID</label>
+                            <p class="mb-0"><code>{{ order.id }}</code></p>
+                        </div>
+                        <div class="col-sm-6">
+                            <label class="text-muted small">Created</label>
+                            <p class="mb-0">{{ order.created_at.strftime('%Y-%m-%d %H:%M') }}</p>
+                        </div>
+                        <div class="col-sm-6">
+                            <label class="text-muted small">Vendor</label>
+                            <p class="mb-0">
+                                <a href="{{ url_for('marketplace.vendor_profile', vendor_id=order.vendor_id) }}">
+                                    {{ order.vendor.username }}
+                                </a>
+                            </p>
+                        </div>
+                        <div class="col-sm-6">
+                            <label class="text-muted small">Product</label>
+                            <p class="mb-0">
+                                <a href="{{ url_for('marketplace.product_detail', product_id=order.product_id) }}">
+                                    {{ order.product.title }}
+                                </a>
+                            </p>
+                        </div>
+                    </div>
+                </div>
             </div>
-            <div class="card-body">
-                <div class="progress mb-3" style="height: 25px;">
-                    {% if order.status == 'PENDING' %}
-                    <div class="progress-bar bg-warning" role="progressbar" style="width: 25%">25%</div>
-                    {% elif order.status == 'PAID' %}
-                    <div class="progress-bar bg-info" role="progressbar" style="width: 50%">50%</div>
-                    {% elif order.status == 'SHIPPED' %}
-                    <div class="progress-bar bg-primary" role="progressbar" style="width: 75%">75%</div>
-                    {% elif order.status == 'DELIVERED' or order.status == 'COMPLETED' %}
-                    <div class="progress-bar bg-success" role="progressbar" style="width: 100%">100%</div>
+            
+            <!-- Product & Pricing -->
+            <div class="card mb-4 shadow-sm">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-bag"></i> Order Items</h5>
+                </div>
+                <div class="card-body">
+                    <table class="table mb-0">
+                        <tbody>
+                            <tr>
+                                <td>
+                                    <strong>{{ order.product.title }}</strong>
+                                    {% if order.is_digital %}
+                                    <span class="badge bg-info">Digital</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-end">${{ "%.2f"|format(order.unit_price) }} × {{ order.quantity }}</td>
+                                <td class="text-end"><strong>${{ "%.2f"|format(order.total_price) }}</strong></td>
+                            </tr>
+                        </tbody>
+                        <tfoot class="table-light">
+                            <tr class="fw-bold">
+                                <td colspan="2">Total Paid</td>
+                                <td class="text-end">${{ "%.2f"|format(order.total_price) }}</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+            
+            <!-- Tracking Info (if shipped) -->
+            {% if order.tracking_number %}
+            <div class="card mb-4 shadow-sm">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0"><i class="bi bi-truck"></i> Shipping</h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <label class="text-muted small">Tracking Number</label>
+                            <p class="mb-0"><code class="fs-5">{{ order.tracking_number }}</code></p>
+                        </div>
+                        <div>
+                            {% if order.shipped_at %}
+                            <label class="text-muted small">Shipped</label>
+                            <p class="mb-0">{{ order.shipped_at.strftime('%Y-%m-%d %H:%M') }}</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+            
+            <!-- Notes -->
+            {% if order.buyer_notes %}
+            <div class="card mb-4 shadow-sm">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-chat-left-text"></i> Your Notes</h5>
+                </div>
+                <div class="card-body">
+                    <p class="mb-0">{{ order.buyer_notes }}</p>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+        
+        <!-- Actions Sidebar -->
+        <div class="col-lg-4">
+            <!-- Order Progress -->
+            <div class="card mb-4 shadow-sm">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-list-check"></i> Order Progress</h5>
+                </div>
+                <div class="card-body">
+                    <ul class="list-unstyled mb-0">
+                        <li class="d-flex align-items-center mb-3">
+                            <div class="rounded-circle bg-success text-white d-flex align-items-center justify-content-center me-3" style="width: 30px; height: 30px;">
+                                <i class="bi bi-check"></i>
+                            </div>
+                            <div>
+                                <strong>Order Placed</strong>
+                                <small class="d-block text-muted">{{ order.created_at.strftime('%Y-%m-%d') }}</small>
+                            </div>
+                        </li>
+                        
+                        <li class="d-flex align-items-center mb-3">
+                            <div class="rounded-circle {% if order.paid_at %}bg-success text-white{% else %}bg-secondary{% endif %} d-flex align-items-center justify-content-center me-3" style="width: 30px; height: 30px;">
+                                {% if order.paid_at %}<i class="bi bi-check"></i>{% else %}2{% endif %}
+                            </div>
+                            <div>
+                                <strong>Payment Confirmed</strong>
+                                {% if order.paid_at %}
+                                <small class="d-block text-muted">{{ order.paid_at.strftime('%Y-%m-%d') }}</small>
+                                {% else %}
+                                <small class="d-block text-muted">Pending</small>
+                                {% endif %}
+                            </div>
+                        </li>
+                        
+                        <li class="d-flex align-items-center mb-3">
+                            <div class="rounded-circle {% if order.shipped_at %}bg-success text-white{% else %}bg-secondary{% endif %} d-flex align-items-center justify-content-center me-3" style="width: 30px; height: 30px;">
+                                {% if order.shipped_at %}<i class="bi bi-check"></i>{% else %}3{% endif %}
+                            </div>
+                            <div>
+                                <strong>Shipped</strong>
+                                {% if order.shipped_at %}
+                                <small class="d-block text-muted">{{ order.shipped_at.strftime('%Y-%m-%d') }}</small>
+                                {% else %}
+                                <small class="d-block text-muted">Waiting</small>
+                                {% endif %}
+                            </div>
+                        </li>
+                        
+                        <li class="d-flex align-items-center">
+                            <div class="rounded-circle {% if order.completed_at %}bg-success text-white{% else %}bg-secondary{% endif %} d-flex align-items-center justify-content-center me-3" style="width: 30px; height: 30px;">
+                                {% if order.completed_at %}<i class="bi bi-check"></i>{% else %}4{% endif %}
+                            </div>
+                            <div>
+                                <strong>Completed</strong>
+                                {% if order.completed_at %}
+                                <small class="d-block text-muted">{{ order.completed_at.strftime('%Y-%m-%d') }}</small>
+                                {% else %}
+                                <small class="d-block text-muted">Pending</small>
+                                {% endif %}
+                            </div>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+            
+            <!-- Actions -->
+            <div class="card mb-4 shadow-sm">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-lightning"></i> Actions</h5>
+                </div>
+                <div class="card-body">
+                    {% if order.status == 'pending' %}
+                    <div class="alert alert-warning mb-3">
+                        <i class="bi bi-hourglass-split"></i> 
+                        <strong>Payment Required</strong>
+                        <p class="mb-0 small">In the training environment, orders are auto-confirmed.</p>
+                    </div>
+                    
+                    {% elif order.status == 'paid' %}
+                    <div class="alert alert-info mb-0">
+                        <i class="bi bi-truck"></i> Waiting for vendor to ship
+                    </div>
+                    
+                    {% elif order.status == 'shipped' %}
+                    <form action="{{ url_for('buyer.confirm_delivery', order_id=order.id) }}" method="POST" class="mb-3">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn btn-success w-100">
+                            <i class="bi bi-check-circle"></i> Confirm Delivery
+                        </button>
+                    </form>
+                    <p class="small text-muted">Confirm when you receive the item</p>
+                    
+                    {% elif order.status == 'delivered' %}
+                    <form action="{{ url_for('buyer.complete_order', order_id=order.id) }}" method="POST" class="mb-3">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn btn-success w-100">
+                            <i class="bi bi-check-all"></i> Complete Order & Release Funds
+                        </button>
+                    </form>
+                    
+                    <a href="{{ url_for('buyer.leave_review', order_id=order.id) }}" class="btn btn-outline-warning w-100 mb-3">
+                        <i class="bi bi-star"></i> Leave Review
+                    </a>
+                    
+                    {% elif order.status == 'completed' %}
+                    <div class="alert alert-success mb-3">
+                        <i class="bi bi-check-circle-fill"></i> Order completed successfully!
+                    </div>
+                    
+                    <a href="{{ url_for('buyer.leave_review', order_id=order.id) }}" class="btn btn-outline-warning w-100">
+                        <i class="bi bi-star"></i> Leave Review
+                    </a>
+                    
+                    {% elif order.status == 'disputed' %}
+                    <div class="alert alert-danger mb-0">
+                        <i class="bi bi-exclamation-triangle"></i>
+                        <strong>Dispute Open</strong>
+                        <p class="mb-0 small">{{ order.dispute_reason }}</p>
+                    </div>
+                    
+                    {% elif order.status == 'cancelled' %}
+                    <div class="alert alert-secondary mb-0">
+                        <i class="bi bi-x-circle"></i> This order was cancelled
+                    </div>
+                    {% endif %}
+                    
+                    {% if order.status in ['paid', 'shipped', 'delivered'] %}
+                    <hr>
+                    <button type="button" class="btn btn-outline-danger w-100" 
+                            data-bs-toggle="collapse" data-bs-target="#disputeForm">
+                        <i class="bi bi-exclamation-triangle"></i> Open Dispute
+                    </button>
+                    
+                    <div class="collapse mt-3" id="disputeForm">
+                        <form action="{{ url_for('buyer.dispute_order', order_id=order.id) }}" method="POST">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <div class="mb-3">
+                                <textarea class="form-control" name="reason" rows="3" required
+                                          placeholder="Describe the issue..."></textarea>
+                            </div>
+                            <button type="submit" class="btn btn-danger w-100">Submit Dispute</button>
+                        </form>
+                    </div>
                     {% endif %}
                 </div>
-
-                <ul class="list-unstyled small">
-                    <li class="mb-2">
-                        <span class="badge bg-{{ 'success' if order.status != 'PENDING' else 'secondary' }}">✓</span> Order Placed
-                    </li>
-                    <li class="mb-2">
-                        <span class="badge bg-{{ 'success' if order.status in ['PAID', 'SHIPPED', 'DELIVERED', 'COMPLETED'] else 'secondary' }}">✓</span> Payment Confirmed
-                    </li>
-                    <li class="mb-2">
-                        <span class="badge bg-{{ 'success' if order.status in ['SHIPPED', 'DELIVERED', 'COMPLETED'] else 'secondary' }}">✓</span> Shipped
-                    </li>
-                    <li class="mb-2">
-                        <span class="badge bg-{{ 'success' if order.status in ['DELIVERED', 'COMPLETED'] else 'secondary' }}">✓</span> Delivered
-                    </li>
-                </ul>
-
-                {% if order.status == 'PENDING' %}
-                <form method="POST" action="{{ url_for('buyer.fund_escrow', order_id=order.id) }}">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                    <button type="submit" class="btn btn-primary w-100">Fund Escrow</button>
-                </form>
-                {% elif order.status == 'SHIPPED' %}
-                <form method="POST" action="{{ url_for('buyer.confirm_delivery', order_id=order.id) }}">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                    <button type="submit" class="btn btn-success w-100">Confirm Delivery</button>
-                </form>
-                {% endif %}
-
-                <hr>
-
-                <a href="{{ url_for('messages.new_thread', recipient_id=order.vendor_id) }}" class="btn btn-secondary w-100">Contact Vendor</a>
+            </div>
+            
+            <!-- Contact Vendor -->
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <a href="{{ url_for('messages.new_thread', recipient_id=order.vendor_id) }}" 
+                       class="btn btn-outline-primary w-100">
+                        <i class="bi bi-envelope"></i> Contact Vendor
+                    </a>
+                </div>
             </div>
         </div>
-
-        {% if order.escrow %}
-        <div class="card">
-            <div class="card-header">
-                <h6>Escrow Information</h6>
-            </div>
-            <div class="card-body small">
-                <p><strong>Status:</strong> <span class="badge bg-secondary">{{ order.escrow.status }}</span></p>
-                <p><strong>Amount:</strong> ${{ "%.2f"|format(order.escrow.amount) }}</p>
-                {% if order.escrow.release_date %}
-                <p><strong>Auto-Release:</strong> {{ order.escrow.release_date.strftime('%Y-%m-%d') }}</p>
-                {% endif %}
-            </div>
-        </div>
-        {% endif %}
-    </div>
-</div>
-
-<div class="row mt-4">
-    <div class="col-md-12">
-        <a href="{{ url_for('buyer.orders') }}" class="btn btn-secondary">Back to Orders</a>
     </div>
 </div>
 {% endblock %}
