@@ -4,6 +4,8 @@ Authentication Routes
 Purpose: User authentication with security features
 """
 
+from urllib.parse import urlparse
+
 from flask import Blueprint, render_template, redirect, url_for, flash, request, session, current_app
 from flask_login import login_user, logout_user, login_required, current_user
 from werkzeug.security import check_password_hash
@@ -82,9 +84,9 @@ def login():
                 # Log successful login
                 _log_auth_event(username, user.id, 'login_success', client_ip, session.get('session_id'))
 
-                # Redirect to next page or dashboard
+                # Redirect to next page or dashboard (with open redirect prevention)
                 next_page = request.args.get('next')
-                if next_page:
+                if next_page and _is_safe_url(next_page):
                     return redirect(next_page)
 
                 if user.is_vendor():
@@ -610,6 +612,28 @@ def validate_passphrase():
 # =============================================================================
 # Helper Functions
 # =============================================================================
+
+def _is_safe_url(target):
+    """
+    Validate redirect URL to prevent open redirect attacks.
+
+    Only allows relative URLs on the same host.
+
+    Args:
+        target: URL to validate
+
+    Returns:
+        bool: True if URL is safe to redirect to
+    """
+    if not target:
+        return False
+    parsed = urlparse(target)
+    # Allow only relative paths (no scheme/netloc) or same-host URLs
+    if parsed.netloc:
+        host = urlparse(request.host_url)
+        return parsed.scheme in ('http', 'https') and parsed.netloc == host.netloc
+    return True
+
 
 def _log_auth_event(username, user_id, action, ip_address, session_id=None, failure_reason=None):
     """

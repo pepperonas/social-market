@@ -4,10 +4,11 @@ Admin Routes - Placeholder
 Purpose: Admin dashboard and moderation
 """
 
-from flask import Blueprint, render_template, redirect, url_for, flash, request, current_app
+from flask import Blueprint, render_template, redirect, url_for, flash, request, current_app, jsonify
 from flask_login import login_required, current_user
 from functools import wraps
-from app import db
+from sqlalchemy import text, func
+from app import db, csrf
 
 admin_bp = Blueprint('admin', __name__)
 
@@ -89,9 +90,23 @@ def security():
     # Security statistics for template
     recent_time = datetime.utcnow() - timedelta(hours=1)
 
+    # Rate limit hits from security_events table
+    rate_limit_hits = 0
+    try:
+        result = db.session.execute(
+            text("""
+                SELECT COUNT(*) FROM security_events
+                WHERE event_type = 'rate_limit_exceeded'
+                AND timestamp > NOW() - INTERVAL '24 hours'
+            """)
+        )
+        rate_limit_hits = result.scalar() or 0
+    except Exception:
+        pass
+
     stats = {
         'failed_logins': User.query.filter(User.failed_login_attempts > 0).count(),
-        'rate_limit_hits': 0,  # TODO: Implement rate limit tracking
+        'rate_limit_hits': rate_limit_hits,
         'security_events': User.query.filter(User.account_locked_until.isnot(None)).count(),
         'active_sessions': User.query.filter(User.last_login > recent_time).count(),
         'locked_accounts': User.query.filter(User.account_locked_until.isnot(None)).count(),
@@ -102,12 +117,45 @@ def security():
     }
 
     # System health checks
-    health = {
-        'database': True,  # TODO: Implement actual DB check
-        'redis': True,  # TODO: Implement actual Redis check
-        'celery': True,  # TODO: Implement actual Celery check
-        'disk_usage': 50  # TODO: Implement actual disk usage check
-    }
+    health = {}
+
+    # Database check
+    try:
+        import time
+        start = time.time()
+        db.session.execute(text("SELECT 1"))
+        latency = (time.time() - start) * 1000
+        health['database'] = latency < 100
+    except Exception:
+        health['database'] = False
+
+    # Redis check
+    try:
+        import redis
+        import time
+        r = redis.from_url(current_app.config['REDIS_URL'])
+        start = time.time()
+        r.ping()
+        latency = (time.time() - start) * 1000
+        health['redis'] = latency < 50
+    except Exception:
+        health['redis'] = False
+
+    # Disk usage
+    try:
+        import psutil
+        disk = psutil.disk_usage('/')
+        health['disk_usage'] = round(disk.percent)
+    except Exception:
+        health['disk_usage'] = 0
+
+    # Celery check
+    try:
+        from app import celery as celery_app
+        insp = celery_app.control.inspect(timeout=1.0)
+        health['celery'] = insp.ping() is not None
+    except Exception:
+        health['celery'] = False
 
     return render_template('admin/security.html', stats=stats, health=health)
 
@@ -371,3 +419,144 @@ def activate_user(user_id):
     db.session.commit()
     flash(f'User {user.username} activated', 'success')
     return redirect(url_for('admin.users'))
+
+
+@admin_bp.route('/user/<uuid:user_id>/unlock', methods=['POST'])
+@login_required
+@admin_required
+def unlock_user(user_id):
+    """Unlock a locked user account"""
+    from app.models.user import User
+    from app.services.audit_service import log_admin_action, log_security_event
+
+    user = User.query.get_or_404(user_id)
+
+    if not user.account_locked_until and user.failed_login_attempts == 0:
+        flash(f'User {user.username} is not locked', 'info')
+        return redirect(url_for('admin.user_detail', user_id=user_id))
+
+    before_state = {
+        'failed_login_attempts': user.failed_login_attempts,
+        'account_locked_until': str(user.account_locked_until) if user.account_locked_until else None
+    }
+
+    user.failed_login_attempts = 0
+    user.account_locked_until = None
+    db.session.commit()
+
+    log_admin_action(
+        admin_user_id=current_user.id,
+        action='unlock_account',
+        target_type='user',
+        target_id=user.id,
+        before_state=before_state,
+        after_state={'failed_login_attempts': 0, 'account_locked_until': None}
+    )
+
+    log_security_event(
+        'account_unlocked',
+        'info',
+        f'Admin {current_user.username} unlocked account for {user.username}',
+        user.id,
+        request.remote_addr
+    )
+
+    flash(f'User {user.username} has been unlocked', 'success')
+    return redirect(url_for('admin.user_detail', user_id=user_id))
+
+
+@admin_bp.route('/user/<uuid:user_id>/approve-vendor', methods=['POST'])
+@login_required
+@admin_required
+def approve_vendor(user_id):
+    """Approve vendor account"""
+    from app.models.user import User
+    from app.services.audit_service import log_admin_action, log_security_event
+
+    user = User.query.get_or_404(user_id)
+
+    if user.role != 'vendor':
+        flash(f'User {user.username} is not a vendor', 'warning')
+        return redirect(url_for('admin.user_detail', user_id=user_id))
+
+    if user.is_vendor_approved:
+        flash(f'Vendor {user.username} is already approved', 'info')
+        return redirect(url_for('admin.user_detail', user_id=user_id))
+
+    user.is_vendor_approved = True
+    db.session.commit()
+
+    log_admin_action(
+        admin_user_id=current_user.id,
+        action='approve_vendor',
+        target_type='user',
+        target_id=user.id,
+        before_state={'is_vendor_approved': False},
+        after_state={'is_vendor_approved': True}
+    )
+
+    log_security_event(
+        'vendor_approved',
+        'info',
+        f'Admin {current_user.username} approved vendor {user.username}',
+        user.id,
+        request.remote_addr
+    )
+
+    # Create notification for vendor
+    try:
+        from app.models.notification import Notification
+        import uuid as uuid_mod
+        notification = Notification(
+            id=uuid_mod.uuid4(),
+            user_id=user.id,
+            title='Vendor Account Approved',
+            message='Your vendor account has been approved. You can now list products.',
+            notification_type='system'
+        )
+        db.session.add(notification)
+        db.session.commit()
+    except Exception as e:
+        current_app.logger.error(f'Failed to create vendor approval notification: {e}')
+
+    flash(f'Vendor {user.username} has been approved', 'success')
+    return redirect(url_for('admin.user_detail', user_id=user_id))
+
+
+@admin_bp.route('/csp-report', methods=['POST'])
+@login_required
+@admin_required
+def csp_violations():
+    """View CSP violation reports"""
+    # This is the viewing endpoint; the report-uri endpoint is below
+    pass
+
+
+@admin_bp.route('/csp-report-uri', methods=['POST'])
+@csrf.exempt
+def csp_report_uri():
+    """
+    CSP violation reporting endpoint (CSRF-exempt as it's called by the browser).
+    Logs CSP violations for security monitoring.
+    """
+    try:
+        report = request.get_json(force=True)
+        csp_report = report.get('csp-report', report)
+
+        current_app.logger.warning(
+            f'CSP Violation: blocked-uri={csp_report.get("blocked-uri")} '
+            f'violated-directive={csp_report.get("violated-directive")} '
+            f'document-uri={csp_report.get("document-uri")}'
+        )
+
+        from app.services.audit_service import log_security_event
+        log_security_event(
+            'csp_violation',
+            'medium',
+            f'CSP violation: {csp_report.get("violated-directive")} - {csp_report.get("blocked-uri")}',
+            metadata=str(csp_report)
+        )
+    except Exception as e:
+        current_app.logger.error(f'Failed to process CSP report: {e}')
+
+    return '', 204

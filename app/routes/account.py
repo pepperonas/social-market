@@ -95,10 +95,10 @@ def change_password():
             )
             
             flash('Password changed successfully', 'success')
-            
+
             # Optionally invalidate other sessions
             if invalidate_sessions:
-                # Note: Implement Redis session cleanup in production
+                _invalidate_other_sessions(current_user.id)
                 flash('Other sessions have been invalidated', 'info')
             
             return redirect(url_for('account.security_settings'))
@@ -190,7 +190,8 @@ def active_sessions():
 def terminate_all_sessions():
     """Terminate all other sessions"""
     try:
-        # In production: Clear all Redis sessions for this user except current
+        _invalidate_other_sessions(current_user.id)
+
         log_security_event(
             'sessions_terminated',
             'info',
@@ -198,9 +199,10 @@ def terminate_all_sessions():
             current_user.id,
             request.remote_addr
         )
-        
+
         flash('All other sessions have been terminated', 'success')
     except Exception as e:
+        current_app.logger.error(f'Error terminating sessions: {e}')
         flash('Error terminating sessions', 'danger')
     
     return redirect(url_for('account.security_settings'))
@@ -461,5 +463,59 @@ def check_password_strength():
         strength['feedback'].append('Add special characters')
     
     strength['strong_enough'] = strength['score'] >= 80
-    
+
     return jsonify(strength)
+
+
+# =============================================================================
+# Internal Helpers
+# =============================================================================
+
+def _invalidate_other_sessions(user_id):
+    """
+    Invalidate all Redis sessions for a user except the current one.
+
+    Scans Redis for session keys matching the app prefix, loads each session,
+    and deletes those belonging to the given user_id.
+
+    Args:
+        user_id: UUID of the user whose sessions should be invalidated
+    """
+    try:
+        import redis as redis_lib
+        from flask import session as flask_session
+
+        r = redis_lib.from_url(current_app.config['REDIS_URL'])
+        prefix = current_app.config.get('SESSION_KEY_PREFIX', 'marketplace:')
+        current_sid = flask_session.sid if hasattr(flask_session, 'sid') else None
+
+        # Scan for all session keys
+        deleted = 0
+        for key in r.scan_iter(match=f'{prefix}*', count=100):
+            try:
+                # Skip current session
+                key_str = key.decode('utf-8') if isinstance(key, bytes) else key
+                session_id = key_str.replace(prefix, '')
+                if current_sid and session_id == current_sid:
+                    continue
+
+                # Load session data and check user_id
+                session_data = r.get(key)
+                if session_data:
+                    import json
+                    try:
+                        data = json.loads(session_data)
+                    except (json.JSONDecodeError, TypeError):
+                        continue
+
+                    # Check if this session belongs to the user
+                    session_user_id = data.get('_user_id')
+                    if session_user_id and str(session_user_id) == str(user_id):
+                        r.delete(key)
+                        deleted += 1
+            except Exception:
+                continue
+
+        current_app.logger.info(f'Invalidated {deleted} sessions for user {user_id}')
+    except Exception as e:
+        current_app.logger.error(f'Session invalidation error: {e}')

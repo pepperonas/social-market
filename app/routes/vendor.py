@@ -7,6 +7,7 @@ Purpose: Vendor dashboard and product management
 from flask import Blueprint, render_template, redirect, url_for, flash, request
 from flask_login import login_required, current_user
 from functools import wraps
+from app import db
 
 vendor_bp = Blueprint('vendor', __name__)
 
@@ -30,11 +31,20 @@ def dashboard():
     from app.models.order import Order
     from flask_login import current_user
 
+    # Calculate actual revenue from completed orders
+    from sqlalchemy import func
+    total_revenue = db.session.query(
+        func.coalesce(func.sum(Order.total_price), 0)
+    ).filter(
+        Order.vendor_id == current_user.id,
+        Order.status == 'completed'
+    ).scalar()
+
     stats = {
         'total_products': Product.query.filter_by(vendor_id=current_user.id).count(),
         'total_orders': Order.query.filter_by(vendor_id=current_user.id).count(),
         'total_sales': Order.query.filter_by(vendor_id=current_user.id, status='completed').count(),
-        'total_revenue': 0  # TODO: Calculate actual revenue
+        'total_revenue': float(total_revenue)
     }
 
     return render_template('vendor/dashboard.html', stats=stats)

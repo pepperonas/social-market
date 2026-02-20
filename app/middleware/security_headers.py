@@ -19,9 +19,13 @@ class SecurityHeadersMiddleware:
     def __call__(self, environ, start_response):
         """Process request and add security headers to response"""
 
+        # Generate or reuse request ID from upstream (e.g. Nginx)
+        request_id = environ.get('HTTP_X_REQUEST_ID') or str(uuid.uuid4())
+        # Store in environ so Flask can access it via request.environ
+        environ['HTTP_X_REQUEST_ID'] = request_id
+
         def custom_start_response(status, headers, exc_info=None):
             # Add request ID for tracking
-            request_id = str(uuid.uuid4())
             headers.append(('X-Request-ID', request_id))
 
             # Add custom security headers

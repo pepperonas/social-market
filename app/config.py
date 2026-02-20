@@ -29,6 +29,9 @@ class Config:
         'pool_recycle': int(os.environ.get('SQLALCHEMY_POOL_RECYCLE', 3600)),
         'pool_pre_ping': True,
         'max_overflow': int(os.environ.get('SQLALCHEMY_MAX_OVERFLOW', 20)),
+        'connect_args': {
+            'sslmode': os.environ.get('DB_SSLMODE', 'prefer'),
+        },
     }
 
     # Database encryption key

@@ -63,14 +63,14 @@ def log_security_event(event_type, severity, description, user_id=None, ip_addre
         db.session.execute(
             text(
                 "SELECT log_security_event(:event_type, :severity, 'application', "
-                ":user_id, :ip_address, :description, :metadata)"
+                ":description, :user_id, :ip_address, :metadata)"
             ),
             {
                 'event_type': event_type,
                 'severity': severity,
+                'description': description,
                 'user_id': user_id,
                 'ip_address': ip_address or (request.remote_addr if request else None),
-                'description': description,
                 'metadata': metadata
             }
         )

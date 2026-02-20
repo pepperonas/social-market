@@ -255,7 +255,8 @@ def setup_security(app):
         'connect-src': "'self'",
         'frame-ancestors': "'none'",
         'base-uri': "'self'",
-        'form-action': "'self'"
+        'form-action': "'self'",
+        'report-uri': '/admin/csp-report-uri'
     }
 
     Talisman(
@@ -276,6 +277,13 @@ def setup_security(app):
     # Request ID middleware
     from app.middleware.security_headers import SecurityHeadersMiddleware
     app.wsgi_app = SecurityHeadersMiddleware(app.wsgi_app)
+
+    # Store request ID in Flask g for logging/audit correlation
+    from flask import g, request as flask_request
+
+    @app.before_request
+    def set_request_id():
+        g.request_id = flask_request.environ.get('HTTP_X_REQUEST_ID', '')
 
     # Register CLI commands
     from app.cli import register_commands

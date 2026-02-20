@@ -167,16 +167,22 @@
                     </form>
                     {% endif %}
 
-                    {% if user.account_locked_until %}
-                    <button class="btn btn-info" disabled>
-                        Unlock Account (TODO)
-                    </button>
+                    {% if user.account_locked_until or user.failed_login_attempts > 0 %}
+                    <form method="POST" action="{{ url_for('admin.unlock_user', user_id=user.id) }}" style="display: inline;">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                        <button type="submit" class="btn btn-info" onclick="return confirm('Unlock account for {{ user.username }}?')">
+                            Unlock Account
+                        </button>
+                    </form>
                     {% endif %}
 
-                    {% if user.is_vendor() and not user.is_vendor_approved %}
-                    <button class="btn btn-primary" disabled>
-                        Approve Vendor (TODO)
-                    </button>
+                    {% if user.role == 'vendor' and not user.is_vendor_approved %}
+                    <form method="POST" action="{{ url_for('admin.approve_vendor', user_id=user.id) }}" style="display: inline;">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                        <button type="submit" class="btn btn-primary" onclick="return confirm('Approve vendor {{ user.username }}?')">
+                            Approve Vendor
+                        </button>
+                    </form>
                     {% endif %}
                 </div>
             </div>
