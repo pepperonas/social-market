@@ -2,549 +2,140 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Repository Overview
+## Context
 
-This is a **local, isolated training environment** for IT security education demonstrating secure marketplace architecture. It is NOT production code and NOT intended for deployment beyond authorized educational use.
+Educational IT security training environment (CloudCommand). Flask-based marketplace demonstrating defense-in-depth architecture. Blue team / defensive security focus. All new files must include educational disclaimers. Never implement features for illegal activities.
 
-**Critical Context:**
-- Educational Purpose: IT security training, architecture study, defensive security research
-- Legal Context: Authorized security education material (CloudCommand IT Security Training)
-- Blue Team Focus: Defensive security perspective, identifying vulnerabilities for protection
-- All security features include comprehensive logging and audit trails
-
-## Development Environment
-
-### Quick Start
+## Commands
 
 ```bash
-# Start all services
+# Build & run
 docker-compose up -d
+docker-compose up -d --build          # after dependency changes
 
-# Initialize database (first time only)
-docker-compose exec app flask db upgrade
-docker-compose exec app flask init-db
-
-# Access application
-open http://localhost:8080
-```
-
-### Container Names
-
-The container naming is inconsistent due to historical docker-compose versions:
-- **App**: `marketplace_app` (not `marketplace-app`)
-- **Database**: `marketplace_postgres`
-- **Redis**: `marketplace_redis`
-- **Nginx**: `marketplace_nginx`
-
-Always use `marketplace_app` when executing commands.
-
-### Common Commands
-
-```bash
-# Access Flask shell
-docker exec marketplace_app flask shell
-
-# Run Flask CLI commands
-docker exec marketplace_app flask <command>
-
-# View application logs
-docker logs marketplace_app -f
-
-# Restart application (after code/template changes)
+# Restart after code/template changes
 docker restart marketplace_app
 
-# Execute SQL migrations
-docker exec marketplace_postgres psql -U marketplace -d marketplace -f /migrations/migration_file.sql
+# Database init (first time)
+docker exec marketplace_app flask init-db
+docker exec marketplace_app flask init-admin
+docker exec marketplace_app flask seed-data
 
-# Access PostgreSQL
+# SQL migrations (not Alembic)
+docker exec marketplace_postgres psql -U marketplace -d marketplace -f /migrations/<file>.sql
+
+# Tests (SQLite in-memory, no Docker needed)
+pytest tests/ -v
+pytest tests/test_auth.py -v                          # single file
+pytest tests/ -v --cov=app --cov-report=term-missing  # with coverage
+
+# Security scan
+./scripts/security-scan.sh
+
+# Access services
+docker exec marketplace_app flask shell
 docker exec -it marketplace_postgres psql -U marketplace
-
-# Access Redis CLI
-docker exec -it marketplace_redis redis-cli -a <password>
-
-# Rebuild after dependency changes
-docker-compose down
-docker-compose up -d --build
 ```
 
-### Flask CLI Commands
+**Container names use underscores**: `marketplace_app`, `marketplace_postgres`, `marketplace_redis`, `marketplace_nginx`.
 
-```bash
-# Database initialization
-flask init-db              # Create tables and default categories
-flask init-admin           # Create default admin user
+App at http://localhost:8080. Default creds in `LOGIN_CREDENTIALS.md`.
 
-# User management
-flask create-user          # Interactive user creation
-flask reset-password       # Reset user password
+## Architecture
 
-# PGP key management
-flask generate-pgp-keys    # Generate RSA-4096 keypair for user
-flask upload-pgp-key       # Upload existing PGP public key
-flask show-pgp-audit       # View PGP key audit log
+### Request Flow
 
-# Data management
-flask seed-data            # Seed test data (buyers, vendors, products)
-flask cleanup-old-data     # Clean up old messages, sessions
-
-# Security
-flask security-check       # Run security validation checks
-flask generate-secret      # Generate secure random secrets
-
-# Backup
-flask backup-now           # Create encrypted backup
+```
+Nginx (:8080) → Gunicorn → Flask App → PostgreSQL + Redis
+                              ↓
+                     SecurityHeadersMiddleware (X-Request-ID)
+                              ↓
+                     Flask-Talisman (CSP with nonce, HSTS)
+                              ↓
+                     Blueprint routes → Service layer → DB
 ```
 
-## Architecture Overview
+### Application Factory
 
-### Application Factory Pattern
+`app/__init__.py` → `create_app()`. Extensions initialized: SQLAlchemy (`db`), Flask-Login, Flask-Session (Redis), Flask-Limiter (Redis), Flask-Talisman (nonce-based CSP), CSRFProtect (`csrf`), Celery.
 
-The app uses Flask's application factory pattern (`app/__init__.py`):
+### Blueprint → Route Mapping
 
-```python
-from app import create_app, db
+| Blueprint | Prefix | Access | Key file |
+|-----------|--------|--------|----------|
+| `marketplace_bp` | `/` | Public | `routes/marketplace.py` |
+| `auth_bp` | `/auth` | Public/Auth | `routes/auth.py` |
+| `vendor_bp` | `/vendor` | `@vendor_required` | `routes/vendor.py` |
+| `buyer_bp` | `/buyer` | `@login_required` | `routes/buyer.py` |
+| `admin_bp` | `/admin` | `@admin_required` | `routes/admin.py` |
+| `messages_bp` | `/messages` | Auth | `routes/messages.py` |
+| `cart_bp` | `/cart` | Auth | `routes/cart.py` |
+| `account_bp` | `/account` | Auth | `routes/account.py` |
 
-app = create_app()  # Creates configured Flask app
-with app.app_context():
-    # All database operations must be in app context
-    user = User.query.first()
-```
+### Service Layer
 
-### Key Extensions Initialized
+All crypto/security logic lives in `app/services/` — never implement directly in routes:
 
-- **SQLAlchemy** (`db`): ORM for PostgreSQL
-- **Flask-Login** (`login_manager`): User session management
-- **Flask-Session** (`session`): Redis-backed sessions
-- **Flask-Limiter** (`limiter`): Rate limiting with Redis storage
-- **Flask-Talisman** (`Talisman`): Security headers, CSP with nonce support
-- **CSRFProtect** (`csrf`): CSRF token validation
-- **Celery** (`celery`): Background tasks
+- **`password_service.py`**: Argon2id hashing with pepper. Use `get_password_service()` singleton. User model's `set_password()`/`check_password()` call this internally.
+- **`audit_service.py`**: Calls PostgreSQL stored procedures (`log_auth_event`, `log_security_event`, `log_admin_action`). Parameter order must match SQL signatures in `postgres/audit-logging.sql`.
+- **`image_service.py`**: EXIF stripping, validation, thumbnails. Use `get_image_service()`.
+- **`pgp_service.py`**: RSA-4096 key generation, encrypt/decrypt.
 
-### Service Layer Architecture
+### Database
 
-All business logic lives in `app/services/`:
+- **PostgreSQL** with pgcrypto extension. All models use **UUID primary keys**.
+- Stored procedures for audit logging (see `postgres/audit-logging.sql`).
+- Encrypted fields stored as `LargeBinary` (pgcrypto `pgp_sym_encrypt`).
+- SSL connections enabled (`sslmode: prefer` in `config.py`).
 
-- **`password_service.py`**: Argon2id password hashing with pepper (64MB memory-hard)
-- **`pgp_service.py`**: RSA-4096 PGP key generation, encryption/decryption
-- **`audit_service.py`**: Comprehensive audit logging for security events
-- **`crypto_service.py`**: General cryptographic utilities
-- **`escrow_service.py`**: Multi-signature escrow simulation
-- **`security_service.py`**: Security validation, threat detection
-- **`image_service.py`**: Image metadata stripping, validation
+### Session Management
 
-**Important:** Always use service layer functions rather than implementing crypto/security logic directly in routes.
+Redis-backed sessions (Flask-Session). Session invalidation on password change scans Redis keys matching `SESSION_KEY_PREFIX` and deletes sessions belonging to the user (see `_invalidate_other_sessions` in `routes/account.py`).
 
-### Database Architecture
+### Security Middleware
 
-#### UUID Primary Keys
+`app/middleware/security_headers.py`: WSGI middleware that generates/propagates `X-Request-ID` (from Nginx or auto-generated UUID), stored in `g.request_id` via `before_request`.
 
-All models use UUID primary keys (not auto-increment integers):
+## Conventions
 
-```python
-from uuid import uuid4
+### Forms & Templates
 
-# Creating new records
-user = User(
-    id=uuid4(),  # Always generate UUID explicitly
-    username='test'
-)
-```
-
-#### Audit Logging
-
-Every security-critical operation must be logged via `audit_service.py`:
-
-```python
-from app.services.audit_service import log_pgp_key_event
-
-log_pgp_key_event(
-    user_id=user.id,
-    action='pgp_key_generated',
-    key_fingerprint=fingerprint,
-    created_by='user',  # or 'cli', 'admin'
-    source='generated',  # or 'uploaded', 'imported'
-    metadata={'username': user.username}
-)
-```
-
-Audit logs include:
-- `user_id`, `action`, `table_name`, `record_id`
-- `old_values`, `new_values` (JSONB)
-- `ip_address`, `user_agent`
-- `status` ('success', 'failure'), `severity` ('info', 'warning', 'critical')
-- `metadata` (JSONB for custom fields)
-
-#### Field-Level Encryption
-
-Sensitive fields are encrypted with pgcrypto:
-
-```sql
--- Encrypt on insert
-INSERT INTO messages (content_encrypted)
-VALUES (pgp_sym_encrypt('message text', current_setting('app.encryption_key')));
-
--- Decrypt on read
-SELECT pgp_sym_decrypt(content_encrypted, current_setting('app.encryption_key'))
-FROM messages;
-```
-
-In Python models, encrypted fields are stored as `LargeBinary`.
-
-## Security-Critical Features
-
-### CSRF Protection
-
-**All forms MUST include CSRF token:**
-
-```html
-<form method="POST">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-    <!-- form fields -->
-</form>
-```
-
-Missing CSRF tokens cause 400 Bad Request errors with no detailed message (by design).
-
-### Content Security Policy (CSP)
-
-The app uses **nonce-based CSP** for inline scripts:
-
-```html
-<script nonce="{{ csp_nonce() }}">
-    // Inline JavaScript here
-</script>
-```
-
-**Never use inline scripts without the nonce** - they will be blocked by CSP.
-
-CSP configuration in `app/__init__.py`:
-- `script-src: 'self'` (allows nonce-based inline scripts)
-- `style-src: 'self' 'unsafe-inline'` (Bootstrap requires inline styles)
-- `frame-ancestors: 'none'` (prevents clickjacking)
+- All POST forms: `<input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>`
+- All inline scripts: `nonce="{{ csp_nonce() }}"`
+- CSP violations report to `POST /admin/csp-report-uri` (CSRF-exempt)
+- Base template: `app/templates/base.html`
 
 ### Rate Limiting
 
-Routes have different rate limits based on sensitivity:
-
 ```python
-@limiter.limit("10 per hour")  # Login attempts
-@limiter.limit("3 per hour")   # PGP key generation (expensive)
-@limiter.limit("20 per hour")  # Message sending
+@limiter.limit("20 per minute")  # Login
+@limiter.limit("3 per hour")     # PGP key generation
+@limiter.limit("1 per day")      # Data export
 ```
 
-Rate limiting uses Redis storage. 429 errors indicate limit exceeded.
+### Adding a Route
 
-### Password Hashing (Argon2id)
+1. Add to appropriate blueprint in `app/routes/`
+2. Use `@admin_required` or `@vendor_required` decorators for role-gated routes
+3. Add CSRF token to POST forms
+4. Log security events via `audit_service.py`
+5. `docker restart marketplace_app`
 
-**Always use `password_service.py` for password operations:**
+### User Roles
 
-```python
-from app.services.password_service import PasswordService
+`User.role` field: `buyer`, `vendor`, `admin`. Vendors must also have `is_vendor_approved=True` — `user.is_vendor()` checks both. Unapproved vendors return `False` for `is_vendor()`.
 
-pwd_service = PasswordService()
+### Testing
 
-# Hash password (with pepper)
-hashed = pwd_service.hash_password('plaintext')
-user.password_hash = hashed
-
-# Verify password
-is_valid = pwd_service.verify_password('plaintext', user.password_hash)
-```
-
-Configuration (in `app/config.py`):
-- Memory cost: 64 MB (65536 KB)
-- Time cost: 3 iterations
-- Parallelism: 4 threads
-- Pepper: Server-side secret salt from `PASSWORD_PEPPER` env var
-
-### PGP Encryption System
-
-The messaging system uses **mandatory PGP encryption**:
-
-#### Two Encryption Modes
-
-1. **Auto-encrypt**: System encrypts with recipient's public key
-   - Requires recipient to have `pgp_public_key` in database
-   - User provides plaintext, system encrypts before storage
-   - Validates message is NOT already PGP-encrypted
-
-2. **Manual**: User provides pre-encrypted PGP message
-   - User encrypted externally with recipient's public key
-   - Validates message starts with `-----BEGIN PGP MESSAGE-----`
-   - Validates message ends with `-----END PGP MESSAGE-----`
-
-#### Zero-Knowledge Architecture
-
-- Private keys are NEVER stored on server
-- Messages stored encrypted in database (`content_encrypted` bytea field)
-- Decryption requires user to provide private key + passphrase via AJAX
-- Server performs decryption but never stores the key
-
-#### Key Generation
-
-Users can generate RSA-4096 keys via web UI (`/auth/pgp-keys`) or CLI:
-
-```bash
-# Generate new keypair
-docker exec marketplace_app flask generate-pgp-keys --username buyer1
-
-# Upload existing public key
-docker exec marketplace_app flask upload-pgp-key --username buyer1 --key-file /path/to/key.asc
-```
-
-All key operations are logged with timestamps in `users` table and `audit_log`.
-
-## Message Threading Architecture
-
-Messages use a **flexible participant model** (not fixed buyer/vendor):
-
-### Database Schema
-
-```sql
-CREATE TABLE message_threads (
-    id UUID PRIMARY KEY,
-    participant_1_id UUID NOT NULL,  -- First participant (sorted by UUID)
-    participant_2_id UUID NOT NULL,  -- Second participant (sorted by UUID)
-    buyer_id UUID,                    -- Legacy, nullable
-    vendor_id UUID,                   -- Legacy, nullable
-    subject VARCHAR(200),
-    last_message_at TIMESTAMP,
-    is_active BOOLEAN DEFAULT TRUE
-);
-
-CREATE TABLE messages (
-    id UUID PRIMARY KEY,
-    thread_id UUID REFERENCES message_threads(id),
-    sender_id UUID REFERENCES users(id),
-    recipient_id UUID REFERENCES users(id),
-    content_encrypted BYTEA NOT NULL,  -- PGP-encrypted content
-    is_encrypted BOOLEAN DEFAULT TRUE,
-    is_deleted_by_sender BOOLEAN DEFAULT FALSE,
-    is_deleted_by_recipient BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMP DEFAULT NOW()
-);
-```
-
-### Communication Matrix
-
-- **Admin** ↔ All users (support, moderation)
-- **Vendor** ↔ Buyers (customer service)
-- **Buyers** ↔ Vendors (purchase inquiries)
-- **Users** ↔ Admin (support requests)
-
-Thread participants are sorted by UUID to ensure consistent ordering regardless of who initiates.
-
-## Common Development Tasks
-
-### Adding a New Route
-
-1. Create route in appropriate blueprint (`app/routes/`)
-2. Add CSRF token to all POST forms
-3. Add rate limiting decorator for sensitive operations
-4. Log security events to audit log (use `audit_service.py` functions)
-5. For admin routes: use `@admin_required` decorator
-6. For vendor routes: use `@vendor_required` decorator
-7. Restart app container: `docker restart marketplace_app`
-
-### Admin Routes Reference
-
-Key admin routes in `app/routes/admin.py`:
-- `POST /admin/user/<id>/unlock` — Unlock locked account
-- `POST /admin/user/<id>/approve-vendor` — Approve vendor registration
-- `POST /admin/user/<id>/activate` — Activate user
-- `POST /admin/user/<id>/deactivate` — Deactivate user
-- `POST /admin/csp-report-uri` — CSP violation reports (CSRF-exempt)
-- `GET /admin/system-health` — Real-time health dashboard (DB, Redis, disk, memory)
-
-### Adding a New Model
-
-1. Create model in `app/models/`
-2. Use UUID primary key: `id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid4)`
-3. Add `created_at` and `updated_at` timestamps
-4. Import in `app/models/__init__.py`
-5. Create database migration if needed
-6. Run migration: `docker exec marketplace_postgres psql ...`
-
-### Database Migrations
-
-This project uses **SQL migrations** (not Alembic):
-
-1. Create SQL file in `migrations/` directory:
-   ```sql
-   -- migrations/add_new_column.sql
-   ALTER TABLE users ADD COLUMN new_field VARCHAR(100);
-   ```
-
-2. Execute migration:
-   ```bash
-   docker exec marketplace_postgres psql -U marketplace -d marketplace -f /migrations/add_new_column.sql
-   ```
-
-3. Verify migration:
-   ```bash
-   docker exec marketplace_postgres psql -U marketplace -c "\d users"
-   ```
-
-### Template Updates
-
-Templates are in `app/templates/` with Jinja2 inheritance:
-
-- **Base template**: `base.html` (navbar, footer, flash messages, CSP nonce)
-- **Auth**: `auth/` (login, register, profile, pgp_keys)
-- **Messages**: `messages/` (inbox, thread, new_thread)
-- **Marketplace**: `marketplace/` (index, product detail)
-- **Admin**: `admin/` (dashboard, users, audit logs)
-
-**After template changes**: `docker restart marketplace_app`
-
-**Remember**: All inline scripts need `nonce="{{ csp_nonce() }}"`.
-
-### Environment Variables
-
-Critical environment variables in `.env`:
-
-```bash
-# Security (MUST be changed from defaults)
-SECRET_KEY=                 # Flask secret key (64 hex chars)
-DB_ENCRYPTION_KEY=          # Database field encryption (64 hex chars)
-PASSWORD_PEPPER=            # Argon2id pepper (64 hex chars)
-
-# Database
-POSTGRES_PASSWORD=          # PostgreSQL password
-REDIS_PASSWORD=             # Redis password
-
-# Redis URLs (must expand nested variables for Docker)
-REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0  # ❌ WRONG (Docker doesn't expand)
-REDIS_URL=redis://:actual_password@redis:6379/0    # ✅ CORRECT
-
-# Rate limiting
-RATELIMIT_STORAGE_URL=redis://:${REDIS_PASSWORD}@redis:6379/1  # Must be fully expanded
-```
-
-**Important**: Docker Compose does NOT expand nested environment variables like `${REDIS_PASSWORD}`. Always use the actual values in Redis URLs.
-
-## Testing
-
-### Automated Test Suite
-
-The project has a pytest test suite in `tests/`:
-
-```bash
-# Run all tests
-pytest tests/ -v
-
-# Run with coverage
-pytest tests/ -v --cov=app --cov-report=term-missing
-
-# Run specific test categories
-pytest tests/test_auth.py -v              # Authentication tests
-pytest tests/test_password_service.py -v  # Password hashing tests
-pytest tests/test_authorization.py -v     # Role-based access tests
-pytest tests/test_image_service.py -v     # Image processing tests
-```
-
-Test configuration is in `pytest.ini`. Tests use SQLite in-memory to avoid requiring PostgreSQL. PostgreSQL stored procedures are mocked in `tests/conftest.py`.
-
-### Security Header Verification
-
-```bash
-# Check CSP, HSTS, X-Frame-Options, X-Request-ID
-curl -I http://localhost:8080 | grep -E "Content-Security-Policy|Strict-Transport|X-Frame|X-Request-ID"
-```
-
-### Rate Limiting Verification
-
-```bash
-# Test login rate limit (should 429 after limit)
-for i in {1..10}; do
-    curl -X POST http://localhost:8080/auth/login \
-         -d "username=test&password=test" \
-         -o /dev/null -w "%{http_code}\n"
-done
-```
-
-### Open Redirect Prevention
-
-```bash
-# This should NOT redirect to evil.com
-curl -v 'http://localhost:8080/auth/login?next=http://evil.com' \
-  -d 'username=admin&password=password123' 2>&1 | grep Location
-```
-
-### Database Encryption Test
-
-```bash
-docker exec marketplace_postgres psql -U marketplace -d marketplace -c \
-  "SELECT pgp_sym_encrypt('test', current_setting('app.encryption_key'));"
-```
-
-### Security Scan
-
-```bash
-# Run automated security scan (pip-audit + bandit + config checks)
-./scripts/security-scan.sh
-```
+Tests in `tests/` use SQLite in-memory (configured in `conftest.py`). PostgreSQL stored procedures are not available — audit service calls should be mocked via the `mock_audit` fixture. Test fixtures provide `sample_user`, `sample_vendor`, `sample_admin`, and pre-authenticated clients (`auth_client`, `vendor_client`, `admin_client`).
 
 ### CI/CD
 
-GitHub Actions pipeline (`.github/workflows/ci.yml`) runs on push to `main`/`develop`:
-- **Lint**: flake8 + bandit static analysis
-- **Test**: pytest with PostgreSQL + Redis service containers
-- **Security**: pip-audit dependency scanning
+`.github/workflows/ci.yml`: 3 jobs — Lint (flake8 + bandit), Test (pytest with PostgreSQL + Redis services), Security (pip-audit).
 
-## Troubleshooting
+## Gotchas
 
-### "Bad Request" on Form Submission
-
-**Cause**: Missing CSRF token in form.
-
-**Fix**: Add `<input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>` to form.
-
-### "CSP Violation: script-src 'none'"
-
-**Cause**: Inline script missing nonce attribute.
-
-**Fix**: Add `nonce="{{ csp_nonce() }}"` to `<script>` tag.
-
-### Redis Authentication Errors
-
-**Cause**: Environment variables not expanded in `.env`.
-
-**Fix**: Replace `${REDIS_PASSWORD}` with actual password value in all Redis URLs.
-
-### Container Name Errors
-
-**Cause**: Using wrong container name (e.g., `marketplace-app` instead of `marketplace_app`).
-
-**Fix**: Always use underscore: `docker exec marketplace_app flask ...`
-
-### PGP Key Has Fingerprint = None
-
-**Cause**: Key uploaded without proper fingerprint extraction.
-
-**Fix**: Regenerate key using CLI:
-```bash
-docker exec marketplace_app flask generate-pgp-keys --username <username>
-```
-
-## Documentation References
-
-- **`docs/PASSWORD_SECURITY.md`**: Argon2id implementation details, threat model
-- **`docs/PGP_KEYS.md`**: RSA-4096 key generation, client integration
-- **`docs/MESSAGING.md`**: Encrypted messaging architecture, API endpoints
-- **`docs/ARCHITECTURE.md`**: System architecture, security layers
-- **`docs/SECURITY.md`**: Threat model, security controls, hardening checklist
-- **`LOGIN_CREDENTIALS.md`**: Default user accounts
-
-## Legal and Ethical Guidelines
-
-When working in this codebase:
-
-1. **Always include educational disclaimers** in new files
-2. **Never implement features for illegal activities** (enforce legal product categories)
-3. **Focus on defensive security** (blue team perspective)
-4. **Document security rationale** for all security-critical code
-5. **Maintain audit logging** for all security operations
-6. **Test security controls** before committing changes
-
-This is an educational security training environment. All features should enhance understanding of secure system architecture and defensive security practices.
+- **Docker Compose does NOT expand nested env vars** like `${REDIS_PASSWORD}` in `.env`. Use literal values in Redis URLs.
+- **Audit `log_security_event` parameter order**: `(event_type, severity, 'application', description, user_id, ip_address, metadata)` — must match `postgres/audit-logging.sql`.
+- **400 on POST with no message** = missing CSRF token.
+- **Login `next` parameter**: validated by `_is_safe_url()` in `routes/auth.py` to prevent open redirects.
