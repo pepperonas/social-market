@@ -28,9 +28,10 @@ This document describes the security controls and threat model of the secure mar
 #### Authentication
 - **Control**: Multi-factor authentication
 - **Implementation**:
-  - Bcrypt password hashing (12 rounds)
+  - Argon2id password hashing (64 MB memory-hard, with pepper)
   - TOTP 2FA support
-  - Account lockout after 5 failed attempts
+  - Account lockout after 5 failed attempts (admin unlock available)
+  - Open redirect prevention on login
 - **Benefit**: Strong authentication, resistance to brute force
 
 #### Session Management
@@ -40,6 +41,8 @@ This document describes the security controls and threat model of the secure mar
   - HTTPOnly, Secure, SameSite cookies
   - Session timeout after 1 hour
   - Session invalidation on logout
+  - Session invalidation on password change (scans & deletes other sessions)
+  - Terminate all sessions from security settings
 - **Benefit**: Resistance to session hijacking
 
 #### Input Validation
@@ -62,7 +65,8 @@ This document describes the security controls and threat model of the secure mar
 #### XSS Prevention
 - **Control**: Cross-Site Scripting mitigation
 - **Implementation**:
-  - Strict Content Security Policy
+  - Strict Content Security Policy (nonce-based for scripts)
+  - CSP violation reporting endpoint (`/admin/csp-report-uri`)
   - Template auto-escaping (Jinja2)
   - No JavaScript execution (Tor compatibility)
 - **Benefit**: Prevention of XSS attacks
@@ -84,14 +88,19 @@ This document describes the security controls and threat model of the secure mar
   - pgcrypto extension
   - AES-256 encryption
   - Encrypted fields: messages, addresses
-- **Benefit**: Data confidentiality at rest
+  - SSL connections (`sslmode: prefer`)
+- **Benefit**: Data confidentiality at rest and in transit
 
 #### Password Security
 - **Control**: Strong password hashing
 - **Implementation**:
-  - Bcrypt algorithm
-  - Cost factor: 12
-  - Password policy enforcement
+  - Argon2id algorithm (Password Hashing Competition winner)
+  - Memory cost: 64 MB (GPU/ASIC resistant)
+  - Time cost: 3 iterations, Parallelism: 4 threads
+  - Server-side pepper from environment variable
+  - Automatic rehashing on parameter changes
+  - Legacy hash (bcrypt/werkzeug) migration on login
+  - Password policy enforcement (length, complexity)
 - **Benefit**: Resistance to password cracking
 
 #### PGP Encryption
@@ -159,9 +168,12 @@ This document describes the security controls and threat model of the secure mar
 #### Health Monitoring
 - **Control**: Service availability monitoring
 - **Implementation**:
-  - Service health checks
-  - Disk usage monitoring
+  - Real-time health checks (DB latency, Redis ping, Celery workers)
+  - Disk usage monitoring via psutil
+  - Memory usage monitoring
   - Failed login tracking
+  - Rate-limit breach tracking
+  - Request-ID correlation (X-Request-ID from Nginx or auto-generated)
   - Automated alerting
 - **Benefit**: Availability assurance
 
@@ -361,9 +373,10 @@ This document describes the security controls and threat model of the secure mar
    - Authentication bypass
 
 2. **Vulnerability Scanning**
-   - Dependency scanning (pip-audit)
+   - Dependency scanning (`pip-audit`, integrated in CI/CD)
    - Container scanning
    - Port scanning
+   - Automated security scan script (`scripts/security-scan.sh`)
 
 3. **Code Review**
    - Manual security review

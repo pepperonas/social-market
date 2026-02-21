@@ -341,8 +341,20 @@ Thread participants are sorted by UUID to ensure consistent ordering regardless 
 1. Create route in appropriate blueprint (`app/routes/`)
 2. Add CSRF token to all POST forms
 3. Add rate limiting decorator for sensitive operations
-4. Log security events to audit log
-5. Restart app container: `docker restart marketplace_app`
+4. Log security events to audit log (use `audit_service.py` functions)
+5. For admin routes: use `@admin_required` decorator
+6. For vendor routes: use `@vendor_required` decorator
+7. Restart app container: `docker restart marketplace_app`
+
+### Admin Routes Reference
+
+Key admin routes in `app/routes/admin.py`:
+- `POST /admin/user/<id>/unlock` — Unlock locked account
+- `POST /admin/user/<id>/approve-vendor` — Approve vendor registration
+- `POST /admin/user/<id>/activate` — Activate user
+- `POST /admin/user/<id>/deactivate` — Deactivate user
+- `POST /admin/csp-report-uri` — CSP violation reports (CSRF-exempt)
+- `GET /admin/system-health` — Real-time health dashboard (DB, Redis, disk, memory)
 
 ### Adding a New Model
 
@@ -413,11 +425,31 @@ RATELIMIT_STORAGE_URL=redis://:${REDIS_PASSWORD}@redis:6379/1  # Must be fully e
 
 ## Testing
 
+### Automated Test Suite
+
+The project has a pytest test suite in `tests/`:
+
+```bash
+# Run all tests
+pytest tests/ -v
+
+# Run with coverage
+pytest tests/ -v --cov=app --cov-report=term-missing
+
+# Run specific test categories
+pytest tests/test_auth.py -v              # Authentication tests
+pytest tests/test_password_service.py -v  # Password hashing tests
+pytest tests/test_authorization.py -v     # Role-based access tests
+pytest tests/test_image_service.py -v     # Image processing tests
+```
+
+Test configuration is in `pytest.ini`. Tests use SQLite in-memory to avoid requiring PostgreSQL. PostgreSQL stored procedures are mocked in `tests/conftest.py`.
+
 ### Security Header Verification
 
 ```bash
-# Check CSP, HSTS, X-Frame-Options
-curl -I http://localhost:8080 | grep -E "Content-Security-Policy|Strict-Transport|X-Frame"
+# Check CSP, HSTS, X-Frame-Options, X-Request-ID
+curl -I http://localhost:8080 | grep -E "Content-Security-Policy|Strict-Transport|X-Frame|X-Request-ID"
 ```
 
 ### Rate Limiting Verification
@@ -431,12 +463,34 @@ for i in {1..10}; do
 done
 ```
 
+### Open Redirect Prevention
+
+```bash
+# This should NOT redirect to evil.com
+curl -v 'http://localhost:8080/auth/login?next=http://evil.com' \
+  -d 'username=admin&password=password123' 2>&1 | grep Location
+```
+
 ### Database Encryption Test
 
 ```bash
 docker exec marketplace_postgres psql -U marketplace -d marketplace -c \
   "SELECT pgp_sym_encrypt('test', current_setting('app.encryption_key'));"
 ```
+
+### Security Scan
+
+```bash
+# Run automated security scan (pip-audit + bandit + config checks)
+./scripts/security-scan.sh
+```
+
+### CI/CD
+
+GitHub Actions pipeline (`.github/workflows/ci.yml`) runs on push to `main`/`develop`:
+- **Lint**: flake8 + bandit static analysis
+- **Test**: pytest with PostgreSQL + Redis service containers
+- **Security**: pip-audit dependency scanning
 
 ## Troubleshooting
 

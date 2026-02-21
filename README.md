@@ -157,11 +157,13 @@ Internet (Tor)
   - OpenPGP standard compatible
   - Strong passphrase validation
   - No server-side key storage
-- **Security Headers:** CSP, HSTS, X-Frame-Options, etc.
+- **Security Headers:** CSP (nonce-based, with violation reporting), HSTS, X-Frame-Options, X-Request-ID
 - **Rate Limiting:** Multi-tier (general, login, registration, PGP: 3/hour)
 - **CSRF Protection:** Token-based for all state-changing operations
 - **Input Validation:** SQLAlchemy ORM, Werkzeug sanitization
-- **Session Security:** HTTPOnly, Secure, SameSite cookies
+- **Session Security:** HTTPOnly, Secure, SameSite cookies, session invalidation on password change
+- **Open Redirect Prevention:** URL validation on login redirects
+- **DB SSL:** `sslmode: prefer` for database connections
 
 ### Database Security
 - **Least Privilege:** App user has minimal permissions
@@ -233,11 +235,12 @@ Internet (Tor)
 - See `docs/MESSAGING.md` for complete documentation
 
 ### Admin Dashboard
-- User management
+- User management (activate/deactivate, unlock locked accounts, approve vendors)
 - Transaction monitoring
-- Security alerts dashboard
-- System health checks
-- Audit log viewer
+- Security alerts dashboard (with rate-limit breach tracking)
+- Real-time system health checks (DB latency, Redis, disk, memory, Celery)
+- Audit log viewer (auth, security, admin, general)
+- CSP violation reporting
 
 ## Backup & Recovery
 
@@ -327,8 +330,37 @@ curl --socks5-hostname localhost:9050 http://$ONION
 
 ### Run tests
 ```bash
-docker-compose exec app pytest
+# Run full test suite
+docker-compose exec app pytest tests/ -v
+
+# Run with coverage
+docker-compose exec app pytest tests/ -v --cov=app --cov-report=term-missing
+
+# Run specific test file
+docker-compose exec app pytest tests/test_auth.py -v
+
+# Run locally (uses SQLite in-memory)
+cd secure-marketplace && pytest tests/ -v
 ```
+
+### Security Scanning
+```bash
+# Run automated security scan
+./scripts/security-scan.sh
+
+# Dependency vulnerability scan
+pip-audit -r app/requirements.txt
+```
+
+### CI/CD Pipeline
+
+The project includes a GitHub Actions CI/CD pipeline (`.github/workflows/ci.yml`) with three jobs:
+
+| Job | Tools | Purpose |
+|-----|-------|---------|
+| **Lint** | flake8, bandit | Code quality + security static analysis |
+| **Test** | pytest (PostgreSQL + Redis) | Full test suite with coverage |
+| **Security** | pip-audit | Dependency vulnerability scanning |
 
 ### Access PostgreSQL
 ```bash
