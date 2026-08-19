@@ -47,6 +47,30 @@
 
 ---
 
+## 🌐 Live demo
+
+**[socialmarket.celox.io](https://socialmarket.celox.io)** — a running instance you can log
+into and click through while reading the code.
+
+| Role | Username | Password |
+|---|---|---|
+| Buyer | `buyer1` … `buyer10` | `Password123!` |
+| Vendor | `vendor1` … `vendor5` | `Password123!` |
+| Admin | — | *not published* |
+
+**Read this before you poke at it:**
+
+- The data is **disposable and fictional**. No real transactions, no real personal data,
+  no real payments. It is reset whenever it needs to be.
+- The demo accounts above are **public on purpose** — being able to look around *is* the
+  teaching value. The admin account deliberately is not, so the admin surface stays closed.
+- It is `noindex, nofollow` and is **not** a hardened production system. The README section
+  below explains exactly what it is not.
+- Please do not run automated scanners or load against it. If you want to attack something,
+  clone the repo and attack your own copy — that is what it is for, and you get a debugger.
+
+---
+
 ## 🔵 What this is for
 
 This repository exists so that **defenders can read a complete, non-trivial application
