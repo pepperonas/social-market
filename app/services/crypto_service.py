@@ -4,11 +4,10 @@ Crypto Service
 Purpose: Centralized cryptographic operations
 """
 
-import os
 import secrets
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from flask import current_app
 
 
@@ -31,7 +30,10 @@ class CryptoService:
         key = key.ljust(32, b'0')[:32]
 
         # Derive key using PBKDF2
-        kdf = PBKDF2(
+        # NOTE: the class is PBKDF2HMAC. This module previously imported a
+        # non-existent `PBKDF2`, so every call raised ImportError -- unnoticed
+        # because nothing in the app called CryptoService.
+        kdf = PBKDF2HMAC(
             algorithm=hashes.SHA256(),
             length=32,
             salt=b'marketplace_salt',  # In production, use random salt

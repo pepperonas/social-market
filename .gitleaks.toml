@@ -1,0 +1,29 @@
+# Gitleaks configuration
+#
+# Context: this repository is a security *teaching* environment. Its seed
+# credentials are public on purpose and documented in LOGIN_CREDENTIALS.md.
+# The allowlist below exists so those documented, deliberately-public values do
+# not drown out a real finding.
+
+title = "Social Market secret scan"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Documented training credentials and placeholders"
+
+paths = [
+  '''\.env\.example$''',
+  '''LOGIN_CREDENTIALS\.md$''',
+]
+
+regexes = [
+  # Deliberately public seed credentials for the training accounts
+  '''Password123!''',
+  '''ChangeMe123!''',
+  # Placeholders in the example environment file
+  '''CHANGE_ME_[A-Z_]+''',
+  # Test pepper used by the suite
+  '''a{32,}''',
+]

@@ -6,7 +6,7 @@ Purpose: Product listings with security and metadata handling
 
 import uuid
 from datetime import datetime
-from sqlalchemy.dialects.postgresql import UUID
+from app.models.types import UUID
 from sqlalchemy import Index
 
 from app import db
@@ -107,11 +107,22 @@ class Product(db.Model):
         self.views += 1
         db.session.commit()
 
-    def record_sale(self):
-        """Record a sale"""
-        self.sales += 1
-        if self.quantity > 0 and not self.is_digital:
-            self.quantity -= 1
+    def record_sale(self, quantity=1):
+        """
+        Record a sale of ``quantity`` units.
+
+        Previously this always decremented stock by exactly 1 regardless of the
+        order quantity, so an order for 10 units reduced stock by 1 (overselling),
+        and ``sales`` counted orders rather than units sold.
+
+        Args:
+            quantity: Number of units sold
+        """
+        quantity = max(1, int(quantity or 1))
+
+        self.sales += quantity
+        if not self.is_digital:
+            self.quantity = max(0, self.quantity - quantity)
         db.session.commit()
 
     def is_in_stock(self):
@@ -311,6 +322,7 @@ class ProductReview(db.Model):
 # =============================================================================
 
 from sqlalchemy import event
+
 
 @event.listens_for(Product, 'before_insert')
 @event.listens_for(Product, 'before_update')

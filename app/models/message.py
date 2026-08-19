@@ -6,7 +6,7 @@ Purpose: PGP-encrypted messaging system for buyer-vendor communication
 
 import uuid
 from datetime import datetime, timedelta
-from sqlalchemy.dialects.postgresql import UUID
+from app.models.types import UUID
 from sqlalchemy import Index
 
 from app import db
@@ -428,6 +428,7 @@ class Message(db.Model):
 
 from sqlalchemy import event
 
+
 @event.listens_for(Message, 'before_insert')
 def set_message_expiry(mapper, connection, target):
     """Set message expiry date before insert"""
@@ -448,8 +449,9 @@ def update_thread_timestamp(mapper, connection, target):
             "WHERE id = :thread_id"
         ),
         {
+            # Bind ids as str: psycopg2 adapts uuid.UUID, other drivers do not.
             'timestamp': target.created_at,
-            'thread_id': target.thread_id
+            'thread_id': str(target.thread_id)
         }
     )
 
@@ -464,9 +466,9 @@ def audit_message_sent(mapper, connection, target):
             "VALUES (:message_id, :sender_id, :recipient_id, 'sent', :encrypted)"
         ),
         {
-            'message_id': target.id,
-            'sender_id': target.sender_id,
-            'recipient_id': target.recipient_id,
+            'message_id': str(target.id),
+            'sender_id': str(target.sender_id),
+            'recipient_id': str(target.recipient_id),
             'encrypted': target.is_encrypted
         }
     )

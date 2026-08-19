@@ -6,7 +6,8 @@ Purpose: Secure communication between users with mandatory encryption
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
 from flask_login import login_required, current_user
-from sqlalchemy import or_, and_
+from sqlalchemy import or_, and_, func
+from sqlalchemy.orm import joinedload
 import uuid
 
 from app import db, limiter
@@ -26,28 +27,84 @@ def inbox():
     Returns threads where user is participant_1 or participant_2
     Supports Admin, Vendor, and Buyer communications
     """
-    # Get all threads where user is a participant
-    threads = MessageThread.query.filter(
+    # Eager-load both participants: the template shows the other party for every
+    # row, which would otherwise be one extra SELECT per thread.
+    threads = MessageThread.query.options(
+        joinedload(MessageThread.participant_1),
+        joinedload(MessageThread.participant_2),
+    ).filter(
         or_(
             MessageThread.participant_1_id == current_user.id,
             MessageThread.participant_2_id == current_user.id
         )
     ).order_by(MessageThread.last_message_at.desc()).all()
 
-    # Calculate unread counts for each thread
-    threads_data = []
-    for thread in threads:
-        other_participant = thread.get_participant(current_user.id)
-        unread_count = thread.get_unread_count(current_user.id)
+    # The naive version issued four queries per thread (participant, unread
+    # count, message count, last message). Everything below is batched, so the
+    # number of queries no longer grows with the number of threads.
+    thread_ids = [t.id for t in threads]
+    unread_counts = _unread_counts_by_thread(thread_ids, current_user.id)
+    last_messages = _last_message_by_thread(thread_ids)
 
-        threads_data.append({
+    threads_data = [
+        {
             'thread': thread,
-            'participant': other_participant,
-            'unread_count': unread_count,
-            'last_message': thread.messages.first() if thread.messages.count() > 0 else None
-        })
+            'participant': thread.get_participant(current_user.id),
+            'unread_count': unread_counts.get(thread.id, 0),
+            'last_message': last_messages.get(thread.id),
+        }
+        for thread in threads
+    ]
 
     return render_template('messages/inbox.html', threads=threads_data)
+
+
+def _unread_counts_by_thread(thread_ids, user_id):
+    """Unread message count per thread in a single grouped query."""
+    if not thread_ids:
+        return {}
+
+    rows = db.session.query(
+        Message.thread_id, func.count(Message.id)
+    ).filter(
+        Message.thread_id.in_(thread_ids),
+        Message.recipient_id == user_id,
+        Message.is_read == False,  # noqa: E712 - SQLAlchemy needs ==, not `not`
+    ).group_by(Message.thread_id).all()
+
+    return {thread_id: count for thread_id, count in rows}
+
+
+def _last_message_by_thread(thread_ids):
+    """
+    Newest message per thread.
+
+    Uses a grouped max(created_at) subquery joined back onto messages, which
+    works on both PostgreSQL and SQLite (DISTINCT ON would be PostgreSQL only).
+    """
+    if not thread_ids:
+        return {}
+
+    newest = db.session.query(
+        Message.thread_id.label('thread_id'),
+        func.max(Message.created_at).label('created_at'),
+    ).filter(
+        Message.thread_id.in_(thread_ids)
+    ).group_by(Message.thread_id).subquery()
+
+    rows = db.session.query(Message).join(
+        newest,
+        and_(
+            Message.thread_id == newest.c.thread_id,
+            Message.created_at == newest.c.created_at,
+        )
+    ).all()
+
+    # Ties on created_at can yield more than one row per thread; keep the first.
+    last = {}
+    for message in rows:
+        last.setdefault(message.thread_id, message)
+    return last
 
 
 @messages_bp.route('/thread/<uuid:thread_id>')
@@ -325,15 +382,24 @@ def decrypt_message():
     - Decryption happens server-side but key is not stored
     - Only recipient can decrypt
     """
-    message_id = request.json.get('message_id')
-    private_key = request.json.get('private_key')
-    passphrase = request.json.get('passphrase', '')
+    # silent=True: a wrong/missing Content-Type would otherwise raise instead of
+    # returning a clean 400.
+    payload = request.get_json(silent=True) or {}
+    message_id = payload.get('message_id')
+    private_key = payload.get('private_key')
+    passphrase = payload.get('passphrase', '')
 
     if not message_id or not private_key:
         return jsonify({'success': False, 'error': 'Missing required fields'}), 400
 
-    # Get message
-    message = Message.query.get_or_404(message_id)
+    # Validate the id before querying: a malformed UUID reached the database and
+    # surfaced as a 500 instead of a 404.
+    try:
+        message_uuid = uuid.UUID(str(message_id))
+    except (ValueError, AttributeError, TypeError):
+        return jsonify({'success': False, 'error': 'Invalid message id'}), 400
+
+    message = Message.query.get_or_404(message_uuid)
 
     # Verify user is recipient
     if str(message.recipient_id) != str(current_user.id):

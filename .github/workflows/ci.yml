@@ -24,9 +24,8 @@ jobs:
           pip install flake8 bandit
 
       - name: Run flake8
-        run: |
-          flake8 app/ --max-line-length=120 --exclude=__pycache__,migrations \
-            --ignore=E501,W503,E402
+        # Settings live in .flake8 so local runs and CI cannot drift apart.
+        run: flake8 app/ tests/
 
       - name: Run bandit (security linter)
         run: |
@@ -106,6 +105,22 @@ jobs:
           name: coverage-report
           path: coverage.xml
 
+  secrets:
+    name: Secret Scan
+    runs-on: ubuntu-latest
+    steps:
+      # Full history: this repository once carried a live password pepper for 19
+      # commits inside a documentation file. Scanning only the tip would have
+      # missed it. See docs/PASSWORD_SECURITY.md.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Scan git history for secrets
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   security:
     name: Security Scan
     runs-on: ubuntu-latest
@@ -121,5 +136,6 @@ jobs:
         run: pip install pip-audit
 
       - name: Run pip-audit
-        run: |
-          pip-audit -r app/requirements.txt --desc || true
+        # No `|| true`: a dependency advisory must fail the job, otherwise the
+        # scan reports nothing and nobody notices.
+        run: pip-audit -r app/requirements.txt --desc

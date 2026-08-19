@@ -70,7 +70,7 @@ def init_admin():
     db.session.add(admin)
     db.session.commit()
 
-    click.echo(f'✓ Admin user created')
+    click.echo('✓ Admin user created')
     click.echo(f'  Username: {admin_username}')
     click.echo(f'  Password: {admin_password}')
     click.echo('  ⚠️  CHANGE PASSWORD IMMEDIATELY!')
@@ -146,10 +146,8 @@ def generate_secret(length):
 @click.option('--dry-run', is_flag=True, help='Show what would be deleted')
 def cleanup_old_data(days, dry_run):
     """Clean up old messages and rate limit logs"""
-    from datetime import datetime, timedelta
+    from datetime import datetime
     from app.models.message import Message
-
-    cutoff_date = datetime.utcnow() - timedelta(days=days)
 
     # Count expired messages
     expired_messages = Message.query.filter(
@@ -300,7 +298,6 @@ def generate_pgp_keys(username, passphrase, save_private):
     from app.services.pgp_service import PGPService
     from app.services.audit_service import log_pgp_key_event
     from datetime import datetime
-    import os
 
     # Get user
     user = User.query.filter_by(username=username).first()
@@ -364,10 +361,10 @@ def generate_pgp_keys(username, passphrase, save_private):
         }
     )
 
-    click.echo(f'✅ PGP keys generated successfully!')
-    click.echo(f'✓ Public key saved to database')
+    click.echo('✅ PGP keys generated successfully!')
+    click.echo('✓ Public key saved to database')
     click.echo(f'✓ Key fingerprint: {fingerprint}')
-    click.echo(f'✓ Audit log created')
+    click.echo('✓ Audit log created')
 
     # Display public key
     click.echo('\n📋 Public Key:')
@@ -472,10 +469,10 @@ def upload_pgp_key(username, key_file):
     )
 
     click.echo(f'✅ PGP public key uploaded for {username}')
-    click.echo(f'✓ Key saved to database')
+    click.echo('✓ Key saved to database')
     if fingerprint:
         click.echo(f'✓ Key fingerprint: {fingerprint}')
-    click.echo(f'✓ Audit log created')
+    click.echo('✓ Audit log created')
 
 
 @click.command('show-pgp-audit')
@@ -484,7 +481,6 @@ def upload_pgp_key(username, key_file):
 def show_pgp_audit(username, limit):
     """Show PGP key audit log"""
     from sqlalchemy import text
-    import json
 
     click.echo('🔍 PGP Key Audit Log')
     click.echo('=' * 100)

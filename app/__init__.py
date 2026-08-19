@@ -16,7 +16,6 @@ from flask_limiter.util import get_remote_address
 from flask_talisman import Talisman
 from flask_wtf.csrf import CSRFProtect
 from celery import Celery
-import redis
 
 # Initialize extensions
 db = SQLAlchemy()
@@ -27,7 +26,8 @@ csrf = CSRFProtect()
 limiter = Limiter(
     key_func=get_remote_address,
     default_limits=["10 per second"],
-    storage_uri=os.getenv('RATELIMIT_STORAGE_URL', 'redis://:***REMOVED-REDIS-PASSWORD***@redis:6379/1')
+    # No credentials in source. Real URL (incl. password) comes from RATELIMIT_STORAGE_URL.
+    storage_uri=os.getenv('RATELIMIT_STORAGE_URL', 'redis://redis:6379/1')
 )
 celery = Celery()
 
@@ -48,9 +48,26 @@ def create_app(config_name=None):
     from app.config import Config
     app.config.from_object(Config)
 
-    # Override with instance config if exists
+    # Override with environment-specific config.
+    # NOTE: config.py exports a ``config`` dict; there is no module attribute
+    # named e.g. ``testing``, so from_object('app.config.testing') would fail --
+    # which meant create_app('testing') raised and no named config ever applied.
+    #
+    # Gunicorn calls the factory as ``create_app()``, so the environment selects
+    # the config. This is opt-in via APP_CONFIG rather than reusing FLASK_ENV:
+    # ProductionConfig additionally sets WTF_CSRF_SSL_STRICT, which needs HTTPS
+    # end to end and would break form posts on the plain-HTTP training setup.
+    if config_name is None:
+        config_name = os.environ.get('APP_CONFIG')
+
     if config_name:
-        app.config.from_object(f'app.config.{config_name}')
+        from app.config import config as config_map
+        if config_name not in config_map:
+            raise ValueError(
+                f'Unknown config name {config_name!r}. '
+                f'Available: {", ".join(sorted(config_map))}'
+            )
+        app.config.from_object(config_map[config_name])
 
     # Initialize extensions
     initialize_extensions(app)
@@ -104,7 +121,6 @@ def initialize_extensions(app):
 
     # Session management - configure Redis connection
     import redis as redis_lib
-    import secrets
     app.config['SESSION_REDIS'] = redis_lib.from_url(app.config['REDIS_URL'])
     session.init_app(app)
 
@@ -202,22 +218,30 @@ def register_error_handlers(app):
 def setup_logging(app):
     """Setup application logging"""
 
-    if not app.debug:
-        # File handler (directory created by Dockerfile)
-        from logging.handlers import RotatingFileHandler
-        file_handler = RotatingFileHandler(
-            '/var/log/marketplace/app.log',
-            maxBytes=10240000,
-            backupCount=10
-        )
-        file_handler.setFormatter(logging.Formatter(
-            '%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]'
-        ))
-        file_handler.setLevel(logging.INFO)
-        app.logger.addHandler(file_handler)
+    if app.debug or app.config.get('TESTING'):
+        return
 
-        app.logger.setLevel(logging.INFO)
-        app.logger.info('Marketplace training environment startup')
+    formatter = logging.Formatter(
+        '%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]'
+    )
+
+    # File handler (directory created by Dockerfile). Outside the container the
+    # path does not exist -- fall back to stderr instead of failing app startup.
+    log_path = app.config.get('LOG_FILE', '/var/log/marketplace/app.log')
+    try:
+        from logging.handlers import RotatingFileHandler
+        os.makedirs(os.path.dirname(log_path), exist_ok=True)
+        handler = RotatingFileHandler(log_path, maxBytes=10240000, backupCount=10)
+    except OSError as exc:
+        handler = logging.StreamHandler()
+        app.logger.warning('File logging unavailable (%s); logging to stderr', exc)
+
+    handler.setFormatter(formatter)
+    handler.setLevel(logging.INFO)
+    app.logger.addHandler(handler)
+
+    app.logger.setLevel(logging.INFO)
+    app.logger.info('Marketplace training environment startup')
 
 
 def register_shell_context(app):

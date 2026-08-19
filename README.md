@@ -1,30 +1,131 @@
-# EDUCATIONAL SECURITY TRAINING ENVIRONMENT
+<div align="center">
 
-⚠️ **IMPORTANT LEGAL NOTICE** ⚠️
+# 🔵 Social Market — Blue Team Training Environment
 
-This is a **LOCAL, ISOLATED** training environment for IT security education, architecture study, and defensive security research.
+**A deliberately well-built marketplace you are meant to take apart, read, and learn defence from.**
 
-## Purpose
+*Defense-in-depth, written out in full — then audited, broken, and fixed in the open.*
 
-- ✅ Understanding secure system architecture and hardening
-- ✅ Learning defense-in-depth security principles
-- ✅ Studying encryption, authentication, and access control
-- ✅ Training for security professionals and law enforcement
-- ✅ Educational demonstration of security best practices
+<!-- Build & quality -->
+[![CI](https://github.com/pepperonas/social-market/actions/workflows/ci.yml/badge.svg)](https://github.com/pepperonas/social-market/actions/workflows/ci.yml)
+[![Tests](https://img.shields.io/badge/tests-278%20passing-brightgreen)](tests/)
+[![Coverage](https://img.shields.io/badge/coverage-45%25-yellow)](tests/)
+[![Lint](https://img.shields.io/badge/flake8-0%20issues-brightgreen)](.flake8)
+[![Bandit](https://img.shields.io/badge/bandit-clean-brightgreen)](.github/workflows/ci.yml)
+[![pip-audit](https://img.shields.io/badge/pip--audit-enforced-brightgreen)](.github/workflows/ci.yml)
+[![Secret scan](https://img.shields.io/badge/gitleaks-full%20history-brightgreen)](.gitleaks.toml)
 
-## NOT FOR
+<!-- Stack -->
+[![Python](https://img.shields.io/badge/python-3.11-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![Flask](https://img.shields.io/badge/Flask-3.0-000000?logo=flask&logoColor=white)](https://flask.palletsprojects.com/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![Redis](https://img.shields.io/badge/Redis-7-DC382D?logo=redis&logoColor=white)](https://redis.io/)
+[![Docker](https://img.shields.io/badge/Docker-compose-2496ED?logo=docker&logoColor=white)](https://docs.docker.com/compose/)
+[![SQLAlchemy](https://img.shields.io/badge/SQLAlchemy-2.0-D71F00?logo=sqlalchemy&logoColor=white)](https://www.sqlalchemy.org/)
+[![Gunicorn](https://img.shields.io/badge/Gunicorn-21-499848?logo=gunicorn&logoColor=white)](https://gunicorn.org/)
+[![Nginx](https://img.shields.io/badge/Nginx-reverse%20proxy-009639?logo=nginx&logoColor=white)](nginx/)
 
-- ❌ Production use or public deployment
-- ❌ Illegal activities of any kind
-- ❌ Processing real transactions or sensitive data
-- ❌ Internet-facing deployment without proper authorization
+<!-- Security posture -->
+[![Argon2id](https://img.shields.io/badge/passwords-Argon2id%20%2B%20pepper-6A1B9A)](docs/PASSWORD_SECURITY.md)
+[![PGP](https://img.shields.io/badge/messaging-RSA--4096%20PGP-0F9D58)](docs/PGP_KEYS.md)
+[![CSP](https://img.shields.io/badge/CSP-nonce--based-informational)](app/__init__.py)
+[![CSRF](https://img.shields.io/badge/CSRF-enforced-informational)](app/__init__.py)
+[![2FA](https://img.shields.io/badge/2FA-TOTP%20%2B%20replay%20guard-informational)](app/models/user.py)
+[![At rest](https://img.shields.io/badge/at%20rest-pgcrypto-blue)](postgres/)
+[![Tor](https://img.shields.io/badge/Tor-hidden%20service-7D4698?logo=torbrowser&logoColor=white)](tor/)
+[![OWASP](https://img.shields.io/badge/OWASP-Top%2010%20mapped-000000?logo=owasp&logoColor=white)](#-owasp-top-10-where-to-look)
 
-## Legal Context
+<!-- Project -->
+[![Purpose](https://img.shields.io/badge/purpose-blue%20team%20education-1E88E5)](#-what-this-is-for)
+[![Offensive use](https://img.shields.io/badge/offensive%20use-not%20supported-critical)](#%EF%B8%8F-what-this-is-not-for)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)](CONTRIBUTING.md)
+[![Security policy](https://img.shields.io/badge/security-policy-blue)](SECURITY.md)
+[![Maintained](https://img.shields.io/badge/maintained-yes-brightgreen)](https://github.com/pepperonas/social-market/commits/main)
 
-**Social Market**
-- Authorized security education material
-- For defensive security purposes only
-- Complies with security research best practices
+</div>
+
+---
+
+## 🔵 What this is for
+
+This repository exists so that **defenders can read a complete, non-trivial application
+end to end** — not a toy with three routes, and not a deliberately vulnerable app where
+every bug is planted and signposted.
+
+It is a marketplace because marketplaces are hard: money, escrow, private messages,
+shipping addresses, role separation, file uploads, and a strong incentive for everyone
+involved to cheat. Every one of those is a place where defence is *interesting*.
+
+**You are meant to:**
+
+| | |
+|---|---|
+| 📖 **Read the controls** | Argon2id + pepper, nonce-based CSP, TOTP with replay protection, encrypted shipping data, an escrow state machine, audit logging via stored procedures |
+| 🧪 **Read the tests** | 278 of them. They are written as *arguments*, not assertions — each says why a control matters and what breaks without it |
+| 🔍 **Read the audit** | [`docs/BUGFIX-PLAN.md`](docs/BUGFIX-PLAN.md) is a real security review of this codebase, with the real findings, in the order they were found |
+| 🛠 **Break it on purpose** | Revert a fix and watch which test screams. Every fix in the audit has a test that provably catches its regression |
+| 📉 **Study the failures** | The most valuable parts of this repo are the places where it *was wrong* — documented rather than quietly rewritten |
+
+### 🎓 Start here
+
+1. **[`docs/BUGFIX-PLAN.md`](docs/BUGFIX-PLAN.md)** — the security review. 13 findings, from an
+   authentication bypass to a test suite that had never once executed.
+2. **[`docs/PASSWORD_SECURITY.md`](docs/PASSWORD_SECURITY.md)** — includes a worked example of a
+   *real* secret that leaked through documentation for 19 commits.
+3. **[`tests/test_authorization_matrix.py`](tests/test_authorization_matrix.py)** — every role
+   against every protected route. Broken access control, made visible.
+4. **[`tests/test_query_performance.py`](tests/test_query_performance.py)** — N+1 queries as a
+   denial-of-service surface, pinned by counting SQL statements.
+
+### 🧠 Lessons this codebase teaches the hard way
+
+Not hypotheticals. Each one happened *here*, and the fix is in the history:
+
+- **A test suite that cannot run is worse than no test suite.** All 72 tests errored on setup
+  for months while CI reported the failure into a void. Four stacked defects, each hidden by
+  the one before it.
+- **Secrets leak through documentation.** The live password pepper sat in a Markdown file whose
+  own next line read *"never commit to git!"*.
+- **A green test can be green for the wrong reason.** One lockout test passed only because the
+  data it wrote was silently discarded — the control it "verified" did not exist.
+- **Order of checks is a security boundary.** `if 2fa_enabled` was evaluated before
+  `if account_is_active`, so deactivating an account did not deactivate it.
+- **Configuration that is never loaded enforces nothing.** A 12-character password policy sat
+  in config while the code checked for 8.
+- **Money is not a float.** `Decimal * float` raised `TypeError` in an insert listener, so every
+  real checkout failed — invisible, because nothing tested order creation.
+
+### 🗺 OWASP Top 10: where to look
+
+| OWASP category | Where it lives here |
+|---|---|
+| A01 Broken Access Control | [`test_authorization_matrix.py`](tests/test_authorization_matrix.py), `@admin_required` / `@vendor_required` |
+| A02 Cryptographic Failures | [`password_service.py`](app/services/password_service.py), [`crypto_service.py`](app/services/crypto_service.py), pgcrypto columns |
+| A03 Injection | Parameterised queries throughout; [`test_security_regressions.py`](tests/test_security_regressions.py) |
+| A04 Insecure Design | Escrow + order state machine ([`test_models_order.py`](tests/test_models_order.py)) |
+| A05 Security Misconfiguration | [`test_security_headers.py`](tests/test_security_headers.py), `.flake8`, CI |
+| A07 Auth Failures | [`test_two_factor.py`](tests/test_two_factor.py) — enrolment, replay, lockout |
+| A09 Logging Failures | [`audit_service.py`](app/services/audit_service.py) + PostgreSQL stored procedures |
+
+---
+
+## ⚠️ What this is NOT for
+
+This is a **defensive** teaching artifact. To be unambiguous:
+
+- ❌ **Not a template for running a real marketplace.** It is not hardened for adversarial
+  production traffic, and it never will be.
+- ❌ **Not for illegal activity of any kind.** No feature here exists to enable one.
+- ❌ **Not for processing real transactions, real payments, or real personal data.**
+- ❌ **Not an offensive tool.** There is no exploit code here, and contributions adding any
+  will be declined.
+
+Any public instance of this project is a **read-only teaching demo** with disposable data.
+Treat every credential in this repository as public knowledge, because it is.
+
+**Legal context:** authorised security education material, published for defensive
+security purposes.
 
 ---
 
@@ -117,9 +218,9 @@ This project implements a fully-featured, security-hardened marketplace platform
 
 | Role | Username | Password |
 |------|----------|----------|
-| **Admin** | `admin` | `password123` |
-| **Buyers** | `buyer1` - `buyer10` | `password123` |
-| **Vendors** | `vendor1` - `vendor5` | `password123` |
+| **Admin** | `admin` | `Password123!` |
+| **Buyers** | `buyer1` - `buyer10` | `Password123!` |
+| **Vendors** | `vendor1` - `vendor5` | `Password123!` |
 
 ⚠️ **Change passwords immediately in production environments!**
 

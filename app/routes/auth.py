@@ -4,17 +4,27 @@ Authentication Routes
 Purpose: User authentication with security features
 """
 
+from datetime import datetime
 from urllib.parse import urlparse
 
 from flask import Blueprint, render_template, redirect, url_for, flash, request, session, current_app
 from flask_login import login_user, logout_user, login_required, current_user
-from werkzeug.security import check_password_hash
 from sqlalchemy import text
 
 from app import db, limiter
 from app.models.user import User
 
 auth_bp = Blueprint('auth', __name__)
+
+# How long a half-finished 2FA login stays valid
+PENDING_2FA_TIMEOUT_SECONDS = 300
+
+
+def _clear_pending_2fa():
+    """Drop all pending-2FA state from the session."""
+    session.pop('pending_2fa_user_id', None)
+    session.pop('pending_2fa_remember', None)
+    session.pop('pending_2fa_started', None)
 
 
 @auth_bp.route('/login', methods=['GET', 'POST'])
@@ -58,18 +68,22 @@ def login():
 
             # Verify password
             if user.check_password(password):
+                # Check if account is active.
+                # This MUST come before the 2FA branch: a deactivated account with
+                # 2FA enabled would otherwise be handed to verify_2fa and log in,
+                # bypassing deactivation entirely.
+                if not user.is_active:
+                    _log_auth_event(username, user.id, 'login_failed_inactive', client_ip)
+                    flash('Account is not active', 'error')
+                    return render_template('auth/login.html')
+
                 # Check if 2FA is enabled
                 if user.two_factor_enabled:
                     # Store user ID in session for 2FA verification
                     session['pending_2fa_user_id'] = str(user.id)
                     session['pending_2fa_remember'] = remember
+                    session['pending_2fa_started'] = datetime.utcnow().timestamp()
                     return redirect(url_for('auth.verify_2fa'))
-
-                # Check if account is active
-                if not user.is_active:
-                    _log_auth_event(username, user.id, 'login_failed_inactive', client_ip)
-                    flash('Account is not active', 'error')
-                    return render_template('auth/login.html')
 
                 # Successful login
                 login_user(user, remember=remember)
@@ -126,6 +140,21 @@ def verify_2fa():
         session.pop('pending_2fa_user_id', None)
         return redirect(url_for('auth.login'))
 
+    # Re-check on every step: the pending state lives in the session and the
+    # account may have been deactivated or locked since the password was entered.
+    if not user.is_active or user.is_account_locked():
+        _clear_pending_2fa()
+        _log_auth_event(user.username, user.id, 'login_failed_inactive', request.remote_addr)
+        flash('Account is not active', 'error')
+        return redirect(url_for('auth.login'))
+
+    # Pending 2FA must not stay valid indefinitely
+    started = session.get('pending_2fa_started')
+    if started and (datetime.utcnow().timestamp() - started) > PENDING_2FA_TIMEOUT_SECONDS:
+        _clear_pending_2fa()
+        flash('Two-factor verification timed out. Please log in again.', 'error')
+        return redirect(url_for('auth.login'))
+
     if request.method == 'POST':
         token = request.form.get('token', '').strip()
 
@@ -145,8 +174,7 @@ def verify_2fa():
                            session.get('session_id'))
 
             # Clean up session
-            session.pop('pending_2fa_user_id', None)
-            session.pop('pending_2fa_remember', None)
+            _clear_pending_2fa()
 
             flash('Login successful', 'success')
 
@@ -338,9 +366,8 @@ def enable_2fa():
             flash('Verification code is required', 'error')
             return render_template('auth/enable_2fa.html')
 
-        # Verify token
-        if current_user.verify_totp(token):
-            # 2FA successfully enabled
+        # Only now, after the user proved they hold the secret, is 2FA switched on
+        if current_user.confirm_two_factor(token):
             flash('2FA enabled successfully', 'success')
             _log_auth_event(current_user.username, current_user.id, '2fa_enabled',
                            request.remote_addr)
@@ -348,8 +375,8 @@ def enable_2fa():
         else:
             flash('Invalid verification code', 'error')
 
-    # Generate QR code
-    provisioning_uri = current_user.enable_two_factor()
+    # Generate QR code. This only provisions a secret -- it does not enable 2FA.
+    provisioning_uri = current_user.begin_two_factor_setup()
 
     # Generate QR code for display
     import qrcode
@@ -418,7 +445,6 @@ def generate_pgp_key():
     - Keys not stored on server (user must download)
     """
     from app.services.pgp_service import PGPService
-    import json
 
     try:
         # Get form data
@@ -627,12 +653,22 @@ def _is_safe_url(target):
     """
     if not target:
         return False
+
+    # Browsers normalise backslashes to forward slashes, so "/\\evil.com" and
+    # "/\evil.com" leave the site even though urlparse reports no netloc.
+    if '\\' in target:
+        return False
+
     parsed = urlparse(target)
+
     # Allow only relative paths (no scheme/netloc) or same-host URLs
     if parsed.netloc:
         host = urlparse(request.host_url)
         return parsed.scheme in ('http', 'https') and parsed.netloc == host.netloc
-    return True
+
+    # A relative target must be rooted at a single slash; "//evil.com" is
+    # protocol-relative and would also leave the site.
+    return target.startswith('/') and not target.startswith('//')
 
 
 def _log_auth_event(username, user_id, action, ip_address, session_id=None, failure_reason=None):

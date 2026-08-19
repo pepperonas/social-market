@@ -71,8 +71,34 @@ A pepper is a secret, server-side value added to passwords before hashing. Unlik
 **Pepper Storage:**
 ```bash
 # .env file (never commit to git!)
-PASSWORD_PEPPER=***REMOVED-PEPPER-SEE-docs/PASSWORD_SECURITY.md***
+PASSWORD_PEPPER=<64 hex chars - generate your own, see below>
 ```
+
+> ### 🔵 Blue Team Lesson: this file used to leak the real pepper
+>
+> Until 2026-08-19 the line above contained the **live** pepper of this
+> deployment - committed to git, in a document whose very next words are
+> *"never commit to git!"*. It survived 19 commits because nobody diffed the
+> docs for secrets.
+>
+> **What this teaches:**
+> 1. **Secrets leak through documentation, not just code.** Secret scanners that
+>    only watch `*.py` and `.env` would have missed this entirely.
+> 2. **A rule written in prose enforces nothing.** The warning was right there.
+>    Only an automated check (pre-commit hook, CI secret scan) actually prevents it.
+> 3. **`.gitignore` is not a secret store.** `.env` was correctly ignored - and
+>    the secret still ended up in the repository through another path.
+> 4. **Rotate on exposure, do not just delete.** Removing the line from the
+>    working tree leaves it in every historical commit. Purging history *and*
+>    rotating the value are separate, both-required steps.
+>
+> **What was done here:** the value was replaced, the history was rewritten with
+> `git filter-repo`, and a `gitleaks` job now scans the full history on every
+> push (`.github/workflows/ci.yml`). The lesson stays; the secret does not.
+>
+> **Exercise:** run `git log -S'<some secret>' --all` against your own
+> repositories. Then add a scanner to CI so the next one is caught in seconds
+> instead of nineteen commits.
 
 **Generation:**
 ```bash

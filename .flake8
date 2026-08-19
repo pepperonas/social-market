@@ -1,0 +1,17 @@
+[flake8]
+max-line-length = 120
+exclude = __pycache__,migrations,.git,venv
+
+# extend-ignore (not ignore!): plain `ignore` REPLACES pycodestyle's default
+# ignore list, which silently re-enabled E121/E123/E126/E226/E704/W504 and made
+# the lint job fail on cosmetics.
+extend-ignore =
+    E501,
+    E402,
+    # SQLAlchemy filters require `column == False` / `== True`; `is`/`not` would
+    # build the wrong SQL, so this rule cannot be satisfied here.
+    E712,
+    # The codebase consistently aligns continuation lines under the opening
+    # paren; enforcing hanging indent would reflow ~70 call sites for no gain.
+    E127,
+    E128

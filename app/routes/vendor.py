@@ -4,7 +4,7 @@ Vendor Routes - Placeholder
 Purpose: Vendor dashboard and product management
 """
 
-from flask import Blueprint, render_template, redirect, url_for, flash, request
+from flask import Blueprint, render_template, redirect, url_for, flash, request, current_app
 from flask_login import login_required, current_user
 from functools import wraps
 from app import db
@@ -70,26 +70,25 @@ def orders():
     """Vendor orders list with filtering"""
     from app.models.order import Order
     from flask import request
-    
+
     # Get filter parameters
     status = request.args.get('status', '')
     page = request.args.get('page', 1, type=int)
-    
+
     # Build query
     query = Order.query.filter_by(vendor_id=current_user.id)
-    
+
     if status:
         query = query.filter_by(status=status)
-    
+
     # Paginate results
     orders_pagination = query.order_by(Order.created_at.desc()).paginate(
         page=page,
         per_page=20,
         error_out=False
     )
-    
+
     # Get order statistics
-    from sqlalchemy import func
     stats = {
         'pending': Order.query.filter_by(vendor_id=current_user.id, status='pending').count(),
         'paid': Order.query.filter_by(vendor_id=current_user.id, status='paid').count(),
@@ -97,9 +96,9 @@ def orders():
         'completed': Order.query.filter_by(vendor_id=current_user.id, status='completed').count(),
         'disputed': Order.query.filter_by(vendor_id=current_user.id, status='disputed').count()
     }
-    
-    return render_template('vendor/orders.html', 
-                         orders=orders_pagination, 
+
+    return render_template('vendor/orders.html',
+                         orders=orders_pagination,
                          stats=stats,
                          current_status=status)
 
@@ -191,17 +190,17 @@ def order_detail(order_id):
     """View order details"""
     from app.models.order import Order
     from app.models.user import User
-    
+
     order = Order.query.get_or_404(order_id)
-    
+
     # Verify vendor owns this order
     if str(order.vendor_id) != str(current_user.id):
         flash('You do not have permission to view this order', 'danger')
         return redirect(url_for('vendor.orders'))
-    
+
     # Get buyer info
     buyer = User.query.get(order.buyer_id)
-    
+
     # Get shipping info (decrypted) for paid orders
     shipping_name = None
     shipping_address = None
@@ -209,11 +208,15 @@ def order_detail(order_id):
         try:
             shipping_name = order.get_shipping_name()
             shipping_address = order.get_shipping_address()
-        except:
-            pass
-    
-    return render_template('vendor/order_detail.html', 
-                         order=order, 
+        except Exception as exc:
+            # Decryption can legitimately fail (key rotated, corrupt ciphertext),
+            # but swallowing it silently hides a real problem from operators.
+            current_app.logger.warning(
+                'Could not decrypt shipping info for order %s: %s', order.id, exc
+            )
+
+    return render_template('vendor/order_detail.html',
+                         order=order,
                          buyer=buyer,
                          shipping_name=shipping_name,
                          shipping_address=shipping_address)
@@ -226,35 +229,35 @@ def ship_order(order_id):
     """Mark order as shipped"""
     from app.models.order import Order, OrderStatus
     from app import db
-    
+
     order = Order.query.get_or_404(order_id)
-    
+
     # Verify vendor owns this order
     if str(order.vendor_id) != str(current_user.id):
         flash('You do not have permission to modify this order', 'danger')
         return redirect(url_for('vendor.orders'))
-    
+
     # Check if order can be shipped
     if order.status != 'paid':
         flash('Only paid orders can be marked as shipped', 'warning')
         return redirect(url_for('vendor.order_detail', order_id=order_id))
-    
+
     tracking_number = request.form.get('tracking_number', '').strip()
     vendor_notes = request.form.get('vendor_notes', '').strip()
-    
+
     try:
         order.transition_to(OrderStatus.SHIPPED, tracking_number=tracking_number)
         if vendor_notes:
             order.vendor_notes = vendor_notes
         db.session.commit()
-        
+
         flash('Order marked as shipped!', 'success')
     except ValueError as e:
         flash(str(e), 'danger')
     except Exception as e:
         db.session.rollback()
         flash(f'Error updating order: {str(e)}', 'danger')
-    
+
     return redirect(url_for('vendor.order_detail', order_id=order_id))
 
 
@@ -265,33 +268,33 @@ def cancel_order(order_id):
     """Cancel order (vendor side)"""
     from app.models.order import Order, OrderStatus
     from app import db
-    
+
     order = Order.query.get_or_404(order_id)
-    
+
     # Verify vendor owns this order
     if str(order.vendor_id) != str(current_user.id):
         flash('You do not have permission to modify this order', 'danger')
         return redirect(url_for('vendor.orders'))
-    
+
     # Check if order can be cancelled
     if order.status not in ['pending', 'paid']:
         flash('This order cannot be cancelled', 'warning')
         return redirect(url_for('vendor.order_detail', order_id=order_id))
-    
+
     cancel_reason = request.form.get('cancel_reason', '').strip()
-    
+
     try:
         order.transition_to(OrderStatus.CANCELLED)
         order.vendor_notes = f'Cancelled by vendor: {cancel_reason}'
         db.session.commit()
-        
+
         flash('Order cancelled', 'info')
     except ValueError as e:
         flash(str(e), 'danger')
     except Exception as e:
         db.session.rollback()
         flash(f'Error cancelling order: {str(e)}', 'danger')
-    
+
     return redirect(url_for('vendor.orders'))
 
 
@@ -390,42 +393,42 @@ def upload_product_image(product_id):
     from app.services.image_service import get_image_service
     from app import db
     import uuid
-    
+
     product = Product.query.get_or_404(product_id)
-    
+
     # Verify vendor owns this product
     if str(product.vendor_id) != str(current_user.id):
         flash('You do not have permission to modify this product', 'danger')
         return redirect(url_for('vendor.products'))
-    
+
     # Check if file was uploaded
     if 'image' not in request.files:
         flash('No image file provided', 'danger')
         return redirect(url_for('vendor.edit_product', product_id=product_id))
-    
+
     file = request.files['image']
-    
+
     if file.filename == '':
         flash('No image selected', 'danger')
         return redirect(url_for('vendor.edit_product', product_id=product_id))
-    
+
     # Process image
     image_service = get_image_service()
     result = image_service.save_image(
-        file, 
+        file,
         subfolder=f'products/{product_id}',
         create_thumbnail=True
     )
-    
+
     if not result['success']:
         flash(f'Image upload failed: {result["error"]}', 'danger')
         return redirect(url_for('vendor.edit_product', product_id=product_id))
-    
+
     try:
         # Check if this should be primary image
         existing_images = ProductImage.query.filter_by(product_id=product_id).count()
         is_primary = existing_images == 0
-        
+
         # Create image record
         image = ProductImage(
             id=uuid.uuid4(),
@@ -438,18 +441,18 @@ def upload_product_image(product_id):
             is_primary=is_primary,
             display_order=existing_images
         )
-        
+
         db.session.add(image)
         db.session.commit()
-        
+
         flash('Image uploaded successfully (metadata stripped for privacy)', 'success')
-        
+
     except Exception as e:
         db.session.rollback()
         # Try to delete uploaded file
         image_service.delete_image(result['filepath'])
         flash(f'Error saving image: {str(e)}', 'danger')
-    
+
     return redirect(url_for('vendor.edit_product', product_id=product_id))
 
 
@@ -461,38 +464,38 @@ def delete_product_image(product_id, image_id):
     from app.models.product import Product, ProductImage
     from app.services.image_service import get_image_service
     from app import db
-    
+
     product = Product.query.get_or_404(product_id)
-    
+
     # Verify vendor owns this product
     if str(product.vendor_id) != str(current_user.id):
         flash('You do not have permission to modify this product', 'danger')
         return redirect(url_for('vendor.products'))
-    
+
     image = ProductImage.query.get_or_404(image_id)
-    
+
     # Verify image belongs to product
     if str(image.product_id) != str(product_id):
         flash('Image not found', 'danger')
         return redirect(url_for('vendor.edit_product', product_id=product_id))
-    
+
     try:
         # Delete file
         image_service = get_image_service()
         image_service.delete_image(image.filepath)
-        
+
         # Delete thumbnail if exists
         if hasattr(image, 'thumbnail_path') and image.thumbnail_path:
             image_service.delete_image(image.thumbnail_path)
-        
+
         # Delete record
         db.session.delete(image)
         db.session.commit()
-        
+
         flash('Image deleted', 'success')
-        
+
     except Exception as e:
         db.session.rollback()
         flash(f'Error deleting image: {str(e)}', 'danger')
-    
+
     return redirect(url_for('vendor.edit_product', product_id=product_id))

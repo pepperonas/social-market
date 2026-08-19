@@ -113,6 +113,13 @@ class Config:
     RATELIMIT_API = os.environ.get('RATELIMIT_API', '100 per minute')
 
     # =============================================================================
+    # Logging
+    # =============================================================================
+    # Documented in .env.example but previously never read -- the path was
+    # hard-coded in setup_logging().
+    LOG_FILE = os.environ.get('LOG_FILE', '/var/log/marketplace/app.log')
+
+    # =============================================================================
     # File Upload Configuration
     # =============================================================================
     MAX_CONTENT_LENGTH = int(os.environ.get('MAX_CONTENT_LENGTH', 5 * 1024 * 1024))  # 5MB
@@ -230,8 +237,15 @@ class ProductionConfig(Config):
 class TestingConfig(Config):
     """Testing configuration"""
     TESTING = True
-    SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
+    SQLALCHEMY_DATABASE_URI = os.environ.get('TEST_DATABASE_URL', 'sqlite:///:memory:')
+    # The base config sets PostgreSQL-only pool options (pool_size, max_overflow,
+    # connect_args.sslmode). SQLite's StaticPool rejects them, so reset them here.
+    SQLALCHEMY_ENGINE_OPTIONS = {}
     WTF_CSRF_ENABLED = False
+    RATELIMIT_ENABLED = False
+    # Tests must not need a Redis server.
+    SESSION_TYPE = 'filesystem'
+    RATELIMIT_STORAGE_URL = 'memory://'
 
 
 # Configuration dictionary

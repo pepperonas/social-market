@@ -11,7 +11,6 @@ import json
 import uuid
 
 from app import db, limiter
-from app.models.user import User
 from app.services.audit_service import log_auth_event, log_security_event
 
 account_bp = Blueprint('account', __name__)
@@ -27,7 +26,7 @@ account_bp = Blueprint('account', __name__)
 def change_password():
     """
     Change user password with security validation
-    
+
     Security features:
     - Current password verification
     - Rate limiting
@@ -39,7 +38,7 @@ def change_password():
         new_password = request.form.get('new_password', '')
         confirm_password = request.form.get('confirm_password', '')
         invalidate_sessions = request.form.get('invalidate_sessions') == 'on'
-        
+
         # Validate current password
         if not current_user.check_password(current_password):
             log_auth_event(
@@ -51,33 +50,33 @@ def change_password():
             )
             flash('Current password is incorrect', 'danger')
             return render_template('account/change_password.html')
-        
+
         # Validate new passwords match
         if new_password != confirm_password:
             flash('New passwords do not match', 'danger')
             return render_template('account/change_password.html')
-        
+
         # Validate password strength
         min_length = current_app.config.get('PASSWORD_MIN_LENGTH', 12)
         if len(new_password) < min_length:
             flash(f'Password must be at least {min_length} characters', 'danger')
             return render_template('account/change_password.html')
-        
+
         # Check password complexity
         has_upper = any(c.isupper() for c in new_password)
         has_lower = any(c.islower() for c in new_password)
         has_digit = any(c.isdigit() for c in new_password)
         has_special = any(c in '!@#$%^&*()_+-=[]{}|;:,.<>?' for c in new_password)
-        
+
         if not all([has_upper, has_lower, has_digit, has_special]):
             flash('Password must contain uppercase, lowercase, digit, and special character', 'danger')
             return render_template('account/change_password.html')
-        
+
         try:
             # Update password
             current_user.set_password(new_password)
             db.session.commit()
-            
+
             # Log successful change
             log_auth_event(
                 current_user.username,
@@ -85,7 +84,7 @@ def change_password():
                 'password_changed',
                 request.remote_addr
             )
-            
+
             log_security_event(
                 'password_changed',
                 'info',
@@ -93,23 +92,23 @@ def change_password():
                 current_user.id,
                 request.remote_addr
             )
-            
+
             flash('Password changed successfully', 'success')
 
             # Optionally invalidate other sessions
             if invalidate_sessions:
                 _invalidate_other_sessions(current_user.id)
                 flash('Other sessions have been invalidated', 'info')
-            
+
             return redirect(url_for('account.security_settings'))
-        
+
         except ValueError as e:
             flash(str(e), 'danger')
         except Exception as e:
             db.session.rollback()
             current_app.logger.error(f'Password change error: {e}')
             flash('Error changing password', 'danger')
-    
+
     return render_template('account/change_password.html')
 
 
@@ -127,18 +126,17 @@ def security_settings():
     - Active sessions
     - Password age
     """
-    from datetime import timedelta
-    
+
     # Get recent auth events
     recent_logins = []
     try:
         from sqlalchemy import text
         result = db.session.execute(
             text("""
-                SELECT timestamp, action, ip_address, user_agent 
-                FROM auth_log 
-                WHERE user_id = :user_id 
-                ORDER BY timestamp DESC 
+                SELECT timestamp, action, ip_address, user_agent
+                FROM auth_log
+                WHERE user_id = :user_id
+                ORDER BY timestamp DESC
                 LIMIT 10
             """),
             {'user_id': current_user.id}
@@ -146,13 +144,13 @@ def security_settings():
         recent_logins = result.fetchall()
     except Exception as e:
         current_app.logger.error(f'Failed to fetch login history: {e}')
-    
+
     # Calculate password age
     password_age_days = None
     if current_user.updated_at:
         password_age = datetime.utcnow() - current_user.updated_at
         password_age_days = password_age.days
-    
+
     return render_template('account/security.html',
                          recent_logins=recent_logins,
                          password_age_days=password_age_days)
@@ -165,15 +163,15 @@ def active_sessions():
     # In production, this would query Redis for active sessions
     # For training, we show a placeholder
     sessions_data = []
-    
+
     try:
         from sqlalchemy import text
         result = db.session.execute(
             text("""
-                SELECT session_id, timestamp, ip_address, user_agent 
-                FROM auth_log 
+                SELECT session_id, timestamp, ip_address, user_agent
+                FROM auth_log
                 WHERE user_id = :user_id AND action = 'login_success'
-                ORDER BY timestamp DESC 
+                ORDER BY timestamp DESC
                 LIMIT 20
             """),
             {'user_id': current_user.id}
@@ -181,7 +179,7 @@ def active_sessions():
         sessions_data = result.fetchall()
     except Exception as e:
         current_app.logger.error(f'Failed to fetch sessions: {e}')
-    
+
     return render_template('account/sessions.html', sessions=sessions_data)
 
 
@@ -204,7 +202,7 @@ def terminate_all_sessions():
     except Exception as e:
         current_app.logger.error(f'Error terminating sessions: {e}')
         flash('Error terminating sessions', 'danger')
-    
+
     return redirect(url_for('account.security_settings'))
 
 
@@ -217,16 +215,16 @@ def terminate_all_sessions():
 def login_alerts():
     """View login alerts and suspicious activity"""
     alerts = []
-    
+
     try:
         from sqlalchemy import text
         result = db.session.execute(
             text("""
                 SELECT timestamp, action, ip_address, user_agent, failure_reason
-                FROM auth_log 
-                WHERE user_id = :user_id 
+                FROM auth_log
+                WHERE user_id = :user_id
                 AND action LIKE 'login_failed%'
-                ORDER BY timestamp DESC 
+                ORDER BY timestamp DESC
                 LIMIT 50
             """),
             {'user_id': current_user.id}
@@ -234,7 +232,7 @@ def login_alerts():
         alerts = result.fetchall()
     except Exception as e:
         current_app.logger.error(f'Failed to fetch alerts: {e}')
-    
+
     return render_template('account/alerts.html', alerts=alerts)
 
 
@@ -255,7 +253,7 @@ def privacy_settings():
 def export_data():
     """
     Export all user data (GDPR Right to Data Portability)
-    
+
     Exports:
     - Profile information
     - Orders
@@ -264,7 +262,7 @@ def export_data():
     - Activity logs
     """
     from flask import make_response
-    
+
     try:
         data = {
             'export_date': datetime.utcnow().isoformat(),
@@ -283,13 +281,13 @@ def export_data():
             'products': [],
             'messages': []
         }
-        
+
         # Export orders
         from app.models.order import Order
         orders = Order.query.filter(
             db.or_(Order.buyer_id == current_user.id, Order.vendor_id == current_user.id)
         ).all()
-        
+
         for order in orders:
             data['orders'].append({
                 'id': str(order.id),
@@ -298,7 +296,7 @@ def export_data():
                 'total_price': str(order.total_price),
                 'created_at': order.created_at.isoformat()
             })
-        
+
         # Export products if vendor
         if current_user.is_vendor():
             from app.models.product import Product
@@ -311,13 +309,13 @@ def export_data():
                     'price': str(product.price),
                     'created_at': product.created_at.isoformat()
                 })
-        
+
         # Export messages (encrypted content only - for privacy)
         from app.models.message import Message
         messages = Message.query.filter(
             db.or_(Message.sender_id == current_user.id, Message.recipient_id == current_user.id)
         ).all()
-        
+
         for msg in messages:
             data['messages'].append({
                 'id': str(msg.id),
@@ -325,7 +323,7 @@ def export_data():
                 'is_encrypted': msg.is_encrypted,
                 'created_at': msg.created_at.isoformat()
             })
-        
+
         # Log export event
         log_security_event(
             'data_exported',
@@ -334,14 +332,14 @@ def export_data():
             current_user.id,
             request.remote_addr
         )
-        
+
         # Return as downloadable JSON
         response = make_response(json.dumps(data, indent=2))
         response.headers['Content-Type'] = 'application/json'
         response.headers['Content-Disposition'] = f'attachment; filename=data_export_{current_user.username}_{datetime.utcnow().strftime("%Y%m%d")}.json'
-        
+
         return response
-    
+
     except Exception as e:
         current_app.logger.error(f'Data export error: {e}')
         flash('Error exporting data', 'danger')
@@ -354,7 +352,7 @@ def export_data():
 def delete_account():
     """
     Delete user account (GDPR Right to Erasure)
-    
+
     Process:
     1. Verify password
     2. Soft delete user data
@@ -365,21 +363,21 @@ def delete_account():
     if request.method == 'POST':
         password = request.form.get('password', '')
         confirmation = request.form.get('confirmation', '')
-        
+
         # Verify password
         if not current_user.check_password(password):
             flash('Incorrect password', 'danger')
             return render_template('account/delete_account.html')
-        
+
         # Verify confirmation phrase
         if confirmation != f'DELETE {current_user.username}':
             flash('Please type the confirmation phrase exactly', 'danger')
             return render_template('account/delete_account.html')
-        
+
         try:
             user_id = current_user.id
             username = current_user.username
-            
+
             # Log deletion before anonymizing
             log_security_event(
                 'account_deleted',
@@ -388,7 +386,7 @@ def delete_account():
                 user_id,
                 request.remote_addr
             )
-            
+
             # Anonymize user data
             current_user.username = f'deleted_user_{uuid.uuid4().hex[:8]}'
             current_user.email = f'deleted_{uuid.uuid4().hex[:8]}@deleted.local'
@@ -400,24 +398,24 @@ def delete_account():
             current_user.two_factor_secret = None
             current_user.two_factor_enabled = False
             current_user.is_active = False
-            
+
             # Clear sensitive fields
             current_user.last_login_ip = None
-            
+
             db.session.commit()
-            
+
             # Logout user
             logout_user()
             session.clear()
-            
+
             flash('Your account has been deleted. All personal data has been removed.', 'info')
             return redirect(url_for('marketplace.index'))
-        
+
         except Exception as e:
             db.session.rollback()
             current_app.logger.error(f'Account deletion error: {e}')
             flash('Error deleting account', 'danger')
-    
+
     return render_template('account/delete_account.html')
 
 
@@ -430,38 +428,38 @@ def delete_account():
 def check_password_strength():
     """AJAX endpoint to check password strength"""
     password = request.json.get('password', '')
-    
+
     strength = {
         'score': 0,
         'feedback': [],
         'strong_enough': False
     }
-    
+
     if len(password) >= 12:
         strength['score'] += 25
     else:
         strength['feedback'].append(f'Add {12 - len(password)} more characters')
-    
+
     if any(c.isupper() for c in password):
         strength['score'] += 20
     else:
         strength['feedback'].append('Add uppercase letters')
-    
+
     if any(c.islower() for c in password):
         strength['score'] += 20
     else:
         strength['feedback'].append('Add lowercase letters')
-    
+
     if any(c.isdigit() for c in password):
         strength['score'] += 15
     else:
         strength['feedback'].append('Add numbers')
-    
+
     if any(c in '!@#$%^&*()_+-=[]{}|;:,.<>?' for c in password):
         strength['score'] += 20
     else:
         strength['feedback'].append('Add special characters')
-    
+
     strength['strong_enough'] = strength['score'] >= 80
 
     return jsonify(strength)

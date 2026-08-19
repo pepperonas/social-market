@@ -9,17 +9,17 @@
 
 ### Admin Account
 - **Username:** `admin`
-- **Password:** `password123`
+- **Password:** `Password123!`
 - **Access:** Admin Dashboard, User Management, Security Monitoring, Audit Logs
 
 ### Buyer Accounts (10 available)
 - **Usernames:** `buyer1`, `buyer2`, `buyer3`, `buyer4`, `buyer5`, `buyer6`, `buyer7`, `buyer8`, `buyer9`, `buyer10`
-- **Password:** `password123` (same for all buyers)
+- **Password:** `Password123!` (same for all buyers)
 - **Access:** Marketplace, Orders, Messages, Profile
 
 ### Vendor Accounts (5 available)
 - **Usernames:** `vendor1`, `vendor2`, `vendor3`, `vendor4`, `vendor5`
-- **Password:** `password123` (same for all vendors)
+- **Password:** `Password123!` (same for all vendors)
 - **Access:** Vendor Dashboard, Product Management, Order Management, Messages
 
 ---

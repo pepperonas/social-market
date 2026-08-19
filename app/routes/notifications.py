@@ -18,17 +18,17 @@ notifications_bp = Blueprint('notifications', __name__)
 def index():
     """View all notifications"""
     page = request.args.get('page', 1, type=int)
-    
+
     # Get all notifications (paginated)
     notifications = Notification.query.filter_by(
         user_id=current_user.id
     ).order_by(Notification.created_at.desc()).paginate(
         page=page, per_page=20, error_out=False
     )
-    
+
     # Get unread count
     unread_count = Notification.get_unread_count(current_user.id)
-    
+
     return render_template('notifications/index.html',
                          notifications=notifications,
                          unread_count=unread_count)
@@ -40,7 +40,7 @@ def unread():
     """View unread notifications only"""
     notifications = Notification.get_recent(current_user.id, limit=50, include_read=False)
     unread_count = len(notifications)
-    
+
     return render_template('notifications/index.html',
                          notifications={'items': notifications, 'pages': 1, 'page': 1},
                          unread_count=unread_count,
@@ -52,18 +52,18 @@ def unread():
 def mark_read(notification_id):
     """Mark single notification as read"""
     notification = Notification.query.get_or_404(notification_id)
-    
+
     # Verify ownership
     if str(notification.user_id) != str(current_user.id):
         flash('Notification not found', 'danger')
         return redirect(url_for('notifications.index'))
-    
+
     notification.mark_as_read()
-    
+
     # If has action URL, redirect there
     if notification.action_url:
         return redirect(notification.action_url)
-    
+
     return redirect(url_for('notifications.index'))
 
 
@@ -81,20 +81,20 @@ def mark_all_read():
 def delete(notification_id):
     """Delete single notification"""
     notification = Notification.query.get_or_404(notification_id)
-    
+
     # Verify ownership
     if str(notification.user_id) != str(current_user.id):
         flash('Notification not found', 'danger')
         return redirect(url_for('notifications.index'))
-    
+
     try:
         db.session.delete(notification)
         db.session.commit()
         flash('Notification deleted', 'success')
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         flash('Error deleting notification', 'danger')
-    
+
     return redirect(url_for('notifications.index'))
 
 
@@ -126,9 +126,9 @@ def api_recent():
 def api_mark_read(notification_id):
     """Mark notification as read (AJAX)"""
     notification = Notification.query.get_or_404(notification_id)
-    
+
     if str(notification.user_id) != str(current_user.id):
         return jsonify({'success': False, 'error': 'Not found'}), 404
-    
+
     notification.mark_as_read()
     return jsonify({'success': True})

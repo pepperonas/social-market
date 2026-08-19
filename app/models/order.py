@@ -5,9 +5,10 @@ Purpose: Order management with escrow integration
 """
 
 import uuid
+from decimal import Decimal
 from datetime import datetime, timedelta
 from enum import Enum
-from sqlalchemy.dialects.postgresql import UUID
+from app.models.types import UUID
 from sqlalchemy import Index
 
 from app import db
@@ -181,8 +182,8 @@ class Order(db.Model):
         auto_release_days = current_app.config['ESCROW_AUTO_RELEASE_DAYS']
         self.auto_finalize_at = datetime.utcnow() + timedelta(days=auto_release_days)
 
-        # Update product sales
-        self.product.record_sale()
+        # Update product sales (with the ordered amount, not a flat 1)
+        self.product.record_sale(self.quantity)
 
     def _handle_shipped(self, tracking_number=None, **kwargs):
         """Handle order shipped transition"""
@@ -337,11 +338,13 @@ class Order(db.Model):
         """Calculate order totals and commission"""
         from flask import current_app
 
-        self.total_price = self.unit_price * self.quantity
+        self.total_price = Decimal(self.unit_price) * self.quantity
 
-        # Calculate commission
-        commission_percent = current_app.config['ESCROW_COMMISSION_PERCENT']
-        self.commission = self.total_price * (commission_percent / 100)
+        # Calculate commission. Money is Numeric -> Decimal; multiplying a
+        # Decimal by a float raises TypeError, so the percentage is converted
+        # via str() (Decimal(0.03) would carry binary float error).
+        commission_percent = Decimal(str(current_app.config['ESCROW_COMMISSION_PERCENT']))
+        self.commission = (self.total_price * commission_percent / Decimal('100')).quantize(Decimal('0.01'))
 
     def to_dict(self, include_sensitive=False):
         """Convert order to dictionary"""
@@ -380,13 +383,17 @@ class Order(db.Model):
 
 from sqlalchemy import event
 
+
 @event.listens_for(Order, 'before_insert')
 def calculate_order_totals(mapper, connection, target):
     """Calculate totals before inserting order"""
     from flask import current_app
 
-    target.total_price = target.unit_price * target.quantity
+    target.total_price = Decimal(target.unit_price) * target.quantity
 
-    # Calculate commission
-    commission_percent = current_app.config.get('ESCROW_COMMISSION_PERCENT', 3.0)
-    target.commission = target.total_price * (commission_percent / 100)
+    # Calculate commission. See calculate_totals(): Decimal * float is a
+    # TypeError, and this listener runs on EVERY insert -- it made order
+    # creation fail outright whenever unit_price came back from the DB as
+    # Decimal (i.e. always, in the real checkout path).
+    commission_percent = Decimal(str(current_app.config.get('ESCROW_COMMISSION_PERCENT', 3.0)))
+    target.commission = (target.total_price * commission_percent / Decimal('100')).quantize(Decimal('0.01'))

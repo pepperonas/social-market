@@ -6,7 +6,7 @@ Purpose: User notifications for orders, messages, security alerts
 
 import uuid
 from datetime import datetime
-from sqlalchemy.dialects.postgresql import UUID
+from app.models.types import UUID
 from sqlalchemy import Index
 
 from app import db
@@ -21,16 +21,16 @@ class NotificationType:
     ORDER_COMPLETED = 'order_completed'
     ORDER_DISPUTED = 'order_disputed'
     ORDER_CANCELLED = 'order_cancelled'
-    
+
     NEW_MESSAGE = 'new_message'
-    
+
     NEW_REVIEW = 'new_review'
-    
+
     SECURITY_ALERT = 'security_alert'
     LOGIN_NEW_DEVICE = 'login_new_device'
     PASSWORD_CHANGED = 'password_changed'
     TWO_FA_ENABLED = '2fa_enabled'
-    
+
     SYSTEM = 'system'
     PROMOTION = 'promotion'
 
@@ -49,31 +49,31 @@ class Notification(db.Model):
 
     id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = db.Column(UUID(as_uuid=True), db.ForeignKey('users.id'), nullable=False, index=True)
-    
+
     # Notification content
     notification_type = db.Column(db.String(50), nullable=False, index=True)
     title = db.Column(db.String(200), nullable=False)
     message = db.Column(db.Text, nullable=False)
-    
+
     # Related object (optional)
     related_type = db.Column(db.String(50), nullable=True)  # 'order', 'message', 'product'
     related_id = db.Column(UUID(as_uuid=True), nullable=True)
-    
+
     # Action URL (optional)
     action_url = db.Column(db.String(500), nullable=True)
     action_text = db.Column(db.String(100), nullable=True)
-    
+
     # Status
     is_read = db.Column(db.Boolean, default=False, nullable=False)
     read_at = db.Column(db.DateTime, nullable=True)
-    
+
     # Priority
     priority = db.Column(db.String(20), default='normal')  # low, normal, high, urgent
-    
+
     # Timestamps
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     expires_at = db.Column(db.DateTime, nullable=True)  # Auto-delete after
-    
+
     # Relationships
     user = db.relationship('User', backref=db.backref('notifications', lazy='dynamic'))
 
@@ -116,13 +116,13 @@ class Notification(db.Model):
         }
 
     @classmethod
-    def create(cls, user_id, notification_type, title, message, 
-               related_type=None, related_id=None, 
-               action_url=None, action_text=None, 
+    def create(cls, user_id, notification_type, title, message,
+               related_type=None, related_id=None,
+               action_url=None, action_text=None,
                priority='normal', expires_days=30):
         """
         Create new notification
-        
+
         Args:
             user_id: Target user ID
             notification_type: Type from NotificationType
@@ -134,16 +134,16 @@ class Notification(db.Model):
             action_text: Text for action button (optional)
             priority: Priority level
             expires_days: Days until expiration (0 = no expiration)
-            
+
         Returns:
             Notification: Created notification
         """
         from datetime import timedelta
-        
+
         expires_at = None
         if expires_days > 0:
             expires_at = datetime.utcnow() + timedelta(days=expires_days)
-        
+
         notification = cls(
             user_id=user_id,
             notification_type=notification_type,
@@ -156,10 +156,10 @@ class Notification(db.Model):
             priority=priority,
             expires_at=expires_at
         )
-        
+
         db.session.add(notification)
         db.session.commit()
-        
+
         return notification
 
     @classmethod
@@ -171,20 +171,20 @@ class Notification(db.Model):
     def get_recent(cls, user_id, limit=10, include_read=False):
         """
         Get recent notifications for user
-        
+
         Args:
             user_id: User ID
             limit: Max notifications to return
             include_read: Whether to include read notifications
-            
+
         Returns:
             list: Notifications
         """
         query = cls.query.filter_by(user_id=user_id)
-        
+
         if not include_read:
             query = query.filter_by(is_read=False)
-        
+
         return query.order_by(cls.created_at.desc()).limit(limit).all()
 
     @classmethod
@@ -210,7 +210,7 @@ class Notification(db.Model):
 def notify_order_status(order, old_status, new_status):
     """Send notification for order status change"""
     from flask import url_for
-    
+
     # Notification to buyer
     buyer_messages = {
         'paid': ('Payment Confirmed', f'Your order #{str(order.id)[:8]} has been confirmed.'),
@@ -220,7 +220,7 @@ def notify_order_status(order, old_status, new_status):
         'disputed': ('Dispute Opened', f'A dispute has been opened for order #{str(order.id)[:8]}.'),
         'cancelled': ('Order Cancelled', f'Your order #{str(order.id)[:8]} has been cancelled.'),
     }
-    
+
     # Notification to vendor
     vendor_messages = {
         'pending': ('New Order!', f'You have a new order #{str(order.id)[:8]}.'),
@@ -228,7 +228,7 @@ def notify_order_status(order, old_status, new_status):
         'disputed': ('Dispute Opened', f'A dispute has been opened for order #{str(order.id)[:8]}.'),
         'completed': ('Order Completed', f'Order #{str(order.id)[:8]} completed. Funds released!'),
     }
-    
+
     try:
         # Notify buyer
         if new_status in buyer_messages:
@@ -243,7 +243,7 @@ def notify_order_status(order, old_status, new_status):
                 action_url=url_for('buyer.order_detail', order_id=order.id),
                 action_text='View Order'
             )
-        
+
         # Notify vendor
         if new_status in vendor_messages:
             title, message = vendor_messages[new_status]
@@ -257,7 +257,7 @@ def notify_order_status(order, old_status, new_status):
                 action_url=url_for('vendor.order_detail', order_id=order.id),
                 action_text='View Order'
             )
-            
+
     except Exception as e:
         from flask import current_app
         current_app.logger.error(f'Failed to send order notification: {e}')
@@ -266,7 +266,7 @@ def notify_order_status(order, old_status, new_status):
 def notify_new_message(sender, recipient, thread):
     """Send notification for new message"""
     from flask import url_for
-    
+
     try:
         Notification.create(
             user_id=recipient.id,

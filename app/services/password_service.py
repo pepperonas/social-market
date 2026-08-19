@@ -4,7 +4,6 @@ Password Hashing Service
 Purpose: Secure password hashing with Argon2id + pepper
 """
 
-import os
 import secrets
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError, VerificationError, InvalidHash
@@ -76,6 +75,44 @@ class PasswordService:
             )
 
         return pepper
+
+    def validate_policy(self, password):
+        """
+        Check a password against the configured policy.
+
+        The policy lives in config (PASSWORD_MIN_LENGTH, PASSWORD_REQUIRE_*) but
+        used to be ignored entirely -- only a hard-coded 8 character check ran,
+        so PASSWORD_MIN_LENGTH=12 and the complexity flags had no effect.
+
+        Args:
+            password (str): Plain text password
+
+        Returns:
+            list: Human readable violations; empty if the password is acceptable
+        """
+        cfg = current_app.config
+        min_length = cfg.get('PASSWORD_MIN_LENGTH', 12)
+        errors = []
+
+        if not password:
+            return ['Password cannot be empty']
+
+        if len(password) < min_length:
+            errors.append(f'Password must be at least {min_length} characters')
+
+        if cfg.get('PASSWORD_REQUIRE_UPPERCASE', True) and not any(c.isupper() for c in password):
+            errors.append('Password must contain an uppercase letter')
+
+        if cfg.get('PASSWORD_REQUIRE_LOWERCASE', True) and not any(c.islower() for c in password):
+            errors.append('Password must contain a lowercase letter')
+
+        if cfg.get('PASSWORD_REQUIRE_DIGITS', True) and not any(c.isdigit() for c in password):
+            errors.append('Password must contain a digit')
+
+        if cfg.get('PASSWORD_REQUIRE_SPECIAL', True) and not any(not c.isalnum() for c in password):
+            errors.append('Password must contain a special character')
+
+        return errors
 
     def hash_password(self, password):
         """
@@ -190,8 +227,8 @@ class PasswordService:
         """
         try:
             return self.hasher.check_needs_rehash(hash_str)
-        except (InvalidHash, Exception):
-            # Invalid hash or error - should be rehashed
+        except (InvalidHash, ValueError, TypeError):
+            # Unparseable hash -- treat as stale so it gets replaced
             return True
 
     def generate_pepper(self, length=32):
@@ -253,7 +290,7 @@ class PasswordService:
                 'parallelism': parallelism
             }
 
-        except (IndexError, ValueError, Exception) as e:
+        except (IndexError, ValueError, TypeError, AttributeError) as e:
             current_app.logger.error(f'Failed to parse hash info: {e}')
             return None
 

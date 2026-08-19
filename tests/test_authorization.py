@@ -9,7 +9,6 @@ Tests cover:
 
 import uuid
 import pytest
-from unittest.mock import patch, MagicMock
 
 
 class TestUnauthenticatedAccess:
@@ -23,7 +22,7 @@ class TestUnauthenticatedAccess:
         '/admin/users',
         '/admin/security',
         '/buyer/orders',
-        '/messages/inbox',
+        '/messages/',
         '/account/security',
         '/account/sessions',
     ])

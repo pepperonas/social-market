@@ -4,12 +4,14 @@ User Model
 Purpose: User authentication and authorization with security features
 """
 
+import hmac
+import time
 import uuid
 from datetime import datetime, timedelta
 from flask import current_app
 from flask_login import UserMixin
-from werkzeug.security import generate_password_hash, check_password_hash
-from sqlalchemy.dialects.postgresql import UUID, INET
+from werkzeug.security import check_password_hash
+from app.models.types import UUID, INET
 from sqlalchemy import text
 import pyotp
 
@@ -46,6 +48,9 @@ class User(UserMixin, db.Model):
     # 2FA settings
     two_factor_enabled = db.Column(db.Boolean, default=False)
     two_factor_secret = db.Column(db.String(32), nullable=True)
+    # Highest TOTP counter already accepted. Prevents replay of a code that is
+    # still inside its validity window (see verify_totp).
+    two_factor_last_counter = db.Column(db.BigInteger, nullable=True)
 
     # PGP key (for encrypted messaging)
     pgp_public_key = db.Column(db.Text, nullable=True)
@@ -104,7 +109,7 @@ class User(UserMixin, db.Model):
     # Password Management
     # =============================================================================
 
-    def set_password(self, password):
+    def set_password(self, password, enforce_policy=True):
         """
         Hash password using Argon2id with pepper
 
@@ -118,6 +123,9 @@ class User(UserMixin, db.Model):
 
         Args:
             password: Plain text password
+            enforce_policy: Apply the configured password policy. Only pass
+                False for internal rehashing, where the plaintext has already
+                been accepted previously.
 
         Raises:
             ValueError: If password doesn't meet policy requirements
@@ -125,12 +133,16 @@ class User(UserMixin, db.Model):
         """
         from app.services.password_service import get_password_service
 
-        # Validate password against policy (only check minimum length)
-        if len(password) < 8:
+        password_service = get_password_service()
+
+        if enforce_policy:
+            violations = password_service.validate_policy(password)
+            if violations:
+                raise ValueError('; '.join(violations))
+        elif len(password) < 8:
             raise ValueError('Password must be at least 8 characters')
 
         # Hash with Argon2id + pepper
-        password_service = get_password_service()
         self.password_hash = password_service.hash_password(password)
 
     def check_password(self, password):
@@ -161,7 +173,9 @@ class User(UserMixin, db.Model):
             # If valid, upgrade to Argon2id
             if is_valid:
                 current_app.logger.info(f'Upgrading password hash to Argon2id for user {self.username}')
-                self.set_password(password)
+                # Re-hash only: this password was already accepted, so it must not
+                # be re-validated against a policy that may have tightened since.
+                self.set_password(password, enforce_policy=False)
                 db.session.commit()
 
             return is_valid
@@ -172,7 +186,7 @@ class User(UserMixin, db.Model):
         # Check if hash needs rehashing (parameters changed)
         if is_valid and password_service.needs_rehash(self.password_hash):
             current_app.logger.info(f'Rehashing password with updated parameters for user {self.username}')
-            self.set_password(password)
+            self.set_password(password, enforce_policy=False)
             db.session.commit()
 
         return is_valid
@@ -208,35 +222,94 @@ class User(UserMixin, db.Model):
     # 2FA (TOTP)
     # =============================================================================
 
-    def enable_two_factor(self):
+    TOTP_VALID_WINDOW = 1  # +/- one 30s step, tolerates clock drift
+
+    def begin_two_factor_setup(self):
         """
-        Enable 2FA and generate TOTP secret
+        Start 2FA enrolment: make sure a secret exists and return the
+        provisioning URI for the QR code.
+
+        Deliberately does NOT set two_factor_enabled. Enabling 2FA before the
+        user has proven they hold the secret locks them out of their own account
+        if they abandon the page. Use confirm_two_factor() to finish enrolment.
 
         Returns:
             str: TOTP provisioning URI for QR code generation
         """
         if not self.two_factor_secret:
             self.two_factor_secret = pyotp.random_base32()
+            db.session.commit()
 
-        self.two_factor_enabled = True
-        db.session.commit()
-
-        # Generate provisioning URI for QR code
         totp = pyotp.TOTP(self.two_factor_secret)
         return totp.provisioning_uri(
             name=self.email,
             issuer_name='Social Market Training'
         )
 
+    def confirm_two_factor(self, token):
+        """
+        Finish 2FA enrolment by verifying a code against the pending secret.
+
+        Args:
+            token: 6-digit TOTP code
+
+        Returns:
+            bool: True if 2FA is now enabled, False if the code was wrong
+        """
+        if self.two_factor_enabled or not self.two_factor_secret:
+            return False
+
+        if not self._consume_totp(token):
+            return False
+
+        self.two_factor_enabled = True
+        db.session.commit()
+        return True
+
     def disable_two_factor(self):
         """Disable 2FA"""
         self.two_factor_enabled = False
         self.two_factor_secret = None
+        self.two_factor_last_counter = None
         db.session.commit()
+
+    def _consume_totp(self, token):
+        """
+        Validate a TOTP code and burn it, so it cannot be replayed.
+
+        pyotp accepts any code inside the validity window, so an intercepted
+        code stays usable for up to ~90s. Remembering the highest counter that
+        was already accepted closes that window.
+
+        Returns:
+            bool: True if the code was valid and previously unused
+        """
+        if not self.two_factor_secret or not token:
+            return False
+
+        totp = pyotp.TOTP(self.two_factor_secret)
+        # Epoch seconds, not datetime: pyotp reads a naive datetime as LOCAL time,
+        # so passing utcnow() would shift the code by the UTC offset.
+        now_ts = int(time.time())
+
+        for offset in range(-self.TOTP_VALID_WINDOW, self.TOTP_VALID_WINDOW + 1):
+            at = now_ts + offset * totp.interval
+            if not hmac.compare_digest(str(totp.at(at)), str(token)):
+                continue
+
+            counter = at // totp.interval
+            if self.two_factor_last_counter is not None and counter <= self.two_factor_last_counter:
+                return False  # already used -- replay
+
+            self.two_factor_last_counter = counter
+            db.session.commit()
+            return True
+
+        return False
 
     def verify_totp(self, token):
         """
-        Verify TOTP token
+        Verify TOTP token for an account that has 2FA enabled.
 
         Args:
             token: 6-digit TOTP code
@@ -247,8 +320,7 @@ class User(UserMixin, db.Model):
         if not self.two_factor_enabled or not self.two_factor_secret:
             return False
 
-        totp = pyotp.TOTP(self.two_factor_secret)
-        return totp.verify(token, valid_window=1)
+        return self._consume_totp(token)
 
     # =============================================================================
     # Account Security
@@ -446,6 +518,7 @@ class User(UserMixin, db.Model):
 
 from sqlalchemy import event
 
+
 @event.listens_for(User, 'after_insert')
 def audit_user_insert(mapper, connection, target):
     """Audit log for user creation"""
@@ -455,7 +528,9 @@ def audit_user_insert(mapper, connection, target):
             "VALUES (:user_id, :username, 'user_created', :metadata)"
         ),
         {
-            'user_id': target.id,
+            # Bind as str: psycopg2 adapts uuid.UUID objects, other drivers
+            # (e.g. sqlite3 in tests) do not. PostgreSQL casts the text to uuid.
+            'user_id': str(target.id),
             'username': target.username,
             'metadata': f'{{"role": "{target.role}"}}'
         }
@@ -472,7 +547,7 @@ def audit_user_update(mapper, connection, target):
             "VALUES (:user_id, 'UPDATE', 'users', :record_id)"
         ),
         {
-            'user_id': target.id,
-            'record_id': target.id
+            'user_id': str(target.id),
+            'record_id': str(target.id)
         }
     )

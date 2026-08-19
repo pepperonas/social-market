@@ -7,7 +7,7 @@ Purpose: Escrow system for secure transactions (Educational Mock)
 import uuid
 from datetime import datetime
 from enum import Enum
-from sqlalchemy.dialects.postgresql import UUID
+from app.models.types import UUID
 from sqlalchemy import Index
 
 from app import db
@@ -295,6 +295,7 @@ class EscrowTransaction(db.Model):
 
 from sqlalchemy import event
 
+
 @event.listens_for(Escrow, 'before_insert')
 def calculate_escrow_amounts(mapper, connection, target):
     """Calculate vendor amount before inserting escrow"""
@@ -324,10 +325,10 @@ def audit_escrow_changes(mapper, connection, target):
             ":action, :amount, :status)"
         ),
         {
-            'transaction_id': target.order.id if target.order else None,
-            'buyer_id': target.buyer_id,
-            'vendor_id': target.vendor_id,
-            'product_id': target.order.product_id if target.order else None,
+            'transaction_id': str(target.order.id) if target.order else None,
+            'buyer_id': str(target.buyer_id),
+            'vendor_id': str(target.vendor_id),
+            'product_id': str(target.order.product_id) if target.order else None,
             'action': f'escrow_{target.status}',
             'amount': target.amount,
             'status': target.status

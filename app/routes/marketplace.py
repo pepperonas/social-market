@@ -5,10 +5,10 @@ Purpose: Public marketplace browsing and product discovery
 """
 
 from flask import Blueprint, render_template, request, abort
-from flask_login import current_user, login_required
+from flask_login import login_required
 from sqlalchemy import or_, and_
 
-from app import db, limiter
+from app import limiter
 from app.models.product import Product, ProductCategory, ProductReview
 
 marketplace_bp = Blueprint('marketplace', __name__)

@@ -9,9 +9,7 @@ Tests cover:
 - Open redirect prevention
 """
 
-import uuid
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 from datetime import datetime, timedelta
 
 
@@ -28,7 +26,7 @@ class TestLogin:
         """Valid credentials should log in the user."""
         with app.app_context():
             response = client.post('/auth/login', data={
-                'username': 'testbuyer',
+                'username': sample_user.username,
                 'password': 'TestPassword123!',
             }, follow_redirects=False)
             # Should redirect to marketplace or dashboard
@@ -39,7 +37,7 @@ class TestLogin:
         """Wrong password should show error."""
         with app.app_context():
             response = client.post('/auth/login', data={
-                'username': 'testbuyer',
+                'username': sample_user.username,
                 'password': 'WrongPassword999!',
             }, follow_redirects=True)
             assert response.status_code == 200
@@ -72,12 +70,17 @@ class TestLogin:
         """Account should lock after too many failed attempts."""
         with app.app_context():
             from app import db
-            sample_user.failed_login_attempts = 5
-            sample_user.account_locked_until = datetime.utcnow() + timedelta(minutes=15)
+            from tests.conftest import reload_user
+
+            # Re-attach: the fixture built the object in a different app context,
+            # so mutating it here would never be flushed by this session.
+            user = reload_user(sample_user.id)
+            user.failed_login_attempts = 5
+            user.account_locked_until = datetime.utcnow() + timedelta(minutes=15)
             db.session.commit()
 
             response = client.post('/auth/login', data={
-                'username': 'testbuyer',
+                'username': sample_user.username,
                 'password': 'TestPassword123!',
             }, follow_redirects=True)
             assert response.status_code == 200
@@ -88,12 +91,15 @@ class TestLogin:
         """Expired lockout should allow login."""
         with app.app_context():
             from app import db
-            sample_user.failed_login_attempts = 5
-            sample_user.account_locked_until = datetime.utcnow() - timedelta(minutes=1)
+            from tests.conftest import reload_user
+
+            user = reload_user(sample_user.id)
+            user.failed_login_attempts = 5
+            user.account_locked_until = datetime.utcnow() - timedelta(minutes=1)
             db.session.commit()
 
             response = client.post('/auth/login', data={
-                'username': 'testbuyer',
+                'username': sample_user.username,
                 'password': 'TestPassword123!',
             }, follow_redirects=False)
             # Should succeed (redirect)
@@ -108,7 +114,7 @@ class TestOpenRedirectPrevention:
         """Login should not redirect to external URLs."""
         with app.app_context():
             response = client.post('/auth/login?next=http://evil.com', data={
-                'username': 'testbuyer',
+                'username': sample_user.username,
                 'password': 'TestPassword123!',
             }, follow_redirects=False)
             assert response.status_code in (302, 303)
@@ -120,7 +126,7 @@ class TestOpenRedirectPrevention:
         """Login should not redirect to protocol-relative URLs."""
         with app.app_context():
             response = client.post('/auth/login?next=//evil.com', data={
-                'username': 'testbuyer',
+                'username': sample_user.username,
                 'password': 'TestPassword123!',
             }, follow_redirects=False)
             assert response.status_code in (302, 303)
@@ -132,7 +138,7 @@ class TestOpenRedirectPrevention:
         """Login should allow relative URL redirects."""
         with app.app_context():
             response = client.post('/auth/login?next=/vendor/dashboard', data={
-                'username': 'testbuyer',
+                'username': sample_user.username,
                 'password': 'TestPassword123!',
             }, follow_redirects=False)
             assert response.status_code in (302, 303)
@@ -167,11 +173,12 @@ class TestRegistration:
         """Duplicate username should fail."""
         with app.app_context():
             response = client.post('/auth/register', data={
-                'username': 'testbuyer',
+                'username': sample_user.username,
                 'email': 'unique@test.local',
                 'password': 'TestPassword123!',
                 'password_confirm': 'TestPassword123!',
                 'role': 'buyer',
+                'terms_accepted': 'on',
             }, follow_redirects=True)
             assert response.status_code == 200
             assert b'Username already exists' in response.data
@@ -182,10 +189,11 @@ class TestRegistration:
         with app.app_context():
             response = client.post('/auth/register', data={
                 'username': 'uniqueuser',
-                'email': 'buyer@test.local',
+                'email': sample_user.email,
                 'password': 'TestPassword123!',
                 'password_confirm': 'TestPassword123!',
                 'role': 'buyer',
+                'terms_accepted': 'on',
             }, follow_redirects=True)
             assert response.status_code == 200
             assert b'Email already registered' in response.data
