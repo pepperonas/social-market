@@ -4,138 +4,205 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Context
 
-Educational IT security training environment (CloudCommand). Flask-based marketplace demonstrating defense-in-depth architecture. Blue team / defensive security focus. All new files must include educational disclaimers. Never implement features for illegal activities.
+Educational IT security training environment, part of the **celox.io** security
+training programme. A Flask marketplace built to be *read*: defence-in-depth
+written out in full, published together with its own security audit and the
+mistakes left visible on purpose.
+
+**Blue team only.** No exploit code, no offensive tooling, no features that
+serve illegal activity. New files carry the educational disclaimer.
+
+The most important convention in this repository: **when something was wrong,
+fix it AND leave the explanation.** The failures are the curriculum. A commit
+message or docstring that says "fixed bug" throws away the teaching value.
 
 ## Commands
 
 ```bash
-# Build & run
-docker-compose up -d
-docker-compose up -d --build          # after dependency changes
+# Tests: SQLite in-memory, no Docker, no Postgres, no Redis needed
+pytest tests/ -v
+pytest tests/test_auth.py -v
+pytest tests/ --cov=app --cov-report=term-missing
 
-# Restart after code/template changes
-docker restart marketplace_app
+# Lint (settings live in .flake8 so CI and local cannot drift)
+flake8 app/ tests/
+bandit -r app/ -ll --skip B101
+pip-audit -r app/requirements.txt --desc
 
-# Database init (first time)
+# Docker (local full stack)
+docker-compose up -d --build
 docker exec marketplace_app flask init-db
 docker exec marketplace_app flask init-admin
 docker exec marketplace_app flask seed-data
+docker restart marketplace_app          # templates are cached; restart after edits
 
-# SQL migrations (not Alembic)
+# SQL migrations are plain files, not Alembic
 docker exec marketplace_postgres psql -U marketplace -d marketplace -f /migrations/<file>.sql
-
-# Tests (SQLite in-memory, no Docker needed)
-pytest tests/ -v
-pytest tests/test_auth.py -v                          # single file
-pytest tests/ -v --cov=app --cov-report=term-missing  # with coverage
-
-# Security scan
-./scripts/security-scan.sh
-
-# Access services
-docker exec marketplace_app flask shell
-docker exec -it marketplace_postgres psql -U marketplace
 ```
 
-**Container names use underscores**: `marketplace_app`, `marketplace_postgres`, `marketplace_redis`, `marketplace_nginx`.
+Container names use underscores: `marketplace_app`, `marketplace_postgres`,
+`marketplace_redis`, `marketplace_nginx`. App at http://localhost:8080.
 
-App at http://localhost:8080. Default creds in `LOGIN_CREDENTIALS.md`.
+**Deployment** (systemd + nginx, not docker-compose) is documented in
+[DEPLOY.md](DEPLOY.md). Live at https://socialmarket.celox.io.
 
 ## Architecture
 
-### Request Flow
-
 ```
-Nginx (:8080) → Gunicorn → Flask App → PostgreSQL + Redis
-                              ↓
-                     SecurityHeadersMiddleware (X-Request-ID)
-                              ↓
-                     Flask-Talisman (CSP with nonce, HSTS)
-                              ↓
-                     Blueprint routes → Service layer → DB
+nginx (TLS) → gunicorn → Flask
+                           ↓
+              SecurityHeadersMiddleware (X-Request-ID)
+                           ↓
+              Flask-Talisman (nonce CSP, HSTS)
+                           ↓
+              Blueprint → service layer → PostgreSQL / Redis
 ```
 
-### Application Factory
+`app/__init__.py` → `create_app(config_name=None)`.
 
-`app/__init__.py` → `create_app()`. Extensions initialized: SQLAlchemy (`db`), Flask-Login, Flask-Session (Redis), Flask-Limiter (Redis), Flask-Talisman (nonce-based CSP), CSRFProtect (`csrf`), Celery.
+### Config selection
 
-### Blueprint → Route Mapping
+`config.py` exports a `config` **dict**; there is no module attribute per name.
+`create_app` looks the name up in that dict, and falls back to the `APP_CONFIG`
+environment variable when called without arguments (gunicorn calls the factory
+bare). Opt-in on purpose: `ProductionConfig` also switches on
+`WTF_CSRF_SSL_STRICT`, which needs HTTPS end to end.
 
-| Blueprint | Prefix | Access | Key file |
-|-----------|--------|--------|----------|
-| `marketplace_bp` | `/` | Public | `routes/marketplace.py` |
-| `auth_bp` | `/auth` | Public/Auth | `routes/auth.py` |
+### Blueprints
+
+| Blueprint | Prefix | Access | File |
+|---|---|---|---|
+| `marketplace_bp` | `/` | login-gated storefront | `routes/marketplace.py` |
+| `auth_bp` | `/auth` | public + auth | `routes/auth.py` |
 | `vendor_bp` | `/vendor` | `@vendor_required` | `routes/vendor.py` |
 | `buyer_bp` | `/buyer` | `@login_required` | `routes/buyer.py` |
 | `admin_bp` | `/admin` | `@admin_required` | `routes/admin.py` |
-| `messages_bp` | `/messages` | Auth | `routes/messages.py` |
-| `cart_bp` | `/cart` | Auth | `routes/cart.py` |
-| `account_bp` | `/account` | Auth | `routes/account.py` |
+| `messages_bp` | `/messages` | auth | `routes/messages.py` |
+| `cart_bp` | `/cart` | auth | `routes/cart.py` |
+| `account_bp` | `/account` | auth | `routes/account.py` |
+| `notifications_bp` | `/notifications` | auth | `routes/notifications.py` |
 
-### Service Layer
+The storefront (`/`) is deliberately behind login — a closed marketplace, which
+is what makes the role separation worth studying.
 
-All crypto/security logic lives in `app/services/` — never implement directly in routes:
+### Service layer
 
-- **`password_service.py`**: Argon2id hashing with pepper. Use `get_password_service()` singleton. User model's `set_password()`/`check_password()` call this internally.
-- **`audit_service.py`**: Calls PostgreSQL stored procedures (`log_auth_event`, `log_security_event`, `log_admin_action`). Parameter order must match SQL signatures in `postgres/audit-logging.sql`.
-- **`image_service.py`**: EXIF stripping, validation, thumbnails. Use `get_image_service()`.
-- **`pgp_service.py`**: RSA-4096 key generation, encrypt/decrypt.
+Security logic lives in `app/services/`, never inline in a route:
+
+| Service | Responsibility |
+|---|---|
+| `password_service.py` | Argon2id + pepper, **and** the password policy (`validate_policy`) |
+| `passphrase_service.py` | BIP-39 passphrase suggestions with honest entropy |
+| `cover_service.py` | Deterministic generated product covers |
+| `crypto_service.py` | Fernet application-level encryption |
+| `pgp_service.py` | RSA-4096 keypairs, encrypt/decrypt |
+| `image_service.py` | Upload validation, EXIF stripping, thumbnails |
+| `audit_service.py` | PostgreSQL stored procedures |
+| `security_service.py` | IP blocking, canary tokens, honeypots |
+| `escrow_service.py` | Escrow lifecycle |
 
 ### Database
 
-- **PostgreSQL** with pgcrypto extension. All models use **UUID primary keys**.
-- Stored procedures for audit logging (see `postgres/audit-logging.sql`).
-- Encrypted fields stored as `LargeBinary` (pgcrypto `pgp_sym_encrypt`).
-- SSL connections enabled (`sslmode: prefer` in `config.py`).
+PostgreSQL with pgcrypto. UUID primary keys throughout, via
+`app/models/types.py` — portable types that render **identical DDL** on
+PostgreSQL and still work on SQLite, so the test suite needs no database server.
+Encrypted columns are `LargeBinary` written through the `encrypt_data()` /
+`decrypt_data()` stored functions.
 
-### Session Management
-
-Redis-backed sessions (Flask-Session). Session invalidation on password change scans Redis keys matching `SESSION_KEY_PREFIX` and deletes sessions belonging to the user (see `_invalidate_other_sessions` in `routes/account.py`).
-
-### Security Middleware
-
-`app/middleware/security_headers.py`: WSGI middleware that generates/propagates `X-Request-ID` (from Nginx or auto-generated UUID), stored in `g.request_id` via `before_request`.
+Audit tables (`auth_log`, `audit_log`, `security_events`, `message_audit`,
+`transaction_audit`, `admin_actions`) are defined in `postgres/audit-logging.sql`,
+**not** in the models — `db.create_all()` does not create them.
 
 ## Conventions
 
-### Forms & Templates
+- POST forms: `<input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>`
+- Inline scripts: `nonce="{{ csp_nonce() }}"` — the CSP blocks anything else, silently
+- Code samples in templates: `<pre class="code-block">`, which gets a header bar and copy button
+- Money is `Decimal` end to end; never multiply it by a float
+- Rate limits: `@limiter.limit("20 per minute")` on login, `3 per hour` on PGP generation.
+  Static media is `@limiter.exempt` — see gotchas.
 
-- All POST forms: `<input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>`
-- All inline scripts: `nonce="{{ csp_nonce() }}"`
-- CSP violations report to `POST /admin/csp-report-uri` (CSRF-exempt)
-- Base template: `app/templates/base.html`
+### Tests
 
-### Rate Limiting
+`tests/` runs on SQLite in-memory. `conftest.py` provides:
 
-```python
-@limiter.limit("20 per minute")  # Login
-@limiter.limit("3 per hour")     # PGP key generation
-@limiter.limit("1 per day")      # Data export
-```
+- `app` (session) + an autouse **per-test app context** — Flask reuses an active
+  context for requests, and `g` lives there, so a session-wide context leaks
+  `current_user` between tests
+- `sample_user` / `sample_vendor` / `sample_admin` — **unique usernames per test**
+- `reload_user(id)` — re-read in the current context; a fixture object is stale
+  after an HTTP request
+- `query_counter` — counts SQL statements, for N+1 budgets
+- `mock_audit` — stubs the stored-procedure calls
+- SQLite implementations of `encrypt_data`, `decrypt_data` and `NOW()`
 
-### Adding a Route
+**House rule: every new regression test must be seen to fail.** Reintroduce the
+bug, watch it go red, then fix it again. Match against comment-free source —
+the docs here quote removed code verbatim, and a naive `in source` check passes
+against the very thing it forbids. (That trap has caught this project twice.)
 
-1. Add to appropriate blueprint in `app/routes/`
-2. Use `@admin_required` or `@vendor_required` decorators for role-gated routes
-3. Add CSRF token to POST forms
-4. Log security events via `audit_service.py`
-5. `docker restart marketplace_app`
+### CI
 
-### User Roles
+`.github/workflows/ci.yml` — four jobs, all required:
 
-`User.role` field: `buyer`, `vendor`, `admin`. Vendors must also have `is_vendor_approved=True` — `user.is_vendor()` checks both. Unapproved vendors return `False` for `is_vendor()`.
-
-### Testing
-
-Tests in `tests/` use SQLite in-memory (configured in `conftest.py`). PostgreSQL stored procedures are not available — audit service calls should be mocked via the `mock_audit` fixture. Test fixtures provide `sample_user`, `sample_vendor`, `sample_admin`, and pre-authenticated clients (`auth_client`, `vendor_client`, `admin_client`).
-
-### CI/CD
-
-`.github/workflows/ci.yml`: 3 jobs — Lint (flake8 + bandit), Test (pytest with PostgreSQL + Redis services), Security (pip-audit).
+| Job | What it does |
+|---|---|
+| Lint | flake8 (`.flake8`) + bandit |
+| Test | pytest with PostgreSQL + Redis services available |
+| Security Scan | `pip-audit`, **no `\|\| true`** |
+| Secret Scan | gitleaks over the **full history** |
 
 ## Gotchas
 
-- **Docker Compose does NOT expand nested env vars** like `${REDIS_PASSWORD}` in `.env`. Use literal values in Redis URLs.
-- **Audit `log_security_event` parameter order**: `(event_type, severity, 'application', description, user_id, ip_address, metadata)` — must match `postgres/audit-logging.sql`.
-- **400 on POST with no message** = missing CSRF token.
-- **Login `next` parameter**: validated by `_is_safe_url()` in `routes/auth.py` to prevent open redirects.
+Every one of these cost real debugging time here.
+
+### Application
+
+- **Order of checks is a security boundary.** `if two_factor_enabled` used to be
+  evaluated before `if is_active`, so deactivating an account did not deactivate it.
+- **Enabling 2FA must require proof.** Switching it on while rendering the QR code
+  locks out anyone who abandons the page.
+- **`Decimal * float` raises `TypeError`.** It sat in an order insert listener, so
+  every checkout failed. Convert percentages with `Decimal(str(x))`.
+- **Template field names must match what the route reads.** `name="terms"` versus
+  `request.form.get('terms_accepted')` made registration impossible for months.
+- **A checkbox submits the string `'on'`,** not a bool. Boolean columns reject it.
+- **Never echo a password back into HTML** when re-rendering a rejected form.
+- **Nullable audit fields.** `user_agent[:50]` 500s: rows written by the model
+  event listeners carry no user agent.
+- **Rate limiting static media is self-harm.** The default 10/s throttled the app's
+  own product covers — a listing page renders 20 of them, half came back 429.
+- **`::selection` must be declared whenever text colour is forced.** White text plus
+  the default light-grey selection is unreadable exactly when someone copies it.
+- **Do not render ORM objects in templates.** `{{ product.category }}` prints a repr.
+
+### Infrastructure
+
+- **Docker Compose does not expand `${VAR}` inside `.env` values.** Write them out.
+- **`EnvironmentFile` is read at process start,** not on `systemctl reload`.
+- **gunicorn ≥ 26 opens a control socket** whose default path is the working
+  directory — read-only under `ProtectSystem=strict`. Use `RuntimeDirectory`.
+- **nginx 1.24 needs `listen 443 ssl http2;`**; `http2 on;` requires 1.25+.
+- **Do not `proxy_hide_header` the security headers** unless nginx sets its own.
+- **Grant privileges after loading the SQL layer** as the postgres superuser, or
+  the app hits `permission denied for table auth_log`.
+- **Behind a proxy, `remote_addr` is the proxy.** ProxyFix is opt-in via
+  `TRUSTED_PROXY_COUNT`; trusting `X-Forwarded-For` blindly allows IP spoofing.
+- **Rate limits cannot be judged from sequential curl calls** — they spread over
+  more than a second. Test in parallel with `xargs -P`.
+
+### Audit service
+
+`log_security_event` parameter order is
+`(event_type, severity, 'application', description, user_id, ip_address, metadata)`
+and must match the signature in `postgres/audit-logging.sql`.
+
+## Where the teaching material lives
+
+| Document | Contents |
+|---|---|
+| [`docs/BUGFIX-PLAN.md`](docs/BUGFIX-PLAN.md) | The full security review: findings, severity, fixes |
+| [`docs/PASSWORD_SECURITY.md`](docs/PASSWORD_SECURITY.md) | Argon2id, pepper, and a real secret that leaked through documentation |
+| [`SECURITY.md`](SECURITY.md) | Which properties are intentional — read before reporting |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | The mutation-testing house rule |
+| [`DEPLOY.md`](DEPLOY.md) | systemd + nginx topology and its gotchas |

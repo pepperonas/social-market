@@ -45,8 +45,8 @@
                 {% for product in products %}
                 <div class="col-md-6 mb-4">
                     <div class="card h-100">
-                        {% if product.images %}
-                        <img src="{{ product.images[0] }}" class="card-img-top" alt="{{ product.title }}" style="height: 150px; object-fit: cover;">
+                        {% if product.primary_image_url %}
+                        <img src="{{ product.primary_image_url }}" class="card-img-top" alt="{{ product.title }}" style="height: 150px; object-fit: cover;">
                         {% else %}
                         <div class="card-img-top bg-secondary d-flex align-items-center justify-content-center" style="height: 150px;">
                             <span class="text-white">No Image</span>

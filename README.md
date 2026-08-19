@@ -8,13 +8,15 @@
 
 <!-- Build & quality -->
 [![CI](https://github.com/pepperonas/social-market/actions/workflows/ci.yml/badge.svg)](https://github.com/pepperonas/social-market/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-353%20passing-brightgreen)](tests/)
-[![Coverage](https://img.shields.io/badge/coverage-46%25-yellow)](tests/)
+[![Tests](https://img.shields.io/badge/tests-408%20passing-brightgreen)](tests/)
+[![Coverage](https://img.shields.io/badge/coverage-48%25-yellow)](tests/)
 [![Lint](https://img.shields.io/badge/flake8-0%20issues-brightgreen)](.flake8)
 [![Bandit](https://img.shields.io/badge/bandit-clean-brightgreen)](.github/workflows/ci.yml)
 [![pip-audit](https://img.shields.io/badge/pip--audit-enforced-brightgreen)](.github/workflows/ci.yml)
 [![Secret scan](https://img.shields.io/badge/gitleaks-full%20history-brightgreen)](.gitleaks.toml)
 [![Mutation tested](https://img.shields.io/badge/regression%20pins-mutation%20tested-blueviolet)](CONTRIBUTING.md)
+[![Query budgets](https://img.shields.io/badge/N%2B1-query%20budgets%20pinned-blueviolet)](tests/test_query_performance.py)
+[![CI jobs](https://img.shields.io/badge/CI-4%20required%20jobs-brightgreen)](.github/workflows/ci.yml)
 
 <!-- Repository -->
 [![Last commit](https://img.shields.io/github/last-commit/pepperonas/social-market)](https://github.com/pepperonas/social-market/commits/main)
@@ -51,6 +53,12 @@
 [![security.txt](https://img.shields.io/badge/security.txt-RFC%209116-success)](https://socialmarket.celox.io/.well-known/security.txt)
 [![OWASP](https://img.shields.io/badge/OWASP-Top%2010%20mapped-000000?logo=owasp&logoColor=white)](#-owasp-top-10-where-to-look)
 [![systemd](https://img.shields.io/badge/systemd-sandbox%201.7%20OK-informational)](DEPLOY.md)
+[![Proxy trust](https://img.shields.io/badge/X--Forwarded--For-opt--in%20only-blue)](app/__init__.py)
+[![Uploads](https://img.shields.io/badge/uploads-EXIF%20stripped-blue)](app/services/image_service.py)
+[![Media](https://img.shields.io/badge/covers-generated%2C%20no%20stock%20photos-blue)](app/services/cover_service.py)
+[![Escrow](https://img.shields.io/badge/orders-escrow%20state%20machine-blue)](tests/test_models_order.py)
+[![Lockout](https://img.shields.io/badge/lockout-5%20tries%20%2F%2015%20min-blue)](app/models/user.py)
+[![Selection](https://img.shields.io/badge/contrast-AA%20verified-success)](tests/test_code_block_readability.py)
 
 <!-- Project -->
 [![Purpose](https://img.shields.io/badge/purpose-blue%20team%20education-1E88E5)](#-what-this-is-for)
@@ -60,6 +68,8 @@
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)](CONTRIBUTING.md)
 [![Security policy](https://img.shields.io/badge/security-policy-blue)](SECURITY.md)
 [![Maintained](https://img.shields.io/badge/maintained-yes-brightgreen)](https://github.com/pepperonas/social-market/commits/main)
+[![Training](https://img.shields.io/badge/part%20of-celox.io%20security%20training-1E88E5)](https://celox.io)
+[![Docs](https://img.shields.io/badge/docs-audit%20%2B%20deploy%20%2B%20policy-informational)](docs/BUGFIX-PLAN.md)
 
 </div>
 
@@ -72,9 +82,39 @@ into and click through while reading the code.
 
 | Role | Username | Password |
 |---|---|---|
-| Buyer | `buyer1` … `buyer10` | `Password123!` |
-| Vendor | `vendor1` … `vendor5` | `Password123!` |
 | Admin | `admin` | `ChangeMe123!` |
+| Buyer | any of the ten below | `Password123!` |
+| Vendor | any of the five below | `Password123!` |
+
+<details>
+<summary><strong>The cast</strong> — every demo account is also a teaching example</summary>
+
+**Buyers** — the people your awareness programme is actually for:
+
+| Username | Who they are |
+|---|---|
+| `clicky_mcclickface` | Has never met a link he would not click |
+| `bob_from_accounting` | 40 invoices a day, three of them real |
+| `password_pete` | Same password everywhere. It is the cat's name plus a year |
+| `sudo_susan` | Believes any problem yields to running it again with `sudo` |
+| `two_factor_tina` | 2FA on everything, including the microwave. The one you want |
+| `phishy_phil` | Wired money to a prince once; now runs the training |
+| `cache_money` | Never invalidates anything. Still seeing Tuesday's prices |
+| `patch_tuesday` | Reboots religiously once a month |
+| `cookie_monster` | Accepts all cookies. ALL of them |
+| `admin_admin` | Left the default credentials on the router |
+
+**Vendors:**
+
+| Username | Who they are |
+|---|---|
+| `salt_n_peppa` | Salt goes in the database, pepper stays in the environment |
+| `zero_cool` | Retired 1995 teen hacker, now entirely legitimate |
+| `null_bytes` | Terminates everything early |
+| `entropy_ella` | Rolls actual dice. Refuses anything from `Math.random()` |
+| `rubber_ducky` | Listens patiently while you solve your own bug |
+
+</details>
 
 **Read this before you poke at it:**
 
@@ -201,7 +241,7 @@ involved to cheat. Every one of those is a place where defence is *interesting*.
 | | |
 |---|---|
 | 📖 **Read the controls** | Argon2id + pepper, nonce-based CSP, TOTP with replay protection, encrypted shipping data, an escrow state machine, audit logging via stored procedures |
-| 🧪 **Read the tests** | 353 of them. They are written as *arguments*, not assertions — each says why a control matters and what breaks without it |
+| 🧪 **Read the tests** |  of them. They are written as *arguments*, not assertions — each says why a control matters and what breaks without it |
 | 🔍 **Read the audit** | [`docs/BUGFIX-PLAN.md`](docs/BUGFIX-PLAN.md) is a real security review of this codebase, with the real findings, in the order they were found |
 | 🛠 **Break it on purpose** | Revert a fix and watch which test screams. Every fix in the audit has a test that provably catches its regression |
 | 📉 **Study the failures** | The most valuable parts of this repo are the places where it *was wrong* — documented rather than quietly rewritten |
@@ -221,7 +261,7 @@ involved to cheat. Every one of those is a place where defence is *interesting*.
 
 Not hypotheticals. Each one happened *here*, and the fix is in the history:
 
-- **A test suite that cannot run is worse than no test suite.** All 72 tests errored on setup
+- **A test suite that cannot run is worse than no test suite.** All 408 tests errored on setup
   for months while CI reported the failure into a void. Four stacked defects, each hidden by
   the one before it.
 - **Secrets leak through documentation.** The live password pepper sat in a Markdown file whose
@@ -245,6 +285,15 @@ Not hypotheticals. Each one happened *here*, and the fix is in the history:
 - **A page that 500s on incomplete audit data fails when it is needed.** `/account/security`
   crashed on `user_agent[:50]` because the audit rows written by the model listeners carry no
   user agent — and that page is exactly what a defender opens when something looks wrong.
+- **A rate limit on static assets is a self-inflicted outage.** The global 10/s limit throttled
+  the app's own product covers: a listing page pulls twenty, so half came back `429` and the
+  grid rendered blank. A limit exists to bound expensive or abusable work.
+- **Forcing a text colour without declaring `::selection` breaks copying.** White commands on a
+  dark block met the browser's light-grey selection highlight — unreadable at the exact moment
+  someone selected them to copy.
+- **A feature can ship having never worked.** Product images had no route serving them and the
+  templates interpolated the ORM object into `src`. Nobody noticed, because no product had an
+  image to reveal it.
 
 ### 🗺 OWASP Top 10: where to look
 
@@ -751,9 +800,18 @@ This project is for educational purposes only. See LICENSE file for details.
 
 ## Contact
 
-For questions about this training environment:
-- Email: security-training@cloudcommand.example
-- Purpose: IT security education and training inquiries only
+This project is maintained by **[celox.io](https://celox.io)** and forms part of its
+IT security training programme.
+
+| | |
+|---|---|
+| Security reports | `security@celox.io` — see [SECURITY.md](SECURITY.md) first, several properties here are intentional |
+| Training enquiries | `training@celox.io` |
+| Issues & discussion | [GitHub issues](https://github.com/pepperonas/social-market/issues) |
+| Machine-readable | [`/.well-known/security.txt`](https://socialmarket.celox.io/.well-known/security.txt) (RFC 9116) |
+
+Please keep enquiries to security education and defensive research. Requests for
+offensive tooling, or for help operating a marketplace, will not be answered.
 
 ---
 

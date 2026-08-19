@@ -125,6 +125,27 @@ class Product(db.Model):
             self.quantity = max(0, self.quantity - quantity)
         db.session.commit()
 
+    @property
+    def primary_image_url(self):
+        """
+        URL of the product's primary image, or None.
+
+        Templates used to interpolate `product.images[0]` straight into a src
+        attribute, which renders the ProductImage *object*, not a URL -- and
+        nothing served the files anyway. Go through this property so there is
+        one place that knows how an image becomes a URL.
+        """
+        from flask import url_for
+
+        image = (
+            self.images.filter_by(is_primary=True).first()
+            or self.images.order_by(ProductImage.display_order).first()
+        )
+        if not image:
+            return None
+
+        return url_for('marketplace.product_image', filename=image.filename)
+
     def is_in_stock(self):
         """Check if product is in stock"""
         if self.is_digital:

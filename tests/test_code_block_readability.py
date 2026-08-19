@@ -126,3 +126,50 @@ class TestGeneratorServesBothForms:
     def test_eight_words_reach_88_bits(self, client):
         item = client.get('/auth/suggest-passphrase?words=8').get_json()['suggestions'][0]
         assert item['entropy_bits'] == pytest.approx(88.0)
+
+
+class TestCodeBlockLayout:
+    """
+    The copy button used to sit inside the code area, immediately beside the
+    first line, which made that line read as indented even though it was not
+    (measured: both lines start at the same x). Perceived misalignment is still
+    misalignment. The button now lives in its own bar above the code.
+    """
+
+    def test_wrapper_and_bar_are_created(self):
+        js = BASE.read_text()
+        assert 'code-figure' in js
+        assert 'code-bar' in js
+
+    def test_padding_is_symmetric(self):
+        """
+        Asymmetric right padding existed only to dodge the button. With the
+        button in the bar, a one-value padding keeps every line evenly inset.
+
+        Matched against comment-free CSS: the comment above that very rule
+        contains the word "padding:", and a naive search swallows it -- the
+        trap CONTRIBUTING.md warns about, walked into while writing this test.
+        """
+        css = re.sub(r'/\*.*?\*/', '', BASE.read_text(), flags=re.S)
+        rule = re.search(r'\.code-block\s*\{([^}]*)\}', css).group(1)
+        padding = re.search(r'padding:\s*([^;]+);', rule)
+
+        assert padding, '.code-block should declare padding'
+        values = padding.group(1).split()
+        assert len(set(values)) == 1, f'padding should be uniform, got {values}'
+
+    def test_wrapping_is_idempotent(self):
+        """The script may run again (e.g. after a partial render)."""
+        js = BASE.read_text()
+        assert "classList.contains('code-figure')" in js, (
+            'must skip blocks that are already wrapped'
+        )
+
+    def test_bar_has_a_label(self):
+        assert 'code-bar-label' in BASE.read_text()
+
+    def test_button_is_reachable_by_keyboard(self):
+        """It is a real <button>, and it shows a focus ring."""
+        css = BASE.read_text()
+        assert '.code-copy:focus-visible' in css
+        assert "createElement('button')" in css

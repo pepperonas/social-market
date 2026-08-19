@@ -30,8 +30,8 @@
                     {% for product in products %}
                     <tr>
                         <td>
-                            {% if product.images %}
-                            <img src="{{ product.images[0] }}" alt="{{ product.title }}" style="width: 50px; height: 50px; object-fit: cover;">
+                            {% if product.primary_image_url %}
+                            <img src="{{ product.primary_image_url }}" alt="{{ product.title }}" style="width: 50px; height: 50px; object-fit: cover;">
                             {% else %}
                             <div style="width: 50px; height: 50px; background-color: #ccc;"></div>
                             {% endif %}

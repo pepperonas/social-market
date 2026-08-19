@@ -29,13 +29,35 @@
          * white-on-light-grey and becomes unreadable. Selection colours must be
          * declared whenever text colour is forced.
          */
-        .code-block {
-            position: relative;
+        /* Wrapper added by the script below, so the bar exists for every block */
+        .code-figure {
             background-color: #212529;
-            color: #f8f9fa;
             border-radius: .375rem;
-            padding: .75rem 3rem .75rem .75rem;
-            margin-bottom: .5rem;
+            overflow: hidden;
+            margin-bottom: .75rem;
+        }
+        .code-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: .5rem;
+            padding: .35rem .5rem .35rem .9rem;
+            background: rgba(255, 255, 255, .06);
+            border-bottom: 1px solid rgba(255, 255, 255, .1);
+        }
+        .code-bar-label {
+            font-size: .7rem;
+            letter-spacing: .06em;
+            text-transform: uppercase;
+            color: rgba(255, 255, 255, .55);
+        }
+        .code-block {
+            background: none;
+            color: #f8f9fa;
+            /* Symmetric padding: the copy button lives in the bar now, so the
+               first line no longer has to dodge it. */
+            padding: .9rem;
+            margin: 0;
             overflow-x: auto;
         }
         .code-block code { color: inherit; background: none; }
@@ -43,12 +65,10 @@
         .code-block::selection { background: #ffe08a; color: #1a1a1a; }
 
         .code-copy {
-            position: absolute;
-            top: .35rem;
-            right: .35rem;
-            font-size: .75rem;
+            flex: 0 0 auto;
+            font-size: .72rem;
             line-height: 1;
-            padding: .25rem .5rem;
+            padding: .3rem .6rem;
             border: 1px solid rgba(255, 255, 255, .35);
             border-radius: .25rem;
             background: transparent;
@@ -60,7 +80,8 @@
 
         /* High-contrast / forced-colours: let the OS decide, do not fight it. */
         @media (forced-colors: active) {
-            .code-block { background: Canvas; color: CanvasText; border: 1px solid CanvasText; }
+            .code-figure { background: Canvas; border: 1px solid CanvasText; }
+            .code-block { background: Canvas; color: CanvasText; }
             .code-block ::selection { background: Highlight; color: HighlightText; }
         }
     </style>
@@ -166,19 +187,39 @@
     </footer>
 
     {% block extra_js %}{% endblock %}
-    {# One copy button per code block: nobody should have to select text that
-       a stray CSS rule can make unreadable. #}
+    {# Wrap each code block in a bar + body so the copy button never crowds the
+       first line, and nobody has to select text that CSS could make unreadable. #}
     <script nonce="{{ csp_nonce() }}">
     (function () {
       'use strict';
-      document.querySelectorAll('.code-block').forEach(function (block) {
+
+      document.querySelectorAll('pre.code-block').forEach(function (pre) {
+        if (pre.parentElement && pre.parentElement.classList.contains('code-figure')) { return; }
+
+        var figure = document.createElement('div');
+        figure.className = 'code-figure';
+        pre.parentNode.insertBefore(figure, pre);
+
+        var bar = document.createElement('div');
+        bar.className = 'code-bar';
+
+        var label = document.createElement('span');
+        label.className = 'code-bar-label';
+        label.textContent = pre.getAttribute('data-label') || 'shell';
+
         var btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'code-copy';
         btn.textContent = 'Copy';
         btn.setAttribute('aria-label', 'Copy command to clipboard');
+
+        bar.appendChild(label);
+        bar.appendChild(btn);
+        figure.appendChild(bar);
+        figure.appendChild(pre);
+
         btn.addEventListener('click', function () {
-          var text = block.querySelector('code').textContent;
+          var text = pre.querySelector('code').textContent;
           var done = function () {
             btn.textContent = 'Copied';
             setTimeout(function () { btn.textContent = 'Copy'; }, 1500);
@@ -197,7 +238,6 @@
             document.body.removeChild(ta);
           }
         });
-        block.appendChild(btn);
       });
     })();
     </script>

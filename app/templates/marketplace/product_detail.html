@@ -7,8 +7,8 @@
     <div class="col-md-8">
         <div class="card">
             <div class="card-body">
-                {% if product.images %}
-                <img src="{{ product.images[0] }}" class="img-fluid mb-3" alt="{{ product.title }}" style="max-height: 400px; width: 100%; object-fit: cover;">
+                {% if product.primary_image_url %}
+                <img src="{{ product.primary_image_url }}" class="img-fluid mb-3" alt="{{ product.title }}" style="max-height: 400px; width: 100%; object-fit: cover;">
                 {% else %}
                 <div class="bg-secondary d-flex align-items-center justify-content-center mb-3" style="height: 400px;">
                     <span class="text-white">No Image Available</span>
@@ -18,7 +18,7 @@
                 <h2>{{ product.title }}</h2>
 
                 <div class="mb-3">
-                    <span class="badge bg-secondary">{{ product.category }}</span>
+                    <span class="badge bg-secondary">{{ product.category.name if product.category else 'Uncategorised' }}</span>
                     <span class="badge bg-{{ 'success' if product.active else 'danger' }}">{{ 'Active' if product.active else 'Inactive' }}</span>
                 </div>
 

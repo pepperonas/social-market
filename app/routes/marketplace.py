@@ -4,6 +4,7 @@ Marketplace Routes
 Purpose: Public marketplace browsing and product discovery
 """
 
+from werkzeug.exceptions import NotFound
 from flask import Blueprint, render_template, request, abort
 from flask_login import login_required
 from sqlalchemy import or_, and_
@@ -43,6 +44,38 @@ def index():
                           featured_products=featured_products,
                           recent_products=recent_products,
                           categories=categories)
+
+
+@marketplace_bp.route('/media/products/<path:filename>')
+@limiter.exempt
+def product_image(filename):
+    """
+    Serve a product image.
+
+    Exempt from rate limiting on purpose. The default limit is 10 requests per
+    second per client, and a listing page references twenty images -- so the
+    app throttled its own page into blank tiles (measured: 10x200, 10x429).
+    A rate limit exists to bound expensive or abusable work; applying it to
+    static bytes turns a protection into a self-inflicted denial of service.
+
+    `send_from_directory` resolves the path and refuses anything that escapes
+    the directory, which is the control that matters here -- but the filename is
+    also matched against a strict pattern first, so a traversal attempt is
+    rejected before it reaches the filesystem rather than after.
+    """
+    import os
+    import re
+
+    from flask import abort, current_app, send_from_directory
+
+    if not re.fullmatch(r'[A-Za-z0-9._-]{1,120}', filename):
+        abort(404)
+
+    folder = os.path.join(current_app.config['UPLOAD_FOLDER'], 'products')
+    try:
+        return send_from_directory(folder, filename, max_age=3600)
+    except NotFound:
+        abort(404)
 
 
 @marketplace_bp.route('/search')

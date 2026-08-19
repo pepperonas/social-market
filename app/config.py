@@ -5,6 +5,7 @@ Purpose: Centralized configuration management
 """
 
 import os
+import tempfile
 from datetime import timedelta
 
 
@@ -258,6 +259,12 @@ class TestingConfig(Config):
     # Tests must not need a Redis server.
     SESSION_TYPE = 'filesystem'
     RATELIMIT_STORAGE_URL = 'memory://'
+    # The default is the container path /app/uploads, which does not exist (and
+    # is not writable) outside Docker.
+    UPLOAD_FOLDER = os.environ.get(
+        'TEST_UPLOAD_FOLDER',
+        os.path.join(tempfile.gettempdir(), 'socialmarket-test-uploads'),
+    )
 
 
 # Configuration dictionary

@@ -24,8 +24,8 @@
         {% for product in products.items %}
         <div class="col-md-4 mb-4">
             <div class="card h-100">
-                {% if product.images %}
-                <img src="{{ product.images[0] }}" class="card-img-top" alt="{{ product.title }}" style="height: 200px; object-fit: cover;">
+                {% if product.primary_image_url %}
+                <img src="{{ product.primary_image_url }}" class="card-img-top" alt="{{ product.title }}" style="height: 200px; object-fit: cover;">
                 {% else %}
                 <div class="card-img-top bg-secondary d-flex align-items-center justify-content-center" style="height: 200px;">
                     <span class="text-white">No Image</span>
@@ -36,7 +36,7 @@
                     <p class="card-text text-truncate">{{ product.description }}</p>
                     <p class="card-text">
                         <strong>Price:</strong> ${{ "%.2f"|format(product.price) }}<br>
-                        <strong>Category:</strong> <span class="badge bg-secondary">{{ product.category }}</span>
+                        <strong>Category:</strong> <span class="badge bg-secondary">{{ product.category.name if product.category else 'Uncategorised' }}</span>
                     </p>
                     <a href="{{ url_for('marketplace.product_detail', product_id=product.id) }}" class="btn btn-primary btn-sm">View Details</a>
                 </div>
