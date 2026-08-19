@@ -9,7 +9,7 @@
 
 ### Admin Account
 - **Username:** `admin`
-- **Password:** `Password123!`
+- **Password:** `ChangeMe123!`
 - **Access:** Admin Dashboard, User Management, Security Monitoring, Audit Logs
 
 ### Buyer Accounts (10 available)

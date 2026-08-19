@@ -165,8 +165,8 @@ class TestRegistration:
                 'password_confirm': 'DifferentPassword123!',
                 'role': 'buyer',
             }, follow_redirects=True)
-            assert response.status_code == 200
-            assert b'Passwords do not match' in response.data
+            assert response.status_code == 400
+            assert b'do not match' in response.data
 
     @patch('app.routes.auth._log_auth_event')
     def test_register_duplicate_username(self, mock_log, client, sample_user, app):
@@ -180,8 +180,8 @@ class TestRegistration:
                 'role': 'buyer',
                 'terms_accepted': 'on',
             }, follow_redirects=True)
-            assert response.status_code == 200
-            assert b'Username already exists' in response.data
+            assert response.status_code == 400
+            assert b'already taken' in response.data
 
     @patch('app.routes.auth._log_auth_event')
     def test_register_duplicate_email(self, mock_log, client, sample_user, app):
@@ -195,8 +195,8 @@ class TestRegistration:
                 'role': 'buyer',
                 'terms_accepted': 'on',
             }, follow_redirects=True)
-            assert response.status_code == 200
-            assert b'Email already registered' in response.data
+            assert response.status_code == 400
+            assert b'already exists' in response.data
 
     @patch('app.routes.auth._log_auth_event')
     def test_register_empty_fields(self, mock_log, client, app):
@@ -209,8 +209,11 @@ class TestRegistration:
                 'password_confirm': '',
                 'role': 'buyer',
             }, follow_redirects=True)
-            assert response.status_code == 200
-            assert b'All fields are required' in response.data
+            assert response.status_code == 400
+            # All three problems are reported at once, not one per submission
+            assert b'Please choose a username' in response.data
+            assert b'Please enter an email' in response.data
+            assert b'Please choose a password' in response.data
 
 
 class TestLogout:

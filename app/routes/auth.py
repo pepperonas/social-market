@@ -4,6 +4,7 @@ Authentication Routes
 Purpose: User authentication with security features
 """
 
+import re
 from datetime import datetime
 from urllib.parse import urlparse
 
@@ -13,6 +14,7 @@ from sqlalchemy import text
 
 from app import db, limiter
 from app.models.user import User
+from app.services.password_service import get_password_service
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -231,40 +233,76 @@ def register():
         password = request.form.get('password', '')
         password_confirm = request.form.get('password_confirm', '')
         role = request.form.get('role', 'buyer')
-        terms_accepted = request.form.get('terms_accepted', False)
+        # Coerce to a real bool: the raw form value is the string 'on', and the
+        # column is Boolean -- SQLAlchemy rejects it with "Not a boolean value".
+        # This never surfaced because the field-name mismatch above rejected
+        # every submission before it could reach the INSERT.
+        terms_accepted = request.form.get('terms_accepted') is not None
 
-        # Input validation
-        if not username or not email or not password:
-            flash('All fields are required', 'error')
-            return render_template('auth/register.html')
-
-        if password != password_confirm:
-            flash('Passwords do not match', 'error')
-            return render_template('auth/register.html')
-
-        # Check terms acceptance
-        if current_app.config.get('REQUIRE_TERMS_ACCEPTANCE') and not terms_accepted:
-            flash('You must accept the terms and conditions', 'error')
-            return render_template('auth/register.html')
-
-        # Validate role
+        # Validate role before echoing it back into the form
         if role not in ['buyer', 'vendor']:
             role = 'buyer'
 
-        # Check if vendor registration is enabled
+        # Everything the user typed, so a rejected submission does not wipe the
+        # form. Passwords are deliberately NOT echoed: re-rendering them would
+        # put the plaintext into the HTML, the browser's back/forward cache and
+        # any DOM an XSS could read. Retyping a password is a small cost; the
+        # rest of the form is not.
+        form_values = {
+            'username': username,
+            'email': email,
+            'role': role,
+            'terms_accepted': bool(terms_accepted),
+        }
+
+        # Collect ALL problems rather than returning on the first one, so the
+        # user fixes the form once instead of playing whack-a-mole.
+        errors = {}
+
+        if not username:
+            errors['username'] = 'Please choose a username.'
+        elif len(username) < 3:
+            errors['username'] = 'Username must be at least 3 characters.'
+        elif not re.fullmatch(r'[A-Za-z0-9._-]{3,50}', username):
+            errors['username'] = 'Use only letters, digits, dot, underscore or hyphen.'
+
+        if not email:
+            errors['email'] = 'Please enter an email address.'
+        elif not re.fullmatch(r'[^@\s]+@[^@\s]+\.[A-Za-z]{2,}', email):
+            errors['email'] = 'That does not look like an email address.'
+
+        if not password:
+            errors['password'] = 'Please choose a password.'
+        else:
+            violations = get_password_service().validate_policy(password)
+            if violations:
+                errors['password'] = ' '.join(v + '.' for v in violations)
+
+        if password and password != password_confirm:
+            errors['password_confirm'] = 'The two passwords do not match.'
+
+        if current_app.config.get('REQUIRE_TERMS_ACCEPTANCE') and not terms_accepted:
+            errors['terms_accepted'] = 'Please accept the terms to continue.'
+
         if role == 'vendor' and not current_app.config.get('ENABLE_VENDOR_REGISTRATION', True):
-            flash('Vendor registration is currently disabled', 'error')
-            return render_template('auth/register.html')
+            errors['role'] = 'Vendor registration is currently disabled.'
 
-        # Check if username exists
-        if User.query.filter_by(username=username).first():
-            flash('Username already exists', 'error')
-            return render_template('auth/register.html')
+        # Uniqueness last: no point querying if the input is malformed anyway.
+        # NOTE (blue team): telling the user which of the two is taken is user
+        # enumeration. It is kept because a registration form cannot avoid
+        # leaking username availability anyway, and hiding it would only make
+        # the form worse without making the leak go away. Rate limiting
+        # (10/hour) is what actually bounds enumeration here.
+        if not errors.get('username') and User.query.filter_by(username=username).first():
+            errors['username'] = 'That username is already taken.'
 
-        # Check if email exists
-        if User.query.filter_by(email=email).first():
-            flash('Email already registered', 'error')
-            return render_template('auth/register.html')
+        if not errors.get('email') and User.query.filter_by(email=email).first():
+            errors['email'] = 'An account with that email already exists.'
+
+        if errors:
+            return render_template(
+                'auth/register.html', errors=errors, form=form_values
+            ), 400
 
         try:
             # Create user
@@ -289,16 +327,52 @@ def register():
             return redirect(url_for('auth.login'))
 
         except ValueError as e:
-            # Password policy violation
-            flash(str(e), 'error')
-            return render_template('auth/register.html')
+            # Password policy violation (server side is authoritative)
+            return render_template(
+                'auth/register.html',
+                errors={'password': str(e)},
+                form=form_values
+            ), 400
         except Exception as e:
             db.session.rollback()
             current_app.logger.error(f'Registration error: {e}')
-            flash('An error occurred during registration', 'error')
-            return render_template('auth/register.html')
+            flash('An error occurred during registration. Please try again.', 'error')
+            return render_template('auth/register.html', form=form_values), 500
 
-    return render_template('auth/register.html')
+    return render_template('auth/register.html', form={}, errors={})
+
+
+@auth_bp.route('/suggest-passphrase')
+@limiter.limit("30 per minute")
+def suggest_passphrase():
+    """
+    Suggest wordlist passphrases with an honest entropy figure.
+
+    Generated server-side with `secrets`: the browser's Math.random() is not a
+    CSPRNG, and a suggestion a user might actually keep must not come from a
+    predictable source.
+    """
+    from app.services.passphrase_service import get_passphrase_service
+    from flask import jsonify
+
+    service = get_passphrase_service()
+    try:
+        words = int(request.args.get('words', 6))
+    except (TypeError, ValueError):
+        words = 6
+
+    suggestions = service.generate_many(3, word_count=words)
+    for item in suggestions:
+        item['crack_time'] = service.crack_time_estimate(item['entropy_bits'])
+
+    return jsonify({
+        'suggestions': suggestions,
+        'wordlist': 'BIP-39 English',
+        'bits_per_word': round(service.bits_per_word(), 2),
+        'note': ('Entropy counts the random words only, not the added digit/symbol. '
+                 'Crack time assumes a fast hash at 1e12 guesses/s; against this '
+                 "app's Argon2id it is vastly longer."),
+    })
 
 
 @auth_bp.route('/profile')

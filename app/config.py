@@ -113,6 +113,18 @@ class Config:
     RATELIMIT_API = os.environ.get('RATELIMIT_API', '100 per minute')
 
     # =============================================================================
+    # Reverse proxy
+    # =============================================================================
+    # Number of trusted proxy hops in front of the app. 0 disables X-Forwarded-*
+    # handling entirely, which is the safe default: a client can set those
+    # headers itself, so trusting them without a known hop count allows source
+    # IP spoofing. Set to 1 when running behind exactly one nginx.
+    TRUSTED_PROXY_COUNT = int(os.environ.get('TRUSTED_PROXY_COUNT', 0))
+
+    # Public base URL, used for the Canonical field in security.txt
+    APP_URL = os.environ.get('APP_URL', 'http://localhost:8080')
+
+    # =============================================================================
     # Logging
     # =============================================================================
     # Documented in .env.example but previously never read -- the path was

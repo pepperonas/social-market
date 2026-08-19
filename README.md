@@ -8,36 +8,54 @@
 
 <!-- Build & quality -->
 [![CI](https://github.com/pepperonas/social-market/actions/workflows/ci.yml/badge.svg)](https://github.com/pepperonas/social-market/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-278%20passing-brightgreen)](tests/)
-[![Coverage](https://img.shields.io/badge/coverage-45%25-yellow)](tests/)
+[![Tests](https://img.shields.io/badge/tests-353%20passing-brightgreen)](tests/)
+[![Coverage](https://img.shields.io/badge/coverage-46%25-yellow)](tests/)
 [![Lint](https://img.shields.io/badge/flake8-0%20issues-brightgreen)](.flake8)
 [![Bandit](https://img.shields.io/badge/bandit-clean-brightgreen)](.github/workflows/ci.yml)
 [![pip-audit](https://img.shields.io/badge/pip--audit-enforced-brightgreen)](.github/workflows/ci.yml)
 [![Secret scan](https://img.shields.io/badge/gitleaks-full%20history-brightgreen)](.gitleaks.toml)
+[![Mutation tested](https://img.shields.io/badge/regression%20pins-mutation%20tested-blueviolet)](CONTRIBUTING.md)
+
+<!-- Repository -->
+[![Last commit](https://img.shields.io/github/last-commit/pepperonas/social-market)](https://github.com/pepperonas/social-market/commits/main)
+[![Commit activity](https://img.shields.io/github/commit-activity/m/pepperonas/social-market)](https://github.com/pepperonas/social-market/pulse)
+[![Code size](https://img.shields.io/github/languages/code-size/pepperonas/social-market)](https://github.com/pepperonas/social-market)
+[![Top language](https://img.shields.io/github/languages/top/pepperonas/social-market)](https://github.com/pepperonas/social-market)
+[![Open issues](https://img.shields.io/github/issues/pepperonas/social-market)](https://github.com/pepperonas/social-market/issues)
+[![Stars](https://img.shields.io/github/stars/pepperonas/social-market?style=flat)](https://github.com/pepperonas/social-market/stargazers)
 
 <!-- Stack -->
-[![Python](https://img.shields.io/badge/python-3.11-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Flask](https://img.shields.io/badge/Flask-3.0-000000?logo=flask&logoColor=white)](https://flask.palletsprojects.com/)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
-[![Redis](https://img.shields.io/badge/Redis-7-DC382D?logo=redis&logoColor=white)](https://redis.io/)
-[![Docker](https://img.shields.io/badge/Docker-compose-2496ED?logo=docker&logoColor=white)](https://docs.docker.com/compose/)
 [![SQLAlchemy](https://img.shields.io/badge/SQLAlchemy-2.0-D71F00?logo=sqlalchemy&logoColor=white)](https://www.sqlalchemy.org/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![Redis](https://img.shields.io/badge/Redis-7-DC382D?logo=redis&logoColor=white)](https://redis.io/)
+[![Celery](https://img.shields.io/badge/Celery-5.3-37814A?logo=celery&logoColor=white)](https://docs.celeryq.dev/)
 [![Gunicorn](https://img.shields.io/badge/Gunicorn-21-499848?logo=gunicorn&logoColor=white)](https://gunicorn.org/)
 [![Nginx](https://img.shields.io/badge/Nginx-reverse%20proxy-009639?logo=nginx&logoColor=white)](nginx/)
+[![Docker](https://img.shields.io/badge/Docker-compose-2496ED?logo=docker&logoColor=white)](https://docs.docker.com/compose/)
+[![Bootstrap](https://img.shields.io/badge/Bootstrap-5-7952B3?logo=bootstrap&logoColor=white)](https://getbootstrap.com/)
 
 <!-- Security posture -->
 [![Argon2id](https://img.shields.io/badge/passwords-Argon2id%20%2B%20pepper-6A1B9A)](docs/PASSWORD_SECURITY.md)
+[![Passphrases](https://img.shields.io/badge/suggestions-BIP--39%20·%2011%20bits%2Fword-6A1B9A)](app/services/passphrase_service.py)
 [![PGP](https://img.shields.io/badge/messaging-RSA--4096%20PGP-0F9D58)](docs/PGP_KEYS.md)
+[![2FA](https://img.shields.io/badge/2FA-TOTP%20%2B%20replay%20guard-informational)](app/models/user.py)
 [![CSP](https://img.shields.io/badge/CSP-nonce--based-informational)](app/__init__.py)
 [![CSRF](https://img.shields.io/badge/CSRF-enforced-informational)](app/__init__.py)
-[![2FA](https://img.shields.io/badge/2FA-TOTP%20%2B%20replay%20guard-informational)](app/models/user.py)
+[![HSTS](https://img.shields.io/badge/HSTS-preload%20ready-informational)](app/__init__.py)
 [![At rest](https://img.shields.io/badge/at%20rest-pgcrypto-blue)](postgres/)
+[![Rate limiting](https://img.shields.io/badge/rate%20limiting-per%20client%20IP-blue)](app/__init__.py)
+[![Audit log](https://img.shields.io/badge/audit-stored%20procedures-blue)](postgres/audit-logging.sql)
 [![Tor](https://img.shields.io/badge/Tor-hidden%20service-7D4698?logo=torbrowser&logoColor=white)](tor/)
+[![security.txt](https://img.shields.io/badge/security.txt-RFC%209116-success)](https://socialmarket.celox.io/.well-known/security.txt)
 [![OWASP](https://img.shields.io/badge/OWASP-Top%2010%20mapped-000000?logo=owasp&logoColor=white)](#-owasp-top-10-where-to-look)
+[![systemd](https://img.shields.io/badge/systemd-sandbox%201.7%20OK-informational)](DEPLOY.md)
 
 <!-- Project -->
 [![Purpose](https://img.shields.io/badge/purpose-blue%20team%20education-1E88E5)](#-what-this-is-for)
 [![Offensive use](https://img.shields.io/badge/offensive%20use-not%20supported-critical)](#%EF%B8%8F-what-this-is-not-for)
+[![Demo](https://img.shields.io/badge/live%20demo-socialmarket.celox.io-1E88E5)](https://socialmarket.celox.io)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)](CONTRIBUTING.md)
 [![Security policy](https://img.shields.io/badge/security-policy-blue)](SECURITY.md)
@@ -56,18 +74,115 @@ into and click through while reading the code.
 |---|---|---|
 | Buyer | `buyer1` … `buyer10` | `Password123!` |
 | Vendor | `vendor1` … `vendor5` | `Password123!` |
-| Admin | — | *not published* |
+| Admin | `admin` | `ChangeMe123!` |
 
 **Read this before you poke at it:**
 
 - The data is **disposable and fictional**. No real transactions, no real personal data,
   no real payments. It is reset whenever it needs to be.
-- The demo accounts above are **public on purpose** — being able to look around *is* the
-  teaching value. The admin account deliberately is not, so the admin surface stays closed.
+- Every account above is **public on purpose** — being able to walk the whole role model,
+  admin included, *is* the teaching value. There is nothing behind them worth stealing.
+- Account lockout is live: five wrong passwords lock an account for 15 minutes. If the demo
+  admin is locked when you arrive, someone was guessing — wait it out, that is the control
+  doing its job.
 - It is `noindex, nofollow` and is **not** a hardened production system. The README section
   below explains exactly what it is not.
 - Please do not run automated scanners or load against it. If you want to attack something,
   clone the repo and attack your own copy — that is what it is for, and you get a debugger.
+
+---
+
+## 📸 What it looks like
+
+<table>
+<tr>
+<td width="50%">
+
+**Registration — every problem at once, nothing wiped**
+
+<img src="docs/screenshots/03-register-errors.png" alt="Registration form showing all validation errors at once, with the username and email preserved" width="100%">
+
+All violations are reported in one pass instead of one per submission. Username,
+email, account type and the terms checkbox survive a rejection — but the password
+fields are deliberately cleared, because re-rendering a password puts it in the
+DOM and the browser's back/forward cache.
+
+</td>
+<td width="50%">
+
+**Password suggestions with a defensible number**
+
+<img src="docs/screenshots/02-register-passphrase.png" alt="Password field offering BIP-39 passphrase suggestions with entropy in bits" width="100%">
+
+Passphrases drawn from the BIP-39 wordlist with `secrets`, server-side. The
+strength shown is `11 bits × words` — and it counts **only** the random words,
+not the digit and symbol appended to satisfy composition rules. Overstating that
+is what makes most strength meters worthless.
+
+</td>
+</tr>
+<tr>
+<td width="50%">
+
+**Security overview**
+
+<img src="docs/screenshots/07-account-security.png" alt="Account security page showing 2FA status, password age and recent login activity" width="100%">
+
+2FA state, password age, recent authentication events. This page returned a 500
+in production until 2026-08-19: it sliced `user_agent[:50]` and the audit rows
+written by the SQLAlchemy listeners have no user agent. Found by clicking, not
+by testing — now pinned by `tests/test_templates_null_safety.py`.
+
+</td>
+<td width="50%">
+
+**Marketplace**
+
+<img src="docs/screenshots/05-marketplace.png" alt="Marketplace product listing" width="100%">
+
+Twenty seeded products across five vendors. The storefront is login-gated by
+design — a closed marketplace, which is what makes the role separation
+interesting to study.
+
+</td>
+</tr>
+<tr>
+<td width="50%">
+
+**Admin dashboard**
+
+<img src="docs/screenshots/08-admin-dashboard.png" alt="Admin dashboard with user, product and order statistics" width="100%">
+
+Reachable in the demo on purpose, so the whole role model can be explored.
+`tests/test_authorization_matrix.py` walks every role against every protected
+route to prove the separation holds.
+
+</td>
+<td width="50%">
+
+**Product detail**
+
+<img src="docs/screenshots/06-product.png" alt="Product detail page with vendor information and purchase options" width="100%">
+
+Escrow-backed ordering. The order state machine
+(`tests/test_models_order.py`) is where "insecure design" stops being an
+abstract OWASP category: every illegal transition it fails to reject is a way to
+get goods without paying.
+
+</td>
+</tr>
+</table>
+
+<details>
+<summary>More screenshots</summary>
+
+| | |
+|---|---|
+| Login | <img src="docs/screenshots/01-login.png" alt="Login page" width="420"> |
+| Home | <img src="docs/screenshots/04-home.png" alt="Home page" width="420"> |
+| Admin: users | <img src="docs/screenshots/09-admin-users.png" alt="Admin user management" width="420"> |
+
+</details>
 
 ---
 
@@ -86,7 +201,7 @@ involved to cheat. Every one of those is a place where defence is *interesting*.
 | | |
 |---|---|
 | 📖 **Read the controls** | Argon2id + pepper, nonce-based CSP, TOTP with replay protection, encrypted shipping data, an escrow state machine, audit logging via stored procedures |
-| 🧪 **Read the tests** | 278 of them. They are written as *arguments*, not assertions — each says why a control matters and what breaks without it |
+| 🧪 **Read the tests** | 353 of them. They are written as *arguments*, not assertions — each says why a control matters and what breaks without it |
 | 🔍 **Read the audit** | [`docs/BUGFIX-PLAN.md`](docs/BUGFIX-PLAN.md) is a real security review of this codebase, with the real findings, in the order they were found |
 | 🛠 **Break it on purpose** | Revert a fix and watch which test screams. Every fix in the audit has a test that provably catches its regression |
 | 📉 **Study the failures** | The most valuable parts of this repo are the places where it *was wrong* — documented rather than quietly rewritten |
@@ -119,6 +234,17 @@ Not hypotheticals. Each one happened *here*, and the fix is in the history:
   in config while the code checked for 8.
 - **Money is not a float.** `Decimal * float` raised `TypeError` in an insert listener, so every
   real checkout failed — invisible, because nothing tested order creation.
+- **A field-name typo can disable a whole feature silently.** The terms checkbox was named
+  `terms`; the route read `terms_accepted`. Every registration through the web UI was rejected
+  with "you must accept the terms" — and the tests never caught it, because they posted the
+  form field directly instead of the form the browser sends.
+- **Behind a proxy, everyone shares one IP.** `request.remote_addr` was `127.0.0.1` for every
+  visitor, so the rate limiter put them all in one bucket and the audit log recorded nginx
+  rather than the client. The fix is opt-in on purpose: trusting `X-Forwarded-For` without a
+  known hop count lets anyone forge their source address.
+- **A page that 500s on incomplete audit data fails when it is needed.** `/account/security`
+  crashed on `user_agent[:50]` because the audit rows written by the model listeners carry no
+  user agent — and that page is exactly what a defender opens when something looks wrong.
 
 ### 🗺 OWASP Top 10: where to look
 
@@ -242,7 +368,7 @@ This project implements a fully-featured, security-hardened marketplace platform
 
 | Role | Username | Password |
 |------|----------|----------|
-| **Admin** | `admin` | `Password123!` |
+| **Admin** | `admin` | `ChangeMe123!` |
 | **Buyers** | `buyer1` - `buyer10` | `Password123!` |
 | **Vendors** | `vendor1` - `vendor5` | `Password123!` |
 

@@ -69,6 +69,34 @@ def create_app(config_name=None):
             )
         app.config.from_object(config_map[config_name])
 
+    # Trust the reverse proxy, if and only if explicitly configured.
+    #
+    # Behind nginx every request arrives from 127.0.0.1, so request.remote_addr
+    # was the proxy: the rate limiter put ALL users in one bucket (one noisy
+    # client could lock out everybody, and no attacker was limited per source),
+    # and every audit log entry recorded the proxy instead of the actual client.
+    #
+    # This is opt-in on purpose. X-Forwarded-For is client-controlled; trusting
+    # it without knowing how many proxies sit in front lets anyone forge their
+    # source address -- which would be worse than the bug it fixes.
+    # Read the environment at call time, not at import time: config.py evaluates
+    # os.environ once when the class body runs, which makes the setting
+    # impossible to change per-instance (and untestable).
+    trusted_hops = int(os.environ.get(
+        'TRUSTED_PROXY_COUNT', app.config.get('TRUSTED_PROXY_COUNT', 0)
+    ))
+    app.config['TRUSTED_PROXY_COUNT'] = trusted_hops
+    if trusted_hops > 0:
+        from werkzeug.middleware.proxy_fix import ProxyFix
+        app.wsgi_app = ProxyFix(
+            app.wsgi_app,
+            x_for=trusted_hops,
+            x_proto=trusted_hops,
+            x_host=trusted_hops,
+            x_port=0,
+            x_prefix=0,
+        )
+
     # Initialize extensions
     initialize_extensions(app)
 
@@ -96,6 +124,46 @@ def create_app(config_name=None):
             'environment': 'training',
             'disclaimer': 'Educational security training environment only'
         }), 200
+
+    @app.route('/.well-known/security.txt')
+    def security_txt():
+        """
+        Machine-readable security contact, RFC 9116.
+
+        The footer has always linked here; the file never existed, so the link
+        404'd. That is the ordinary way security.txt goes missing: it is a
+        deployment artifact nobody owns. Serving it from the app instead of the
+        web server means it ships with the code and cannot drift away.
+        """
+        from flask import Response
+
+        body = (
+            "# Social Market - blue team training environment\n"
+            "# This is an educational demo. Data is fictional and disposable.\n"
+            "\n"
+            f"Contact: {app.config.get('SECURITY_CONTACT', 'mailto:security@celox.io')}\n"
+            f"Expires: {app.config.get('SECURITY_TXT_EXPIRES', '2027-08-19T00:00:00.000Z')}\n"
+            "Preferred-Languages: en, de\n"
+            f"Canonical: {app.config.get('APP_URL', 'http://localhost:8080')}/.well-known/security.txt\n"
+            "Policy: https://github.com/pepperonas/social-market/blob/main/SECURITY.md\n"
+            "\n"
+            "# Known and intentional properties (please read before reporting):\n"
+            "#   https://github.com/pepperonas/social-market/blob/main/SECURITY.md\n"
+            "# Every credential in this project is public on purpose.\n"
+        )
+        return Response(body, mimetype='text/plain; charset=utf-8')
+
+    @app.route('/robots.txt')
+    def robots_txt():
+        """Teaching demo: keep it out of search indexes."""
+        from flask import Response
+
+        return Response(
+            "# Educational training environment - not a real marketplace\n"
+            "User-agent: *\n"
+            "Disallow: /\n",
+            mimetype='text/plain; charset=utf-8'
+        )
 
     # Favicon route (redirect .ico requests to SVG)
     @app.route('/favicon.ico')

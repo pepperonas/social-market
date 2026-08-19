@@ -186,8 +186,10 @@
                                         <span class="badge bg-secondary">{{ login.action }}</span>
                                         {% endif %}
                                     </td>
-                                    <td><code>{{ login.ip_address }}</code></td>
-                                    <td class="small text-muted">{{ login.user_agent[:50] }}...</td>
+                                    <td><code>{{ login.ip_address or '-' }}</code></td>
+                                    {# auth_log rows written by the SQLAlchemy event listeners carry no
+                                       user_agent, so slicing it raised TypeError and 500'd this page. #}
+                                    <td class="small text-muted">{{ (login.user_agent or 'unknown')[:50] }}</td>
                                 </tr>
                                 {% endfor %}
                             </tbody>

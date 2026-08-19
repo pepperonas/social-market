@@ -10,45 +10,113 @@
                 <h4>Create Account</h4>
             </div>
             <div class="card-body">
-                <form method="POST" action="{{ url_for('auth.register') }}">
+                {# Values are echoed back so a rejected submission does not wipe the
+                   form. Jinja autoescapes, so reflecting user input here is safe.
+                   Passwords are deliberately never echoed. #}
+                <form method="POST" action="{{ url_for('auth.register') }}" novalidate>
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+
+                    {% if errors %}
+                    <div class="alert alert-danger" role="alert">
+                        <strong>Please correct the following:</strong>
+                        <ul class="mb-0 mt-2 small">
+                            {% for field, message in errors.items() %}
+                            <li>{{ message }}</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                    {% endif %}
 
                     <div class="mb-3">
                         <label for="username" class="form-label">Username</label>
-                        <input type="text" class="form-control" id="username" name="username" required>
-                        <div class="form-text">Choose a unique username (3-20 characters)</div>
+                        <input type="text" id="username" name="username"
+                               class="form-control {% if errors and errors.username %}is-invalid{% endif %}"
+                               value="{{ form.username if form else '' }}"
+                               minlength="3" maxlength="50" pattern="[A-Za-z0-9._\-]{3,50}"
+                               autocomplete="username" autofocus required>
+                        {% if errors and errors.username %}
+                        <div class="invalid-feedback">{{ errors.username }}</div>
+                        {% endif %}
+                        <div class="form-text">3-50 characters: letters, digits, dot, underscore, hyphen.</div>
                     </div>
 
                     <div class="mb-3">
                         <label for="email" class="form-label">Email</label>
-                        <input type="email" class="form-control" id="email" name="email" required>
-                        <div class="form-text">Valid email address required</div>
+                        <input type="email" id="email" name="email"
+                               class="form-control {% if errors and errors.email %}is-invalid{% endif %}"
+                               value="{{ form.email if form else '' }}"
+                               autocomplete="email" required>
+                        {% if errors and errors.email %}
+                        <div class="invalid-feedback">{{ errors.email }}</div>
+                        {% endif %}
                     </div>
 
                     <div class="mb-3">
                         <label for="password" class="form-label">Password</label>
-                        <input type="password" class="form-control" id="password" name="password" required>
-                        <div class="form-text">Minimum 8 characters, include uppercase, lowercase, number</div>
+                        <div class="input-group">
+                            <input type="password" id="password" name="password"
+                                   class="form-control {% if errors and errors.password %}is-invalid{% endif %}"
+                                   minlength="12" autocomplete="new-password" required>
+                            <button class="btn btn-outline-secondary" type="button" id="toggle-password"
+                                    aria-label="Show or hide password">👁</button>
+                            <button class="btn btn-outline-primary" type="button" id="suggest-btn">
+                                🎲 Suggest
+                            </button>
+                            {% if errors and errors.password %}
+                            <div class="invalid-feedback">{{ errors.password }}</div>
+                            {% endif %}
+                        </div>
+
+                        <div id="strength-wrap" class="mt-2 d-none">
+                            <div class="progress" style="height: 6px;">
+                                <div id="strength-bar" class="progress-bar" role="progressbar" style="width: 0%"></div>
+                            </div>
+                            <div class="form-text" id="strength-text"></div>
+                        </div>
+
+                        <div id="suggestions" class="mt-2"></div>
+
+                        <div class="form-text">
+                            At least 12 characters with upper case, lower case, a digit and a symbol.
+                            A generated passphrase satisfies all of it and is easier to remember.
+                        </div>
                     </div>
 
                     <div class="mb-3">
                         <label for="password_confirm" class="form-label">Confirm Password</label>
-                        <input type="password" class="form-control" id="password_confirm" name="password_confirm" required>
+                        <input type="password" id="password_confirm" name="password_confirm"
+                               class="form-control {% if errors and errors.password_confirm %}is-invalid{% endif %}"
+                               autocomplete="new-password" required>
+                        {% if errors and errors.password_confirm %}
+                        <div class="invalid-feedback">{{ errors.password_confirm }}</div>
+                        {% endif %}
+                        <div class="form-text" id="match-hint"></div>
                     </div>
 
                     <div class="mb-3">
                         <label for="role" class="form-label">Account Type</label>
                         <select class="form-select" id="role" name="role" required>
-                            <option value="buyer">Buyer</option>
-                            <option value="vendor">Vendor</option>
+                            <option value="buyer" {% if not form or form.role != 'vendor' %}selected{% endif %}>Buyer</option>
+                            <option value="vendor" {% if form and form.role == 'vendor' %}selected{% endif %}>Vendor</option>
                         </select>
+                        {% if errors and errors.role %}
+                        <div class="text-danger small mt-1">{{ errors.role }}</div>
+                        {% endif %}
                     </div>
 
+                    {# The field name must match what the route reads. It used to be
+                       "terms" while the route read "terms_accepted", so every single
+                       registration was rejected with "you must accept the terms". #}
                     <div class="mb-3 form-check">
-                        <input type="checkbox" class="form-check-input" id="terms" name="terms" required>
-                        <label class="form-check-label" for="terms">
+                        <input type="checkbox" class="form-check-input {% if errors and errors.terms_accepted %}is-invalid{% endif %}"
+                               id="terms_accepted" name="terms_accepted" value="on"
+                               {% if form and form.terms_accepted %}checked{% endif %} required>
+                        <label class="form-check-label" for="terms_accepted">
                             I understand this is an educational training environment
                         </label>
+                        {% if errors and errors.terms_accepted %}
+                        <div class="invalid-feedback d-block">{{ errors.terms_accepted }}</div>
+                        {% endif %}
                     </div>
 
                     <button type="submit" class="btn btn-primary w-100">Register</button>
@@ -63,4 +131,119 @@
         </div>
     </div>
 </div>
+
+{# CSP is nonce-based: inline script without this nonce is blocked by design. #}
+<script nonce="{{ csp_nonce() }}">
+(function () {
+  'use strict';
+
+  var pw = document.getElementById('password');
+  var confirmField = document.getElementById('password_confirm');
+  var bar = document.getElementById('strength-bar');
+  var wrap = document.getElementById('strength-wrap');
+  var text = document.getElementById('strength-text');
+  var matchHint = document.getElementById('match-hint');
+  var suggestBtn = document.getElementById('suggest-btn');
+  var box = document.getElementById('suggestions');
+  var toggle = document.getElementById('toggle-password');
+
+  // Mirrors the SERVER policy. This is convenience only: the server re-checks
+  // everything, because anything running in the browser is under the attacker's
+  // control and can simply be skipped.
+  function policyGaps(value) {
+    var gaps = [];
+    if (value.length < 12) { gaps.push('at least 12 characters'); }
+    if (!/[A-Z]/.test(value)) { gaps.push('an upper case letter'); }
+    if (!/[a-z]/.test(value)) { gaps.push('a lower case letter'); }
+    if (!/[0-9]/.test(value)) { gaps.push('a digit'); }
+    if (!/[^A-Za-z0-9]/.test(value)) { gaps.push('a symbol'); }
+    return gaps;
+  }
+
+  function render() {
+    var value = pw.value;
+    if (!value) { wrap.classList.add('d-none'); return; }
+    wrap.classList.remove('d-none');
+
+    var gaps = policyGaps(value);
+    var met = 5 - gaps.length;
+    var pct = Math.round((met / 5) * 100);
+
+    bar.style.width = pct + '%';
+    bar.className = 'progress-bar ' + (pct < 60 ? 'bg-danger' : pct < 100 ? 'bg-warning' : 'bg-success');
+
+    text.textContent = gaps.length
+      ? 'Still needs: ' + gaps.join(', ') + '.'
+      : 'Meets the password policy.';
+    text.className = 'form-text ' + (gaps.length ? 'text-danger' : 'text-success');
+  }
+
+  function renderMatch() {
+    if (!confirmField.value) { matchHint.textContent = ''; return; }
+    var same = confirmField.value === pw.value;
+    matchHint.textContent = same ? 'Passwords match.' : 'Passwords do not match yet.';
+    matchHint.className = 'form-text ' + (same ? 'text-success' : 'text-danger');
+  }
+
+  if (pw) { pw.addEventListener('input', function () { render(); renderMatch(); }); }
+  if (confirmField) { confirmField.addEventListener('input', renderMatch); }
+
+  if (toggle) {
+    toggle.addEventListener('click', function () {
+      var showing = pw.type === 'text';
+      pw.type = showing ? 'password' : 'text';
+      toggle.setAttribute('aria-pressed', String(!showing));
+    });
+  }
+
+  if (suggestBtn) {
+    suggestBtn.addEventListener('click', function () {
+      suggestBtn.disabled = true;
+      box.textContent = 'Generating…';
+
+      // Generated on the SERVER with secrets. Math.random() is not a CSPRNG and
+      // must never produce a credential a user might actually keep.
+      fetch('/auth/suggest-passphrase?words=6', { headers: { 'Accept': 'application/json' } })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          box.textContent = '';
+
+          var head = document.createElement('div');
+          head.className = 'form-text mb-1';
+          head.textContent = data.wordlist + ' · ' + data.bits_per_word +
+            ' bits per word · click one to use it';
+          box.appendChild(head);
+
+          data.suggestions.forEach(function (item) {
+            var btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'btn btn-sm btn-outline-secondary d-block w-100 text-start mb-1 font-monospace';
+            // textContent, never innerHTML: the value is server data, but this is
+            // the habit that keeps a future change from becoming an XSS.
+            btn.textContent = item.passphrase + '  (' + item.entropy_bits + ' bits, ' +
+              item.crack_time + ' to crack)';
+            btn.addEventListener('click', function () {
+              pw.value = item.passphrase;
+              confirmField.value = item.passphrase;
+              pw.type = 'text';
+              render();
+              renderMatch();
+            });
+            box.appendChild(btn);
+          });
+
+          var note = document.createElement('div');
+          note.className = 'form-text fst-italic';
+          note.textContent = data.note;
+          box.appendChild(note);
+        })
+        .catch(function () { box.textContent = 'Could not reach the generator.'; })
+        .finally(function () { suggestBtn.disabled = false; });
+    });
+  }
+
+  render();
+})();
+</script>
+
 {% endblock %}
