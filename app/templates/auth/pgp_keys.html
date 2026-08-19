@@ -73,10 +73,22 @@
 
                     <div class="mb-3">
                         <label for="passphrase" class="form-label">Passphrase *</label>
-                        <input type="password" class="form-control" id="passphrase" name="passphrase"
-                               required minlength="12" placeholder="Enter strong passphrase">
+                        <div class="input-group">
+                            <input type="password" class="form-control" id="passphrase" name="passphrase"
+                                   required minlength="12" autocomplete="new-password"
+                                   placeholder="Enter strong passphrase">
+                            <button class="btn btn-outline-secondary" type="button" id="pgp-toggle"
+                                    aria-label="Show or hide passphrase">&#128065;</button>
+                            <button class="btn btn-outline-primary" type="button" id="pgp-suggest">
+                                &#127922; Suggest
+                            </button>
+                        </div>
+                        <div id="pgp-suggestions" class="mt-2"></div>
                         <div class="form-text">
-                            <strong>Minimum 12 characters</strong> - Use a strong, unique passphrase
+                            This passphrase is the <strong>only thing protecting your private key</strong>
+                            once it leaves this server. If it is guessable, the key is not private.
+                            Minimum 12 characters &mdash; a generated passphrase is stronger and easier
+                            to keep.
                         </div>
                         <div id="passphrase-strength" class="mt-2"></div>
                     </div>
@@ -187,4 +199,69 @@ document.getElementById('passphrase').addEventListener('input', function(e) {
     strengthDiv.appendChild(badge);
 });
 </script>
+
+{# Same generator as registration: the passphrase guarding a private key has no
+   reason to be weaker than the one guarding the account. #}
+<script nonce="{{ csp_nonce() }}">
+(function () {
+  'use strict';
+
+  var field = document.getElementById('passphrase');
+  var confirmField = document.getElementById('passphrase_confirm');
+  var box = document.getElementById('pgp-suggestions');
+  var suggest = document.getElementById('pgp-suggest');
+  var toggle = document.getElementById('pgp-toggle');
+
+  if (toggle && field) {
+    toggle.addEventListener('click', function () {
+      field.type = field.type === 'text' ? 'password' : 'text';
+    });
+  }
+
+  if (!suggest) { return; }
+
+  suggest.addEventListener('click', function () {
+    suggest.disabled = true;
+    box.textContent = 'Generating…';
+
+    // Eight words for a key passphrase rather than the six used for accounts:
+    // a private key file can be attacked offline for as long as the attacker
+    // likes, with no lockout and no rate limit in the way.
+    fetch('/auth/suggest-passphrase?words=8', { headers: { 'Accept': 'application/json' } })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        box.textContent = '';
+
+        var head = document.createElement('div');
+        head.className = 'form-text mb-1';
+        head.textContent = data.wordlist + ' · ' + data.bits_per_word +
+          ' bits per word · click one to use it';
+        box.appendChild(head);
+
+        data.suggestions.forEach(function (item) {
+          var btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'btn btn-sm btn-outline-secondary d-block w-100 text-start mb-1 font-monospace';
+          btn.textContent = item.passphrase + '  (' + item.entropy_bits + ' bits)';
+          btn.addEventListener('click', function () {
+            field.value = item.passphrase;
+            if (confirmField) { confirmField.value = item.passphrase; }
+            field.type = 'text';
+            field.dispatchEvent(new Event('input', { bubbles: true }));
+          });
+          box.appendChild(btn);
+        });
+
+        var warn = document.createElement('div');
+        warn.className = 'form-text fst-italic';
+        warn.textContent = 'Write it down before you continue — it cannot be recovered, ' +
+          'and without it the generated key is useless.';
+        box.appendChild(warn);
+      })
+      .catch(function () { box.textContent = 'Could not reach the generator.'; })
+      .finally(function () { suggest.disabled = false; });
+  });
+})();
+</script>
+
 {% endblock %}

@@ -19,6 +19,51 @@
     <link href="{{ url_for('static', filename='css/custom.css') }}" rel="stylesheet">
 
     {% block extra_css %}{% endblock %}
+    <style>
+        /*
+         * Readable code blocks.
+         *
+         * `bg-dark text-white` renders white text, and the browser's default
+         * selection highlight is light grey -- so the moment a user selects a
+         * command to copy it (the only reason these blocks exist) it turns
+         * white-on-light-grey and becomes unreadable. Selection colours must be
+         * declared whenever text colour is forced.
+         */
+        .code-block {
+            position: relative;
+            background-color: #212529;
+            color: #f8f9fa;
+            border-radius: .375rem;
+            padding: .75rem 3rem .75rem .75rem;
+            margin-bottom: .5rem;
+            overflow-x: auto;
+        }
+        .code-block code { color: inherit; background: none; }
+        .code-block ::selection,
+        .code-block::selection { background: #ffe08a; color: #1a1a1a; }
+
+        .code-copy {
+            position: absolute;
+            top: .35rem;
+            right: .35rem;
+            font-size: .75rem;
+            line-height: 1;
+            padding: .25rem .5rem;
+            border: 1px solid rgba(255, 255, 255, .35);
+            border-radius: .25rem;
+            background: transparent;
+            color: #f8f9fa;
+            cursor: pointer;
+        }
+        .code-copy:hover { background: rgba(255, 255, 255, .12); }
+        .code-copy:focus-visible { outline: 2px solid #ffe08a; outline-offset: 2px; }
+
+        /* High-contrast / forced-colours: let the OS decide, do not fight it. */
+        @media (forced-colors: active) {
+            .code-block { background: Canvas; color: CanvasText; border: 1px solid CanvasText; }
+            .code-block ::selection { background: Highlight; color: HighlightText; }
+        }
+    </style>
 </head>
 <body>
     <!-- Security Warning Banner -->
@@ -121,5 +166,40 @@
     </footer>
 
     {% block extra_js %}{% endblock %}
+    {# One copy button per code block: nobody should have to select text that
+       a stray CSS rule can make unreadable. #}
+    <script nonce="{{ csp_nonce() }}">
+    (function () {
+      'use strict';
+      document.querySelectorAll('.code-block').forEach(function (block) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'code-copy';
+        btn.textContent = 'Copy';
+        btn.setAttribute('aria-label', 'Copy command to clipboard');
+        btn.addEventListener('click', function () {
+          var text = block.querySelector('code').textContent;
+          var done = function () {
+            btn.textContent = 'Copied';
+            setTimeout(function () { btn.textContent = 'Copy'; }, 1500);
+          };
+          if (navigator.clipboard && window.isSecureContext) {
+            navigator.clipboard.writeText(text).then(done, function () { btn.textContent = 'Failed'; });
+          } else {
+            // clipboard API needs a secure context; fall back for plain HTTP
+            var ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.position = 'fixed';
+            ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.select();
+            try { document.execCommand('copy'); done(); } catch (e) { btn.textContent = 'Failed'; }
+            document.body.removeChild(ta);
+          }
+        });
+        block.appendChild(btn);
+      });
+    })();
+    </script>
 </body>
 </html>
