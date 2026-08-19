@@ -46,6 +46,17 @@ ssh root@<host> 'cd /opt/socialmarket && ./venv/bin/pip -q install -r app/requir
   `LOGIN_CREDENTIALS.md`. It lives in `/root/.socialmarket-adminpw`.
 - **Rotating `PASSWORD_PEPPER` invalidates every existing password hash.** That
   is the point of a pepper; plan a re-seed, do not "fix" it by reverting.
+- **gunicorn >= 26 opens a control socket.** Its default path lands in the
+  working directory, which `ProtectSystem=strict` makes read-only, so the master
+  logs `Control server error: Read-only file system`. Fixed with
+  `RuntimeDirectory=socialmarket` plus `--control-socket /run/socialmarket/...`.
+- **`EnvironmentFile` is read at process start, not on reload.** `systemctl
+  reload` sends HUP, which recycles workers but keeps the master's environment.
+  New variables in `.env` need a full `restart`.
+- **Do not conclude "the rate limiter is broken" from sequential curl calls.**
+  Fourteen requests issued one after another are spread over more than a second
+  and stay under a 10/s limit. Test it in parallel:
+  `seq 1 25 | xargs -P 25 -I{} curl -s -o /dev/null -w '%{http_code}\n' <url>`
 
 ## Deliberate demo posture
 
