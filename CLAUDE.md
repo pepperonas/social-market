@@ -175,6 +175,27 @@ Every one of these cost real debugging time here.
 - **`::selection` must be declared whenever text colour is forced.** White text plus
   the default light-grey selection is unreadable exactly when someone copies it.
 - **Do not render ORM objects in templates.** `{{ product.category }}` prints a repr.
+- **Jinja renders an unknown name as an empty string.** `product.active`,
+  `order.status_color` and five dashboard variables all shipped broken and invisible.
+  `create_app` switches to `StrictUndefined` under `TESTING`; production keeps the
+  lenient default so a stray reference cannot 500 a page for a visitor.
+- **Bind ids and money as `str()` in raw SQL.** psycopg2 adapts `uuid.UUID` and
+  `Decimal`; sqlite3 does not, so a listener that works in production explodes in tests.
+- **During a flush, a relationship may not be populated.** The escrow audit listener
+  read `target.order` and bound NULL into a NOT NULL column, failing every order.
+  Set the relationship (`Escrow(order=order, ...)`), not just the foreign key.
+- **Availability checks belong on the model.** `product.can_purchase(qty)` covers active,
+  approved and stock in one place; re-implementing it in a route is how `product.active`
+  got past review.
+
+### The test schema must not be looser than production
+
+`transaction_audit.transaction_id` was nullable in the SQLite test DDL and
+`NOT NULL` in PostgreSQL, so the suite accepted exactly the write the real
+database rejects — and every order failed in production while the tests were
+green. When mirroring `postgres/*.sql` into `conftest.py`, carry the constraints
+across, not just the column names. A test schema that is more permissive than
+production does not merely miss bugs; it certifies them.
 
 ### Infrastructure
 

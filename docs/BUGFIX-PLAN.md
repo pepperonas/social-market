@@ -6,15 +6,21 @@
 
 ## ✅ Umsetzungsstand (2026-08-19)
 
-**Alles unten Beschriebene ist umgesetzt.** Ergebnis: **100 Tests grün** (vorher
-0 lauffähig), **flake8 sauber** (vorher 531 Verstöße), bandit sauber.
+**Alles unten Beschriebene ist umgesetzt.** Ergebnis nach beiden Runden:
+**443 Tests grün** (vorher 0 lauffähig), Coverage 49 %, **flake8 sauber**
+(vorher 531 Verstöße), bandit sauber, `pip-audit` ohne Fund (vorher 65 CVEs in
+14 Paketen), gitleaks über die volle Historie. CI 4/4 grün.
+
+Dieses Dokument hat zwei Teile: die **erste Runde** (Funde 1–13, Lesekritik am
+Code) und die **zweite Runde** (Funde 14–35), die beim Ausbauen, Deployen und
+Bedienen der Anwendung entstand.
 
 | Punkt | Status | Nachweis |
 |---|---|---|
 | 1 Redis-Passwort im Code | ✅ rotiert + Klartext raus | kein Treffer mehr im Arbeitsbaum |
 | 2 2FA ohne Verifikation | ✅ Enrolment getrennt | `test_two_factor.py::TestEnrolment` |
 | 3 `is_active`-Bypass via 2FA | ✅ vor der 2FA-Weiche + in `verify_2fa` | `TestInactiveAccountCannotUse2FA` |
-| 4–7 Testsuite (4 Schichten) | ✅ alle vier behoben | 100 Tests laufen |
+| 4–7 Testsuite (4 Schichten) | ✅ alle vier behoben | damals 100 Tests lauffähig, heute 443 |
 | 8 CI verschweigt Funde | ✅ `\|\| true` raus, Lint sauber, `.flake8` | `.github/workflows/ci.yml` |
 | 9 Überverkauf | ✅ `record_sale(quantity)` | `TestStockAccounting` |
 | 10 Passwort-Policy tot | ✅ `validate_policy()` erzwungen | `TestPasswordPolicy` |
@@ -194,6 +200,86 @@ gering, weil die Basis-Config env-getrieben ist — aber `WTF_CSRF_SSL_STRICT` b
   (Registrierung läuft direkt über `register_blueprints`, also folgenlos — aber irreführend).
 - **`messages.py:336`**: `get_or_404` auf ungeprüfter `message_id` aus JSON → bei fehlerhafter
   UUID DataError/500 statt 404.
+
+---
+
+## Zweite Runde (2026-08-19) — beim Ausbauen und Betreiben gefunden
+
+Die erste Runde war eine Lesekritik am Code. Diese Funde stammen aus etwas
+anderem: **die Anwendung bedienen, deployen und anschauen.** Kein einziger davon
+wäre durch Lesen aufgefallen, und das ist selbst die Lektion — ein Audit, das
+nur den Quelltext prüft, findet die halbe Wahrheit.
+
+### Funktionen, die nie funktioniert haben
+
+| # | Fund | Warum unsichtbar |
+|---|---|---|
+| 14 | **Registrierung war unmöglich.** Checkbox `name="terms"`, Route liest `terms_accepted` | Die Tests posteten das Feld direkt, nicht das Formular, das ein Browser sendet |
+| 15 | Dahinter: `'on'` (String) in eine Boolean-Spalte | Konnte nie auftreten, solange 14 vorher abbrach |
+| 16 | **Produktbilder hatten keine Route**, Templates schoben das ORM-Objekt in `src` | Kein Produkt hatte ein Bild, das es verraten hätte |
+| 17 | **`CryptoService` war nicht lauffähig** — Import von `PBKDF2` statt `PBKDF2HMAC` | Niemand rief den Service auf |
+| 18 | **Checkout war kaputt:** `Decimal * float` im Insert-Listener | Es gab keine Order-Tests |
+| 19 | **`security.txt` fehlte**, obwohl der Footer sie seit jeher verlinkte | Ein 404 im Footer fällt niemandem auf |
+
+### Jinja rendert Tippfehler als Leerstring
+
+| # | Fund |
+|---|---|
+| 20 | `product.active` (die Spalte heißt `is_active`) → jedes Produkt zeigte „Inactive" |
+| 21 | `order.status_color` nie definiert → jedes Abzeichen als nacktes `bg-` |
+| 22 | `recent_users`, `security_alerts`, `recent_orders`, `stats.active_products`, `stats.pending_orders` nie übergeben → fünf Dashboard-Bereiche dauerhaft leer |
+| 23 | `product.shipping_info` existiert nicht → toter Markup-Block |
+
+**Maßnahme:** `create_app` schaltet Jinja unter `TESTING` auf `StrictUndefined`.
+Die Produktion behält den nachsichtigen Standard — eine übersehene Referenz soll
+für Besucher keine Seite in einen 500er verwandeln, aber die Suite lässt keine
+mehr durch.
+
+### „Sofort kaufen" — vier Defekte in einer Fehlermeldung
+
+Gemeldet als `Error creating order: 'Product' object has no attribute 'active'`:
+
+| # | Fund |
+|---|---|
+| 24 | `product.active` warf, statt `False` zu liefern → Freigabe und Bestand wurden **nie** geprüft |
+| 25 | `total_amount=` ist keine Spalte → der Absturz wäre nur eine Zeile weitergewandert |
+| 26 | `str(exc)` im Flash → interner Attributname auf einer Nutzerseite (Informationspreisgabe) |
+| 27 | Kein Escrow → der Weg übersprang stillschweigend den Käuferschutz des Warenkorb-Pfads |
+
+### Betrieb
+
+| # | Fund |
+|---|---|
+| 28 | **Hinter dem Proxy war `remote_addr` immer `127.0.0.1`** → alle Nutzer in einem Rate-Limit-Eimer, Audit-Log protokollierte nginx. ProxyFix ist bewusst *opt-in*: `X-Forwarded-For` blind zu vertrauen erlaubt IP-Fälschung |
+| 29 | **Der eigene Rate-Limiter drosselte die eigenen Bilder** (20 pro Seite, 10/s) → halb leeres Raster. Ein Limit begrenzt teure oder missbrauchbare Arbeit; auf statische Bytes ist es ein selbstverschuldeter Ausfall |
+| 30 | **`/account/security` warf 500** auf `user_agent[:50]` — die Audit-Zeilen der Model-Listener haben keinen User-Agent. Ausgerechnet die Seite, die man bei Verdacht öffnet |
+| 31 | **65 CVEs in 14 Paketen**, sichtbar erst nach Entfernen des `\|\| true` beim `pip-audit` |
+| 32 | **Escrow-Listener las `target.order` während des Flush** → `NULL` in eine `NOT NULL`-Spalte → *jede* Bestellung schlug fehl |
+| 33 | Derselbe Listener band ein `Decimal` in rohes SQL (psycopg2 kann das, sqlite3 nicht) — dieselbe Klasse wie die UUID-Bindungen aus Runde 1 |
+
+### Der wichtigste Fund: ein zu lockeres Testschema
+
+`transaction_audit.transaction_id` war im SQLite-Testschema **nullable**, in
+PostgreSQL **NOT NULL**. Die Suite akzeptierte damit genau den Schreibvorgang,
+den die echte Datenbank ablehnt — Fund 32 lief deshalb grün durch die Tests und
+scheiterte in Produktion.
+
+> **Ein Testschema, das lockerer ist als die Produktion, ist schlimmer als
+> keines: es bestätigt Fehler.** Angeglichen und nachgewiesen — mit dem
+> korrekten Schema fällt Fund 32 sofort auf.
+
+### Lesbarkeit ist eine prüfbare Eigenschaft
+
+| # | Fund |
+|---|---|
+| 34 | Weißer Text auf dunklem Block + hellgraue Standard-Auswahlfarbe → **unlesbar genau beim Kopieren**. Gemessen ~1,5:1, jetzt 13,5:1 |
+| 35 | Der Copy-Knopf saß neben der ersten Zeile und ließ sie eingerückt wirken (beide Zeilen lagen messbar auf demselben x) |
+
+### Stand nach Runde 2
+
+**443 Tests** (von 0 lauffähigen), Coverage 49 %, flake8 0, bandit sauber,
+`pip-audit` ohne Fund, gitleaks über die volle Historie — **CI 4/4 grün**.
+Jeder neue Regressions-Pin wurde mutationsgeprüft.
 
 ---
 
