@@ -106,8 +106,12 @@ AUDIT_TABLES_DDL = (
     CREATE TABLE IF NOT EXISTS transaction_audit (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
-        transaction_id VARCHAR(36), buyer_id VARCHAR(36) NOT NULL,
-        vendor_id VARCHAR(36) NOT NULL, product_id VARCHAR(36),
+        -- NOT NULL exactly as in postgres/audit-logging.sql. A test schema that
+        -- is more permissive than production is worse than none: it passes the
+        -- very writes the real database rejects. This column being nullable
+        -- here is why a NULL transaction_id reached production undetected.
+        transaction_id VARCHAR(36) NOT NULL, buyer_id VARCHAR(36) NOT NULL,
+        vendor_id VARCHAR(36) NOT NULL, product_id VARCHAR(36) NOT NULL,
         action VARCHAR(50) NOT NULL, amount DECIMAL(12, 2),
         status VARCHAR(50), metadata TEXT
     )

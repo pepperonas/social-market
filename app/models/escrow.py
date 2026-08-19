@@ -325,12 +325,20 @@ def audit_escrow_changes(mapper, connection, target):
             ":action, :amount, :status)"
         ),
         {
-            'transaction_id': str(target.order.id) if target.order else None,
+            # Use the foreign key, not the relationship. During after_insert the
+            # `order` backref is not necessarily populated yet, so this bound
+            # NULL into transaction_audit.transaction_id -- which is NOT NULL,
+            # so every escrow creation (i.e. every order) failed.
+            'transaction_id': str(target.order_id) if target.order_id else None,
             'buyer_id': str(target.buyer_id),
             'vendor_id': str(target.vendor_id),
+            # Reachable only through the order. escrow_service sets the
+            # relationship explicitly so this is populated during the flush.
             'product_id': str(target.order.product_id) if target.order else None,
             'action': f'escrow_{target.status}',
-            'amount': target.amount,
+            # Bind money as str, like the ids above: psycopg2 adapts Decimal,
+            # sqlite3 does not. str() keeps the exact value; float() would not.
+            'amount': str(target.amount) if target.amount is not None else None,
             'status': target.status
         }
     )

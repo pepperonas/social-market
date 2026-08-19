@@ -39,7 +39,35 @@ def dashboard():
         'total_transactions': Order.query.filter(Order.status.in_(['completed', 'paid'])).count()
     }
 
-    return render_template('admin/dashboard.html', stats=stats)
+    # The template lists these; without them Jinja rendered the section empty
+    # and nobody could tell the difference between "no users" and "forgot to
+    # pass the variable".
+    recent_users = User.query.order_by(User.created_at.desc()).limit(10).all()
+
+    # Recent security events for the dashboard panel. Read-only and best effort:
+    # the dashboard must still render if the audit table is unavailable.
+    security_alerts = []
+    try:
+        from sqlalchemy import text
+
+        security_alerts = db.session.execute(
+            text("""
+                SELECT timestamp, event_type, severity, description
+                FROM security_events
+                ORDER BY timestamp DESC
+                LIMIT 10
+            """)
+        ).fetchall()
+    except Exception as exc:
+        db.session.rollback()
+        current_app.logger.warning('Could not load security events: %s', exc)
+
+    return render_template(
+        'admin/dashboard.html',
+        stats=stats,
+        recent_users=recent_users,
+        security_alerts=security_alerts,
+    )
 
 
 @admin_bp.route('/users')

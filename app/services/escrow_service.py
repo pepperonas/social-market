@@ -35,6 +35,9 @@ class EscrowService:
 
         # Create escrow
         escrow = Escrow(
+            # Set the relationship, not just the FK: the audit listener runs
+            # during the flush and reads target.order to reach product_id.
+            order=order,
             order_id=order.id,
             buyer_id=order.buyer_id,
             vendor_id=order.vendor_id,

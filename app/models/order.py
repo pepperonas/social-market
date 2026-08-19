@@ -105,6 +105,26 @@ class Order(db.Model):
     # Order Lifecycle
     # =============================================================================
 
+    @property
+    def status_color(self):
+        """
+        Bootstrap contextual colour for the status badge.
+
+        Templates render `bg-{{ order.status_color }}`. Without this the class
+        came out as bare "bg-" -- every badge unstyled, and nothing to indicate
+        that a status was ever meant to be colour-coded.
+        """
+        return {
+            OrderStatus.PENDING.value: 'secondary',
+            OrderStatus.PAID.value: 'info',
+            OrderStatus.SHIPPED.value: 'primary',
+            OrderStatus.DELIVERED.value: 'success',
+            OrderStatus.COMPLETED.value: 'success',
+            OrderStatus.CANCELLED.value: 'dark',
+            OrderStatus.DISPUTED.value: 'warning',
+            OrderStatus.REFUNDED.value: 'danger',
+        }.get(self.status, 'secondary')
+
     def can_transition_to(self, new_status):
         """
         Check if order can transition to new status

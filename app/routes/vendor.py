@@ -42,12 +42,24 @@ def dashboard():
 
     stats = {
         'total_products': Product.query.filter_by(vendor_id=current_user.id).count(),
+        # Shown as its own tile in the template; was silently blank.
+        'active_products': Product.query.filter_by(
+            vendor_id=current_user.id, is_active=True, is_approved=True
+        ).count(),
         'total_orders': Order.query.filter_by(vendor_id=current_user.id).count(),
         'total_sales': Order.query.filter_by(vendor_id=current_user.id, status='completed').count(),
+        # Also rendered as a tile; missing keys are invisible without strict Jinja.
+        'pending_orders': Order.query.filter_by(
+            vendor_id=current_user.id, status='pending'
+        ).count(),
         'total_revenue': float(total_revenue)
     }
 
-    return render_template('vendor/dashboard.html', stats=stats)
+    recent_orders = Order.query.filter_by(
+        vendor_id=current_user.id
+    ).order_by(Order.created_at.desc()).limit(10).all()
+
+    return render_template('vendor/dashboard.html', stats=stats, recent_orders=recent_orders)
 
 
 @vendor_bp.route('/products')

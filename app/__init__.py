@@ -97,6 +97,19 @@ def create_app(config_name=None):
             x_prefix=0,
         )
 
+    # Under test, make Jinja fail loudly on names that do not exist.
+    #
+    # The default Undefined renders a typo as an empty string, which is how
+    # `product.vendor.username`, `order.status_color` and `product.active` all
+    # shipped broken and invisible: the pages rendered fine, they were just
+    # missing the data. Production keeps the lenient default -- a stray
+    # reference should not turn a page into a 500 for a visitor -- but the test
+    # suite refuses to let one through.
+    if app.config.get('TESTING'):
+        from jinja2 import StrictUndefined
+
+        app.jinja_env.undefined = StrictUndefined
+
     # Initialize extensions
     initialize_extensions(app)
 

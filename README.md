@@ -8,8 +8,8 @@
 
 <!-- Build & quality -->
 [![CI](https://github.com/pepperonas/social-market/actions/workflows/ci.yml/badge.svg)](https://github.com/pepperonas/social-market/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-408%20passing-brightgreen)](tests/)
-[![Coverage](https://img.shields.io/badge/coverage-48%25-yellow)](tests/)
+[![Tests](https://img.shields.io/badge/tests-443%20passing-brightgreen)](tests/)
+[![Coverage](https://img.shields.io/badge/coverage-49%25-yellow)](tests/)
 [![Lint](https://img.shields.io/badge/flake8-0%20issues-brightgreen)](.flake8)
 [![Bandit](https://img.shields.io/badge/bandit-clean-brightgreen)](.github/workflows/ci.yml)
 [![pip-audit](https://img.shields.io/badge/pip--audit-enforced-brightgreen)](.github/workflows/ci.yml)
@@ -261,7 +261,7 @@ involved to cheat. Every one of those is a place where defence is *interesting*.
 
 Not hypotheticals. Each one happened *here*, and the fix is in the history:
 
-- **A test suite that cannot run is worse than no test suite.** All 408 tests errored on setup
+- **A test suite that cannot run is worse than no test suite.** All 443 tests errored on setup
   for months while CI reported the failure into a void. Four stacked defects, each hidden by
   the one before it.
 - **Secrets leak through documentation.** The live password pepper sat in a Markdown file whose
@@ -294,6 +294,13 @@ Not hypotheticals. Each one happened *here*, and the fix is in the history:
 - **A feature can ship having never worked.** Product images had no route serving them and the
   templates interpolated the ORM object into `src`. Nobody noticed, because no product had an
   image to reveal it.
+- **Jinja renders a typo as an empty string.** `product.active` (the column is `is_active`),
+  `order.status_color`, and five dashboard variables that were never passed — every one of them
+  rendered a blank instead of raising. The suite now runs with `StrictUndefined`; production
+  keeps the lenient default so a stray reference cannot 500 a visitor.
+- **A test schema looser than production is worse than none.** `transaction_audit.transaction_id`
+  was nullable in the SQLite test DDL and `NOT NULL` in PostgreSQL, so the tests happily accepted
+  the exact write the real database rejected — and every order failed in production.
 
 ### 🗺 OWASP Top 10: where to look
 

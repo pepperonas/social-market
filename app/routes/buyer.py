@@ -4,11 +4,12 @@ Buyer Routes - Placeholder
 Purpose: Buyer orders and purchases
 """
 
-from flask import Blueprint, render_template, request, redirect, url_for, flash
+from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app
 from flask_login import login_required, current_user
 from app import db
-from app.models.order import Order
+from app.models.order import Order, OrderStatus
 from app.models.product import Product
+from app.services.escrow_service import EscrowService
 from datetime import datetime
 import uuid
 
@@ -42,28 +43,34 @@ def order_detail(order_id):
 @login_required
 def create_order():
     """Create new order"""
+    product_id = request.form.get('product_id')
+
     try:
-        # Get form data
-        product_id = request.form.get('product_id')
         quantity = int(request.form.get('quantity', 1))
+    except (TypeError, ValueError):
+        flash('Invalid quantity', 'danger')
+        return redirect(url_for('marketplace.product_detail', product_id=product_id))
 
-        # Validate product
-        product = Product.query.get_or_404(product_id)
+    if quantity < 1:
+        flash('Quantity must be at least 1', 'danger')
+        return redirect(url_for('marketplace.product_detail', product_id=product_id))
 
-        # Check if product is active
-        if not product.active:
-            flash('This product is no longer available', 'warning')
-            return redirect(url_for('marketplace.product_detail', product_id=product_id))
+    product = Product.query.get_or_404(product_id)
 
-        # Check if user is not the vendor
-        if product.vendor_id == current_user.id:
-            flash('You cannot purchase your own product', 'warning')
-            return redirect(url_for('marketplace.product_detail', product_id=product_id))
+    # Go through the model's own gate rather than re-implementing it here.
+    # This route used to check `product.active` -- a column that does not exist
+    # (it is `is_active`) -- so the check raised AttributeError instead of
+    # returning False, and it never looked at approval or stock at all.
+    purchasable, reason = product.can_purchase(quantity)
+    if not purchasable:
+        flash(reason or 'This product is no longer available', 'warning')
+        return redirect(url_for('marketplace.product_detail', product_id=product_id))
 
-        # Calculate total
-        total_amount = product.price * quantity
+    if str(product.vendor_id) == str(current_user.id):
+        flash('You cannot purchase your own product', 'warning')
+        return redirect(url_for('marketplace.product_detail', product_id=product_id))
 
-        # Create order
+    try:
         order = Order(
             id=uuid.uuid4(),
             buyer_id=current_user.id,
@@ -71,24 +78,33 @@ def create_order():
             product_id=product.id,
             quantity=quantity,
             unit_price=product.price,
-            total_amount=total_amount,
-            status='pending',
+            # total_price and commission are computed by the before_insert
+            # listener. The old code passed `total_amount`, which is not a
+            # column, so the insert raised before it ever reached the database.
+            is_digital=product.is_digital,
+            status=OrderStatus.PENDING.value,
             created_at=datetime.utcnow()
         )
-
         db.session.add(order)
+        db.session.flush()
+
+        # Same escrow guarantee as the cart checkout path; a "buy now" order
+        # without escrow would silently skip the buyer protection.
+        EscrowService().create_escrow_for_order(order)
+
         db.session.commit()
 
-        flash(f'Order placed successfully! Order ID: {order.id}', 'success')
-        return redirect(url_for('buyer.order_detail', order_id=order.id))
-
-    except ValueError:
-        flash('Invalid quantity', 'danger')
-        return redirect(url_for('marketplace.product_detail', product_id=product_id))
-    except Exception as e:
+    except Exception as exc:
         db.session.rollback()
-        flash(f'Error creating order: {str(e)}', 'danger')
+        # Log the detail, show the user a generic message. The previous version
+        # flashed str(exc), which put internal model attribute names (and
+        # potentially SQL) straight onto the page.
+        current_app.logger.exception('Order creation failed for product %s: %s', product_id, exc)
+        flash('Could not place the order. Please try again.', 'danger')
         return redirect(url_for('marketplace.product_detail', product_id=product_id))
+
+    flash(f'Order placed successfully! Order ID: {order.id}', 'success')
+    return redirect(url_for('buyer.order_detail', order_id=order.id))
 
 
 @buyer_bp.route('/order/<uuid:order_id>/confirm-delivery', methods=['POST'])

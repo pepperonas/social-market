@@ -337,7 +337,9 @@ def register():
             db.session.rollback()
             current_app.logger.error(f'Registration error: {e}')
             flash('An error occurred during registration. Please try again.', 'error')
-            return render_template('auth/register.html', form=form_values), 500
+            # Pass BOTH: the template branches on `errors`, and an undefined
+            # name is a hard error under the strict Jinja used in tests.
+            return render_template('auth/register.html', form=form_values, errors={}), 500
 
     return render_template('auth/register.html', form={}, errors={})
 

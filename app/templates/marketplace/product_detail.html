@@ -19,7 +19,7 @@
 
                 <div class="mb-3">
                     <span class="badge bg-secondary">{{ product.category.name if product.category else 'Uncategorised' }}</span>
-                    <span class="badge bg-{{ 'success' if product.active else 'danger' }}">{{ 'Active' if product.active else 'Inactive' }}</span>
+                    <span class="badge bg-{{ 'success' if product.is_active else 'danger' }}">{{ 'Active' if product.is_active else 'Inactive' }}</span>
                 </div>
 
                 <h4 class="text-primary">${{ "%.2f"|format(product.price) }}</h4>
@@ -28,12 +28,6 @@
 
                 <h5>Description</h5>
                 <p>{{ product.description }}</p>
-
-                {% if product.shipping_info %}
-                <hr>
-                <h5>Shipping Information</h5>
-                <p>{{ product.shipping_info }}</p>
-                {% endif %}
             </div>
         </div>
     </div>

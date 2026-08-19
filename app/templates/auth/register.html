@@ -30,12 +30,12 @@
                     <div class="mb-3">
                         <label for="username" class="form-label">Username</label>
                         <input type="text" id="username" name="username"
-                               class="form-control {% if errors and errors.username %}is-invalid{% endif %}"
-                               value="{{ form.username if form else '' }}"
+                               class="form-control {% if errors and errors.get('username') %}is-invalid{% endif %}"
+                               value="{{ form.get('username', '') }}"
                                minlength="3" maxlength="50" pattern="[A-Za-z0-9._\-]{3,50}"
                                autocomplete="username" autofocus required>
-                        {% if errors and errors.username %}
-                        <div class="invalid-feedback">{{ errors.username }}</div>
+                        {% if errors and errors.get('username') %}
+                        <div class="invalid-feedback">{{ errors.get('username') }}</div>
                         {% endif %}
                         <div class="form-text">3-50 characters: letters, digits, dot, underscore, hyphen.</div>
                     </div>
@@ -43,11 +43,11 @@
                     <div class="mb-3">
                         <label for="email" class="form-label">Email</label>
                         <input type="email" id="email" name="email"
-                               class="form-control {% if errors and errors.email %}is-invalid{% endif %}"
-                               value="{{ form.email if form else '' }}"
+                               class="form-control {% if errors and errors.get('email') %}is-invalid{% endif %}"
+                               value="{{ form.get('email', '') }}"
                                autocomplete="email" required>
-                        {% if errors and errors.email %}
-                        <div class="invalid-feedback">{{ errors.email }}</div>
+                        {% if errors and errors.get('email') %}
+                        <div class="invalid-feedback">{{ errors.get('email') }}</div>
                         {% endif %}
                     </div>
 
@@ -55,15 +55,15 @@
                         <label for="password" class="form-label">Password</label>
                         <div class="input-group">
                             <input type="password" id="password" name="password"
-                                   class="form-control {% if errors and errors.password %}is-invalid{% endif %}"
+                                   class="form-control {% if errors and errors.get('password') %}is-invalid{% endif %}"
                                    minlength="12" autocomplete="new-password" required>
                             <button class="btn btn-outline-secondary" type="button" id="toggle-password"
                                     aria-label="Show or hide password">👁</button>
                             <button class="btn btn-outline-primary" type="button" id="suggest-btn">
                                 🎲 Suggest
                             </button>
-                            {% if errors and errors.password %}
-                            <div class="invalid-feedback">{{ errors.password }}</div>
+                            {% if errors and errors.get('password') %}
+                            <div class="invalid-feedback">{{ errors.get('password') }}</div>
                             {% endif %}
                         </div>
 
@@ -85,10 +85,10 @@
                     <div class="mb-3">
                         <label for="password_confirm" class="form-label">Confirm Password</label>
                         <input type="password" id="password_confirm" name="password_confirm"
-                               class="form-control {% if errors and errors.password_confirm %}is-invalid{% endif %}"
+                               class="form-control {% if errors and errors.get('password_confirm') %}is-invalid{% endif %}"
                                autocomplete="new-password" required>
-                        {% if errors and errors.password_confirm %}
-                        <div class="invalid-feedback">{{ errors.password_confirm }}</div>
+                        {% if errors and errors.get('password_confirm') %}
+                        <div class="invalid-feedback">{{ errors.get('password_confirm') }}</div>
                         {% endif %}
                         <div class="form-text" id="match-hint"></div>
                     </div>
@@ -96,11 +96,11 @@
                     <div class="mb-3">
                         <label for="role" class="form-label">Account Type</label>
                         <select class="form-select" id="role" name="role" required>
-                            <option value="buyer" {% if not form or form.role != 'vendor' %}selected{% endif %}>Buyer</option>
-                            <option value="vendor" {% if form and form.role == 'vendor' %}selected{% endif %}>Vendor</option>
+                            <option value="buyer" {% if form.get('role') != 'vendor' %}selected{% endif %}>Buyer</option>
+                            <option value="vendor" {% if form.get('role') == 'vendor' %}selected{% endif %}>Vendor</option>
                         </select>
-                        {% if errors and errors.role %}
-                        <div class="text-danger small mt-1">{{ errors.role }}</div>
+                        {% if errors and errors.get('role') %}
+                        <div class="text-danger small mt-1">{{ errors.get('role') }}</div>
                         {% endif %}
                     </div>
 
@@ -108,14 +108,14 @@
                        "terms" while the route read "terms_accepted", so every single
                        registration was rejected with "you must accept the terms". #}
                     <div class="mb-3 form-check">
-                        <input type="checkbox" class="form-check-input {% if errors and errors.terms_accepted %}is-invalid{% endif %}"
+                        <input type="checkbox" class="form-check-input {% if errors and errors.get('terms_accepted') %}is-invalid{% endif %}"
                                id="terms_accepted" name="terms_accepted" value="on"
-                               {% if form and form.terms_accepted %}checked{% endif %} required>
+                               {% if form.get('terms_accepted') %}checked{% endif %} required>
                         <label class="form-check-label" for="terms_accepted">
                             I understand this is an educational training environment
                         </label>
-                        {% if errors and errors.terms_accepted %}
-                        <div class="invalid-feedback d-block">{{ errors.terms_accepted }}</div>
+                        {% if errors and errors.get('terms_accepted') %}
+                        <div class="invalid-feedback d-block">{{ errors.get('terms_accepted') }}</div>
                         {% endif %}
                     </div>
 
