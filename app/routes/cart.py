@@ -4,16 +4,26 @@ Shopping Cart Routes
 Purpose: Secure shopping cart management
 """
 
-from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify
+from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, current_app
 from flask_login import login_required, current_user
-from decimal import Decimal
 import uuid
 
 from app import db, limiter
-from app.models.cart import Cart
+from app.models.cart import Cart, CartItem
 from app.models.order import Order
 from app.services.escrow_service import EscrowService
 from app.timeutil import utcnow
+
+
+class _OutOfStock(Exception):
+    def __init__(self, title):
+        super().__init__(title)
+        self.title = title
+
+
+class _CartChanged(Exception):
+    pass
+
 
 cart_bp = Blueprint('cart', __name__)
 
@@ -77,8 +87,12 @@ def add_to_cart():
 @limiter.limit("30 per minute")
 def add_to_cart_ajax():
     """Add product to cart (AJAX)"""
-    data = request.get_json()
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({'success': False, 'error': 'Expected a JSON object'}), 400
     product_id = data.get('product_id')
+    # Validated in Cart.add_item (Cart.parse_quantity). This route used to pass
+    # the raw JSON value through, so {"quantity": -5} became a negative order.
     quantity = data.get('quantity', 1)
 
     if not product_id:
@@ -199,67 +213,77 @@ def checkout():
                                  items_by_vendor=items_by_vendor,
                                  vendors=vendors)
 
+        # One transaction for the whole checkout.
+        #
+        # This used to commit inside the item loop: create_escrow_for_order()
+        # and set_shipping_*() each committed (and so did every audit call). A
+        # failure at item 2 left item 1's order committed while the cart stayed
+        # full -- and the retry ordered item 1 a second time. Nothing in here
+        # commits now; the single commit at the end makes it all or nothing.
+        items = list(cart.items)
         try:
-            # Create orders for each vendor
             orders_created = []
-            from flask import current_app
-            commission_percent = current_app.config.get('ESCROW_COMMISSION_PERCENT', 3.0)
+            for item in items:
+                product = item.product
+                if not product.reserve_stock(item.quantity):
+                    raise _OutOfStock(product.title)
 
-            for vendor_id, items in items_by_vendor.items():
-                for item in items:
-                    # Calculate totals
-                    total_price = item.unit_price * item.quantity
-                    commission = total_price * Decimal(str(commission_percent / 100))
+                order = Order(
+                    id=uuid.uuid4(),
+                    buyer_id=current_user.id,
+                    vendor_id=product.vendor_id,
+                    product_id=product.id,
+                    quantity=item.quantity,
+                    # The current price -- validate_items() refused the checkout
+                    # above if it differs from what the buyer last saw.
+                    unit_price=product.price,
+                    # total_price and commission: before_insert listener
+                    is_digital=product.is_digital,
+                    buyer_notes=buyer_notes if buyer_notes else None,
+                    created_at=utcnow()
+                )
+                db.session.add(order)
+                db.session.flush()
 
-                    # Create order
-                    order = Order(
-                        id=uuid.uuid4(),
-                        buyer_id=current_user.id,
-                        vendor_id=uuid.UUID(vendor_id),
-                        product_id=item.product_id,
-                        quantity=item.quantity,
-                        unit_price=item.unit_price,
-                        total_price=total_price,
-                        commission=commission,
-                        is_digital=item.product.is_digital,
-                        buyer_notes=buyer_notes if buyer_notes else None,
-                        created_at=utcnow()
-                    )
+                if not product.is_digital:
+                    order.set_shipping_name(shipping_name)
+                    order.set_shipping_address(shipping_address)
 
-                    db.session.add(order)
-                    db.session.flush()  # Get the order ID
+                EscrowService.create_escrow_for_order(order)
+                orders_created.append(order)
 
-                    # Set encrypted shipping info if physical
-                    if not item.product.is_digital:
-                        order.set_shipping_name(shipping_name)
-                        order.set_shipping_address(shipping_address)
-
-                    # Create escrow
-                    escrow_service = EscrowService()
-                    escrow_service.create_escrow_for_order(order)
-
-                    orders_created.append(order)
-
-            # Clear cart after successful checkout
-            cart.clear()
+            # Empty the cart in the same transaction, and claim it: if a second,
+            # concurrent submit of the same cart got here first, its delete
+            # already took these rows and this one deletes fewer than it
+            # ordered -- abort instead of creating the orders twice.
+            deleted = CartItem.query.filter(
+                CartItem.id.in_([item.id for item in items])
+            ).delete(synchronize_session=False)
+            if deleted != len(items):
+                raise _CartChanged()
 
             db.session.commit()
 
-            flash(f'Successfully created {len(orders_created)} order(s)! Please proceed to payment.', 'success')
-
-            # Redirect to first order if only one, otherwise to orders list
-            if len(orders_created) == 1:
-                return redirect(url_for('buyer.order_detail', order_id=orders_created[0].id))
-            else:
-                return redirect(url_for('buyer.orders'))
-
-        except Exception as e:
+        except _OutOfStock as exc:
             db.session.rollback()
-            flash(f'Error creating order: {str(e)}', 'danger')
-            return render_template('cart/checkout.html',
-                                 cart=cart,
-                                 items_by_vendor=items_by_vendor,
-                                 vendors=vendors)
+            flash(f'{exc.title} is no longer available in that quantity', 'danger')
+            return redirect(url_for('cart.view_cart'))
+        except _CartChanged:
+            db.session.rollback()
+            flash('Your cart changed while checking out. Please review it.', 'warning')
+            return redirect(url_for('cart.view_cart'))
+        except Exception:
+            db.session.rollback()
+            current_app.logger.exception('Checkout failed for user %s', current_user.id)
+            flash('Could not complete the checkout. Nothing was ordered; please try again.',
+                  'danger')
+            return redirect(url_for('cart.view_cart'))
+
+        flash(f'Successfully created {len(orders_created)} order(s)! Please proceed to payment.',
+              'success')
+        if len(orders_created) == 1:
+            return redirect(url_for('buyer.order_detail', order_id=orders_created[0].id))
+        return redirect(url_for('buyer.orders'))
 
     return render_template('cart/checkout.html',
                          cart=cart,

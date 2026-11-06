@@ -62,6 +62,8 @@ class Cart(db.Model):
         """
         from app.models.product import Product
 
+        quantity = self.parse_quantity(quantity)
+
         product = db.session.get(Product, product_id)
         if not product:
             raise ValueError('Product not found')
@@ -98,6 +100,32 @@ class Cart(db.Model):
         db.session.commit()
         return item
 
+    MAX_QUANTITY = 1000
+
+    @classmethod
+    def parse_quantity(cls, raw):
+        """
+        A cart quantity: a whole number from 1 to MAX_QUANTITY, or ValueError.
+
+        Lives on the model so every route goes through it. The form route clamped
+        its input, the JSON route did not: {"quantity": -5} produced a negative
+        cart line, a negative order total and an escrow with a negative amount.
+        bool is refused explicitly -- it is an int subclass, True would be 1.
+        """
+        if isinstance(raw, bool) or raw is None:
+            raise ValueError('Quantity must be a whole number')
+        if isinstance(raw, float):
+            if not raw.is_integer():
+                raise ValueError('Quantity must be a whole number')
+            raw = int(raw)
+        try:
+            value = int(str(raw).strip())
+        except ValueError:
+            raise ValueError('Quantity must be a whole number')
+        if not 1 <= value <= cls.MAX_QUANTITY:
+            raise ValueError(f'Quantity must be between 1 and {cls.MAX_QUANTITY}')
+        return value
+
     def update_item_quantity(self, product_id, quantity):
         """
         Update item quantity in cart
@@ -112,7 +140,12 @@ class Cart(db.Model):
         if not item:
             raise ValueError('Item not in cart')
 
-        if quantity <= 0:
+        if quantity == 0:
+            quantity = 0  # explicit removal
+        else:
+            quantity = self.parse_quantity(quantity)
+
+        if quantity == 0:
             db.session.delete(item)
         else:
             product = db.session.get(Product, product_id)
@@ -173,6 +206,14 @@ class Cart(db.Model):
                 errors.append(f'{product.title} is pending approval')
             elif not product.is_digital and product.quantity < item.quantity:
                 errors.append(f'{product.title}: only {product.quantity} available')
+            elif item.unit_price != product.price:
+                # The cart keeps the price from the moment the item was added, and
+                # checkout used to charge exactly that. Show the new price and let
+                # the buyer decide again; the next checkout charges it.
+                errors.append(f'{product.title}: price changed from '
+                              f'{item.unit_price} to {product.price} -- please review your cart')
+                item.unit_price = product.price
+                db.session.commit()
         return errors
 
 
@@ -200,6 +241,7 @@ class CartItem(db.Model):
     # Unique constraint - one product per cart
     __table_args__ = (
         db.UniqueConstraint('cart_id', 'product_id', name='uq_cart_product'),
+        db.CheckConstraint('quantity > 0', name='ck_cart_item_quantity_positive'),
     )
 
     def __repr__(self):

@@ -4,9 +4,53 @@ Audit Service
 Purpose: Centralized audit logging
 """
 
+import json
+import uuid
+from decimal import Decimal
+
 from sqlalchemy import text
 from flask import request, current_app
 from app import db
+
+
+def _bindable(value):
+    """
+    Make a parameter safe for every driver.
+
+    psycopg2 adapts uuid.UUID and Decimal; sqlite3 does not, and neither adapts
+    a dict -- metadata passed as a dict made the INSERT fail, and the event was
+    lost without anyone noticing (the error was caught and logged at most).
+    """
+    if isinstance(value, (uuid.UUID, Decimal)):
+        return str(value)
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, default=str)
+    return value
+
+
+def _write(sql, params, commit):
+    """
+    Execute one audit INSERT inside a SAVEPOINT.
+
+    Every audit function used to end with db.session.commit() and, on failure,
+    db.session.rollback(). Both acted on the CALLER's transaction:
+
+    * the commit persisted whatever the caller had changed so far -- an audit
+      call in the middle of checkout committed half an order;
+    * the rollback threw the caller's pending work away, silently, whenever
+      an audit row could not be written.
+
+    The savepoint confines a failure to the audit row itself. ``commit`` is
+    True only for events that must be recorded even if nothing else is
+    (a failed login, a security event); order and message events are part of
+    the action they describe and are committed -- or rolled back -- with it.
+    Such committing calls therefore belong AFTER the caller's own commit,
+    never in the middle of a business transaction.
+    """
+    with db.session.begin_nested():
+        db.session.execute(text(sql), {k: _bindable(v) for k, v in params.items()})
+    if commit:
+        db.session.commit()
 
 
 def log_auth_event(username, user_id, action, ip_address=None, session_id=None, failure_reason=None, metadata=None):
@@ -25,8 +69,8 @@ def log_auth_event(username, user_id, action, ip_address=None, session_id=None, 
     try:
         user_agent = request.headers.get('User-Agent', '') if request else ''
 
-        db.session.execute(
-            text(
+        _write(
+            (
                 "SELECT log_auth_event(:username, :user_id, :action, :ip_address, "
                 ":user_agent, :session_id, :failure_reason, :metadata)"
             ),
@@ -39,12 +83,11 @@ def log_auth_event(username, user_id, action, ip_address=None, session_id=None, 
                 'session_id': session_id,
                 'failure_reason': failure_reason,
                 'metadata': metadata
-            }
+            },
+            commit=True,
         )
-        db.session.commit()
     except Exception as e:
         current_app.logger.error(f'Failed to log auth event: {e}')
-        db.session.rollback()
 
 
 def log_security_event(event_type, severity, description, user_id=None, ip_address=None, metadata=None):
@@ -60,8 +103,8 @@ def log_security_event(event_type, severity, description, user_id=None, ip_addre
         metadata: Additional metadata (optional)
     """
     try:
-        db.session.execute(
-            text(
+        _write(
+            (
                 "SELECT log_security_event(:event_type, :severity, 'application', "
                 ":description, :user_id, :ip_address, :metadata)"
             ),
@@ -72,12 +115,11 @@ def log_security_event(event_type, severity, description, user_id=None, ip_addre
                 'user_id': user_id,
                 'ip_address': ip_address or (request.remote_addr if request else None),
                 'metadata': metadata
-            }
+            },
+            commit=True,
         )
-        db.session.commit()
     except Exception as e:
         current_app.logger.error(f'Failed to log security event: {e}')
-        db.session.rollback()
 
 
 def log_order_event(order_id, action, metadata=None):
@@ -96,8 +138,8 @@ def log_order_event(order_id, action, metadata=None):
         if not order:
             return
 
-        db.session.execute(
-            text(
+        _write(
+            (
                 "INSERT INTO transaction_audit (transaction_id, buyer_id, vendor_id, "
                 "product_id, action, amount, status, metadata) "
                 "VALUES (:transaction_id, :buyer_id, :vendor_id, :product_id, "
@@ -112,12 +154,11 @@ def log_order_event(order_id, action, metadata=None):
                 'amount': order.total_price,
                 'status': order.status,
                 'metadata': metadata
-            }
+            },
+            commit=False,
         )
-        db.session.commit()
     except Exception as e:
         current_app.logger.error(f'Failed to log order event: {e}')
-        db.session.rollback()
 
 
 def log_message_event(message_id, sender_id, recipient_id, action):
@@ -134,8 +175,8 @@ def log_message_event(message_id, sender_id, recipient_id, action):
         from app.models.message import Message
         message = db.session.get(Message, message_id)
 
-        db.session.execute(
-            text(
+        _write(
+            (
                 "INSERT INTO message_audit (message_id, sender_id, recipient_id, action, encrypted) "
                 "VALUES (:message_id, :sender_id, :recipient_id, :action, :encrypted)"
             ),
@@ -145,12 +186,11 @@ def log_message_event(message_id, sender_id, recipient_id, action):
                 'recipient_id': recipient_id,
                 'action': action,
                 'encrypted': message.is_encrypted if message else True
-            }
+            },
+            commit=False,
         )
-        db.session.commit()
     except Exception as e:
         current_app.logger.error(f'Failed to log message event: {e}')
-        db.session.rollback()
 
 
 def log_admin_action(admin_user_id, action, target_type, target_id, before_state=None, after_state=None, reason=None):
@@ -169,8 +209,8 @@ def log_admin_action(admin_user_id, action, target_type, target_id, before_state
     try:
         import json
 
-        db.session.execute(
-            text(
+        _write(
+            (
                 "INSERT INTO admin_actions (admin_user_id, action, target_type, target_id, "
                 "before_state, after_state, reason, ip_address) "
                 "VALUES (:admin_user_id, :action, :target_type, :target_id, "
@@ -185,12 +225,11 @@ def log_admin_action(admin_user_id, action, target_type, target_id, before_state
                 'after_state': json.dumps(after_state) if after_state else None,
                 'reason': reason,
                 'ip_address': request.remote_addr if request else None
-            }
+            },
+            commit=True,
         )
-        db.session.commit()
     except Exception as e:
         current_app.logger.error(f'Failed to log admin action: {e}')
-        db.session.rollback()
 
 
 def get_user_audit_log(user_id, limit=100):
@@ -246,8 +285,8 @@ def log_pgp_key_event(user_id, action, key_fingerprint=None, created_by='user', 
             audit_metadata.update(metadata)
 
         # Log to general audit_log
-        db.session.execute(
-            text(
+        _write(
+            (
                 "INSERT INTO audit_log (user_id, action, table_name, record_id, "
                 "new_values, status, severity, metadata, ip_address, user_agent) "
                 "VALUES (:user_id, :action, 'users', :record_id, :new_values, "
@@ -265,15 +304,13 @@ def log_pgp_key_event(user_id, action, key_fingerprint=None, created_by='user', 
                 'metadata': json.dumps(audit_metadata),
                 'ip_address': request.remote_addr if request else None,
                 'user_agent': request.headers.get('User-Agent', '') if request else 'CLI'
-            }
+            },
+            commit=True,
         )
-
-        db.session.commit()
         current_app.logger.info(f'PGP key event logged: {action} for user {user_id}')
 
     except Exception as e:
         current_app.logger.error(f'Failed to log PGP key event: {e}')
-        db.session.rollback()
 
 
 def get_recent_security_events(hours=24, severity=None):

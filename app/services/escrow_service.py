@@ -48,45 +48,32 @@ class EscrowService:
         )
 
         db.session.add(escrow)
-        db.session.commit()
+        db.session.flush()  # no commit: checkout creates all its orders in ONE transaction
 
         log_order_event(order.id, 'escrow_created')
 
         return escrow
 
     @staticmethod
-    def fund_escrow(escrow, funding_tx_id=None):
+    def pay_order(order):
         """
-        Fund escrow (mock)
+        Simulated payment: fund the escrow and mark the order paid.
 
-        Args:
-            escrow: Escrow object
-            funding_tx_id: Transaction ID (optional, will generate if not provided)
+        This is the step that was missing. fund_escrow() existed but nothing
+        called it, and nothing else moved an order to PAID -- so no order could
+        ever be shipped, delivered, completed, reviewed or disputed. In this
+        training environment "paying" is a button; in a real marketplace it is
+        a confirmed deposit to the escrow address.
 
-        Returns:
-            bool: Success
+        Raises ValueError if the order is not payable. The caller commits.
         """
-        try:
-            escrow.fund(funding_tx_id)
-
-            # Update order status
-            order = db.session.get(Order, escrow.order_id)
-            if order:
-                order.transition_to(OrderStatus.PAID)
-
-            log_order_event(escrow.order_id, 'escrow_funded')
-            log_security_event(
-                'escrow_funded',
-                'info',
-                f'Escrow funded for order {escrow.order_id}',
-                user_id=escrow.buyer_id
-            )
-
-            return True
-
-        except Exception as e:
-            current_app.logger.error(f'Failed to fund escrow: {e}')
-            return False
+        if order.escrow is None:
+            raise ValueError('This order has no escrow')
+        order.escrow.fund()
+        order.transition_to(OrderStatus.PAID)
+        log_security_event(
+            'escrow_funded', 'info', f'Escrow funded for order {order.id}',
+            user_id=order.buyer_id)
 
     @staticmethod
     def release_escrow_to_vendor(escrow):
@@ -163,10 +150,12 @@ class EscrowService:
         count = 0
         for order in orders_to_finalize:
             try:
-                # Auto-finalize order
+                # Auto-finalize order -- one commit per order, so one failure
+                # does not take the others with it...
                 order.transition_to(OrderStatus.COMPLETED)
-
                 log_order_event(order.id, 'order_auto_finalized')
+                db.session.commit()
+
                 log_security_event(
                     'order_auto_finalized',
                     'info',
@@ -177,6 +166,11 @@ class EscrowService:
                 count += 1
 
             except Exception as e:
+                # ...and a failure is rolled back. There was no rollback here:
+                # a failed escrow release left COMPLETED pending in the session,
+                # and the next order's commit persisted it -- an order marked
+                # done whose money never moved.
+                db.session.rollback()
                 current_app.logger.error(f'Failed to auto-finalize order {order.id}: {e}')
 
         if count > 0:

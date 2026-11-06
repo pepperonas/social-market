@@ -131,9 +131,11 @@ def add_product():
             # Get form data
             title = request.form.get('title', '').strip()
             description = request.form.get('description', '').strip()
-            price = float(request.form.get('price', 0))
+            # Decimal, finite, two places, > 0 -- see Product.parse_price for
+            # why float() let NaN and 0.001 (stored as 0.00) through.
+            price = Product.parse_price(request.form.get('price', ''))
             category_id = request.form.get('category_id', '')
-            quantity = int(request.form.get('quantity', 0))
+            quantity = Product.parse_stock(request.form.get('quantity', '0'))
             is_digital = request.form.get('is_digital') == 'on'
             tags = request.form.get('tags', '').strip()
 
@@ -144,10 +146,6 @@ def add_product():
 
             if not description or len(description) < 10:
                 flash('Description must be at least 10 characters', 'danger')
-                return redirect(url_for('vendor.add_product'))
-
-            if price <= 0:
-                flash('Price must be greater than 0', 'danger')
                 return redirect(url_for('vendor.add_product'))
 
             if not category_id:
@@ -265,6 +263,7 @@ def ship_order(order_id):
 
         flash('Order marked as shipped!', 'success')
     except ValueError as e:
+        db.session.rollback()  # a half-applied transition must not survive
         flash(str(e), 'danger')
     except Exception as e:
         db.session.rollback()
@@ -302,6 +301,7 @@ def cancel_order(order_id):
 
         flash('Order cancelled', 'info')
     except ValueError as e:
+        db.session.rollback()  # a half-applied transition must not survive
         flash(str(e), 'danger')
     except Exception as e:
         db.session.rollback()
@@ -329,11 +329,16 @@ def edit_product(product_id):
     if request.method == 'POST':
         try:
             # Get form data
+            # Parse before touching the product, so a rejected value cannot be
+            # left behind on the object.
+            price = Product.parse_price(request.form.get('price', ''))
+            quantity = Product.parse_stock(request.form.get('quantity', '0'))
+
             product.title = request.form.get('title', '').strip()
             product.description = request.form.get('description', '').strip()
-            product.price = float(request.form.get('price', 0))
+            product.price = price
             product.category_id = request.form.get('category_id', '')
-            product.quantity = int(request.form.get('quantity', 0))
+            product.quantity = quantity
             product.is_digital = request.form.get('is_digital') == 'on'
             product.tags = request.form.get('tags', '').strip() or None
             product.updated_at = utcnow()
@@ -345,10 +350,6 @@ def edit_product(product_id):
 
             if not product.description or len(product.description) < 10:
                 flash('Description must be at least 10 characters', 'danger')
-                return redirect(url_for('vendor.edit_product', product_id=product_id))
-
-            if product.price <= 0:
-                flash('Price must be greater than 0', 'danger')
                 return redirect(url_for('vendor.edit_product', product_id=product_id))
 
             db.session.commit()

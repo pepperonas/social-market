@@ -67,24 +67,36 @@ class TestStock:
     def test_digital_is_always_in_stock(self, make_product):
         assert make_product(quantity=0, is_digital=True).is_in_stock() is True
 
-    def test_record_sale_reduces_by_quantity(self, make_product):
+    # Stock is taken when an order is placed (reserve_stock), no longer when a
+    # sale is recorded. These tests used to drive record_sale(); they now
+    # check the same guarantees where the stock actually moves.
+
+    def test_reserve_reduces_by_quantity(self, make_product):
         item = make_product(quantity=10)
-        item.record_sale(3)
-        assert (item.quantity, item.sales) == (7, 3)
+        assert item.reserve_stock(3) is True
+        assert item.quantity == 7
 
-    def test_record_sale_clamps_at_zero(self, make_product):
+    def test_reserve_refuses_more_than_available(self, make_product):
+        """Was 'clamps at zero': selling 5 of 2 must fail, not quietly sell 2."""
         item = make_product(quantity=2)
-        item.record_sale(5)
-        assert item.quantity == 0
+        assert item.reserve_stock(5) is False
+        assert item.quantity == 2
 
-    def test_record_sale_treats_zero_as_one(self, make_product):
-        """Guard against a falsy quantity silently selling nothing."""
+    def test_release_puts_stock_back(self, make_product):
         item = make_product(quantity=4)
-        item.record_sale(0)
-        assert item.quantity == 3
+        item.reserve_stock(3)
+        item.release_stock(3)
+        assert item.quantity == 4
+
+    def test_record_sale_counts_without_touching_stock(self, make_product):
+        item = make_product(quantity=4)
+        item.record_sale(0)  # a falsy quantity still counts one unit
+        item.record_sale(2)
+        assert (item.quantity, item.sales) == (4, 3)
 
     def test_digital_sale_keeps_quantity(self, make_product):
         item = make_product(quantity=4, is_digital=True)
+        assert item.reserve_stock(2) is True
         item.record_sale(2)
         assert item.quantity == 4
         assert item.sales == 2

@@ -199,11 +199,27 @@
                 </div>
                 <div class="card-body">
                     {% if order.status == 'pending' %}
+                    {# This box used to say "In the training environment, orders are
+                       auto-confirmed." Nothing confirmed them: no code moved an order
+                       to PAID, and every order stopped here for good. #}
                     <div class="alert alert-warning mb-3">
-                        <i class="bi bi-hourglass-split"></i> 
+                        <i class="bi bi-hourglass-split"></i>
                         <strong>Payment Required</strong>
-                        <p class="mb-0 small">In the training environment, orders are auto-confirmed.</p>
+                        <p class="mb-0 small">Training environment: payment is simulated. It moves the
+                            amount into escrow, where it stays until you confirm receipt.</p>
                     </div>
+                    <form action="{{ url_for('buyer.pay_order', order_id=order.id) }}" method="POST" class="mb-2">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn btn-primary w-100">
+                            <i class="bi bi-safe"></i> Pay into escrow (simulated)
+                        </button>
+                    </form>
+                    <form action="{{ url_for('buyer.cancel_order', order_id=order.id) }}" method="POST">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn btn-outline-secondary w-100">
+                            <i class="bi bi-x-circle"></i> Cancel order
+                        </button>
+                    </form>
                     
                     {% elif order.status == 'paid' %}
                     <div class="alert alert-info mb-0">

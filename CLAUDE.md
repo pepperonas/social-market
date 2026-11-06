@@ -211,6 +211,21 @@ production does not merely miss bugs; it certifies them.
 - **`limiter.limit(...)` counts GET too** unless given `methods=['POST']`; a limit on a
   form page then locks people out for viewing it.
 
+### Transactions and the order lifecycle
+
+- **Models and services do not commit.** `transition_to`, the escrow methods, stock
+  reservation, shipping setters and `create_escrow_for_order` leave the commit to the route,
+  so a checkout or a payment happens completely or not at all.
+- **State changes are claimed with a conditional UPDATE** (`WHERE status = <what I read>`) and
+  a rowcount check — never "read status, then write". To test it, keep the object stale with
+  `set_committed_value`; `commit()` expires and reloads it otherwise.
+- **Audit writes run in a SAVEPOINT** (`audit_service._write`). Order/message events never
+  commit; auth/security/admin events do, so call them *after* the caller's own commit.
+- **Stock is reserved when an order is placed** (`Product.reserve_stock`, atomic), returned on
+  cancel; `record_sale` only counts units, at completion.
+- **PostgreSQL sorts NaN above every number** — `CHECK (price > 0)` accepts NaN. Keep the upper
+  bound in the constraint.
+
 ### Infrastructure
 
 - **Docker Compose does not expand `${VAR}` inside `.env` values.** Write them out.

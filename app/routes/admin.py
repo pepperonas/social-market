@@ -63,12 +63,70 @@ def dashboard():
         db.session.rollback()
         current_app.logger.warning('Could not load security events: %s', exc)
 
+    # Open disputes. Until round 3 there was no way to resolve one: an order in
+    # `disputed` stayed there with its escrow frozen for good.
+    open_disputes = Order.query.filter_by(status='disputed') \
+        .order_by(Order.dispute_opened_at.asc()).all()
+
     return render_template(
         'admin/dashboard.html',
         stats=stats,
         recent_users=recent_users,
         security_alerts=security_alerts,
+        open_disputes=open_disputes,
     )
+
+
+@admin_bp.route('/order/<uuid:order_id>/resolve', methods=['POST'])
+@login_required
+@admin_required
+def resolve_dispute(order_id):
+    """
+    Decide a dispute: refund the buyer, or release the escrow to the vendor.
+
+    One transaction: the order's status, the escrow and the admin audit entry
+    change together. The decision is recorded with the admin's notes, because
+    this is the one place where a person, not a rule, moves money.
+    """
+    from app.models.order import Order, OrderStatus
+    from app.services.audit_service import log_admin_action
+
+    order = db.get_or_404(Order, order_id)
+    decision = request.form.get('decision', '')
+    notes = request.form.get('notes', '').strip()[:2000]
+
+    target = {'refund': OrderStatus.REFUNDED, 'release': OrderStatus.COMPLETED}.get(decision)
+    if target is None:
+        flash('Choose refund or release', 'danger')
+        return redirect(url_for('admin.dashboard'))
+
+    if order.status != OrderStatus.DISPUTED.value:
+        flash('This order is not in dispute (any more)', 'warning')
+        return redirect(url_for('admin.dashboard'))
+
+    try:
+        order.transition_to(target)
+        if notes:
+            order.admin_notes = notes
+        db.session.commit()
+    except ValueError as exc:
+        db.session.rollback()
+        flash(str(exc), 'danger')
+        return redirect(url_for('admin.dashboard'))
+
+    log_admin_action(
+        admin_user_id=current_user.id,
+        action=f'dispute_{decision}',
+        target_type='order',
+        target_id=order.id,
+        before_state={'status': 'disputed'},
+        after_state={'status': target.value},
+        reason=notes or None,
+    )
+
+    flash(f'Dispute resolved: {"refunded to buyer" if decision == "refund" else "released to vendor"}',
+          'success')
+    return redirect(url_for('admin.dashboard'))
 
 
 @admin_bp.route('/users')

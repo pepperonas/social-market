@@ -5,8 +5,10 @@ Purpose: Product listings with security and metadata handling
 """
 
 import uuid
+from decimal import Decimal, InvalidOperation
+
 from app.models.types import UUID
-from sqlalchemy import Index
+from sqlalchemy import CheckConstraint, Index
 
 from app import db
 from app.timeutil import utcnow
@@ -89,6 +91,13 @@ class Product(db.Model):
 
     # Indexes for performance
     __table_args__ = (
+        # Last line of defence behind parse_price / parse_stock / reserve_stock:
+        # a request that slips past the Python checks still cannot store a free
+        # product or sell stock that is not there.
+        # The upper bound is not decoration: PostgreSQL sorts NaN above every
+        # number, so `price > 0` alone is TRUE for NaN. `price <= 100000` is not.
+        CheckConstraint('price > 0 AND price <= 100000', name='ck_product_price_positive'),
+        CheckConstraint('quantity >= 0', name='ck_product_quantity_nonnegative'),
         Index('idx_product_vendor_active', vendor_id, is_active),
         Index('idx_product_category_active', category_id, is_active),
         Index('idx_product_price', price),
@@ -107,23 +116,90 @@ class Product(db.Model):
         self.views += 1
         db.session.commit()
 
+    # Upper bounds keep a typo from becoming a 7-digit price or a stock level
+    # nobody will ever sell; they also stay well inside Numeric(10, 2).
+    MAX_PRICE = Decimal('100000.00')
+    MAX_STOCK = 100000
+
+    @classmethod
+    def parse_price(cls, raw):
+        """
+        Parse a price from a form field. Returns a Decimal or raises ValueError.
+
+        Prices used to go through float(). float('nan') passes `price <= 0`
+        (every comparison with NaN is False) and PostgreSQL's NUMERIC stores NaN
+        happily; float('0.001') passes too and is stored as 0.00 -- a free
+        product. Money is Decimal end to end, so it is parsed as one.
+        """
+        try:
+            value = Decimal(str(raw).strip())
+        except (InvalidOperation, ValueError):
+            raise ValueError('Price must be a number, e.g. 19.99')
+        if not value.is_finite():
+            raise ValueError('Price must be a number, e.g. 19.99')
+        if value != value.quantize(Decimal('0.01')):
+            raise ValueError('Price can have at most two decimal places')
+        if value <= 0:
+            raise ValueError('Price must be greater than 0')
+        if value > cls.MAX_PRICE:
+            raise ValueError(f'Price must not exceed {cls.MAX_PRICE}')
+        return value.quantize(Decimal('0.01'))
+
+    @classmethod
+    def parse_stock(cls, raw):
+        """Parse a stock level from a form field: a whole number from 0 to MAX_STOCK."""
+        try:
+            value = int(str(raw).strip())
+        except ValueError:
+            raise ValueError('Stock must be a whole number')
+        if not 0 <= value <= cls.MAX_STOCK:
+            raise ValueError(f'Stock must be between 0 and {cls.MAX_STOCK}')
+        return value
+
+    def reserve_stock(self, quantity):
+        """
+        Take ``quantity`` units out of stock for an order, atomically.
+
+        Returns False if there are not enough. Stock used to be decremented only
+        when an order was *paid* -- which never happened -- so every pending
+        order passed the availability check for the same last unit.
+
+        The check and the decrement are one UPDATE with the condition in its
+        WHERE clause. Reading the quantity in Python and writing it back would
+        let two concurrent orders both see "1 left" and both succeed.
+        """
+        if self.is_digital:
+            return True
+        rows = db.session.query(Product).filter(
+            Product.id == self.id,
+            Product.quantity >= quantity,
+        ).update({Product.quantity: Product.quantity - quantity}, synchronize_session=False)
+        db.session.expire(self, ['quantity'])
+        return rows == 1
+
+    def release_stock(self, quantity):
+        """Put reserved units back (order cancelled before it shipped)."""
+        if self.is_digital:
+            return
+        db.session.query(Product).filter(Product.id == self.id).update(
+            {Product.quantity: db.func.coalesce(Product.quantity, 0) + quantity}, synchronize_session=False)
+        db.session.expire(self, ['quantity'])
+
     def record_sale(self, quantity=1):
         """
-        Record a sale of ``quantity`` units.
+        Count ``quantity`` units as sold. Does NOT touch stock any more.
 
-        Previously this always decremented stock by exactly 1 regardless of the
-        order quantity, so an order for 10 units reduced stock by 1 (overselling),
-        and ``sales`` counted orders rather than units sold.
-
-        Args:
-            quantity: Number of units sold
+        History: this once decremented stock by a flat 1 whatever the order size
+        (overselling); the fix made it subtract the real quantity -- at PAID.
+        But stock has to be held from the moment an order is placed, so that is
+        now reserve_stock()'s job, and a sale is counted when the order
+        completes and the money actually moves. Counting at PAID would have
+        needed undoing on every cancellation and refund.
         """
         quantity = max(1, int(quantity or 1))
-
-        self.sales += quantity
-        if not self.is_digital:
-            self.quantity = max(0, self.quantity - quantity)
-        db.session.commit()
+        db.session.query(Product).filter(Product.id == self.id).update(
+            {Product.sales: db.func.coalesce(Product.sales, 0) + quantity}, synchronize_session=False)
+        db.session.expire(self, ['sales'])
 
     @property
     def primary_image_url(self):

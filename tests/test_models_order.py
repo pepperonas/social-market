@@ -119,23 +119,36 @@ class TestForbiddenTransitions:
         assert order.status == 'pending'
 
 
-class TestPaidConsumesStock:
-    def test_paying_reduces_stock_by_order_quantity(self, order_factory, mock_audit):
+class TestPaymentDoesNotTouchStockOrDeadline:
+    """
+    These tests used to pin the opposite: stock consumed at PAID, and the
+    auto-finalise deadline set at PAID. Both were part of the defect.
+
+    * Stock is now reserved when the order is placed (Product.reserve_stock).
+      Taking it at PAID meant every unpaid order passed the availability check
+      for the same last unit -- and since nothing ever moved an order to PAID,
+      stock was in fact never consumed at all.
+    * The deadline now starts at delivery. From PAID, a late delivery was
+      finalised before the buyer's dispute window had run.
+
+    The end-to-end behaviour is covered over HTTP in test_order_lifecycle.py.
+    """
+
+    def test_paying_does_not_take_stock_a_second_time(self, order_factory, mock_audit):
         product = order_factory.product
         before = product.quantity
         order = order_factory(status='pending', quantity=4)
 
         order.transition_to('paid')
 
-        assert product.quantity == before - 4, 'stock must follow the ordered amount'
+        assert product.quantity == before
 
-    def test_paid_sets_timestamp_and_deadline(self, order_factory, mock_audit):
+    def test_paid_sets_timestamp_but_not_the_deadline(self, order_factory, mock_audit):
         order = order_factory(status='pending')
         order.transition_to('paid')
 
         assert order.paid_at is not None
-        assert order.auto_finalize_at is not None
-        assert order.auto_finalize_at > order.paid_at
+        assert order.auto_finalize_at is None
 
 
 class TestShippingData:

@@ -8,6 +8,7 @@ import uuid
 from enum import Enum
 from app.models.types import UUID
 from sqlalchemy import Index
+from sqlalchemy.orm.attributes import set_committed_value
 
 from app import db
 from app.timeutil import utcnow
@@ -20,6 +21,7 @@ class EscrowStatus(str, Enum):
     RELEASED = 'released'        # Funds released to vendor
     REFUNDED = 'refunded'        # Funds refunded to buyer
     DISPUTED = 'disputed'        # Dispute in progress
+    CANCELLED = 'cancelled'      # Order cancelled before it was ever funded
 
 
 class Escrow(db.Model):
@@ -81,84 +83,68 @@ class Escrow(db.Model):
     # Escrow Lifecycle
     # =============================================================================
 
+    def _claim(self, allowed_from, to_status):
+        """
+        Move the escrow to ``to_status`` -- only if the ROW is still in one of
+        ``allowed_from``. Raises ValueError otherwise.
+
+        The old methods checked ``self.status`` (the copy in memory) and then
+        wrote. Two requests -- the buyer clicking "complete" twice, or the click
+        racing the auto-finaliser -- could both see FUNDED and both release:
+        two release transactions, the vendor's sales counted twice. The
+        condition now sits in the UPDATE's WHERE clause, so exactly one of them
+        changes a row and the other gets rowcount 0.
+
+        Nothing here commits. The caller owns the transaction, so the escrow
+        and the order it belongs to change together or not at all.
+        """
+        rows = db.session.query(Escrow).filter(
+            Escrow.id == self.id,
+            Escrow.status.in_([s.value for s in allowed_from]),
+        ).update({Escrow.status: to_status.value}, synchronize_session=False)
+        if rows != 1:
+            db.session.expire(self, ['status'])
+            raise ValueError(
+                f'Escrow is not in {"/".join(s.value for s in allowed_from)} state')
+        set_committed_value(self, 'status', to_status.value)
+
     def fund(self, funding_tx_id=None):
-        """
-        Fund escrow (Educational Mock)
-
-        Args:
-            funding_tx_id: Simulated transaction ID
-
-        Raises:
-            ValueError: If escrow cannot be funded
-        """
-        if self.status != EscrowStatus.PENDING.value:
-            raise ValueError("Escrow is not in pending state")
-
-        # Simulate funding
-        self.status = EscrowStatus.FUNDED.value
+        """Fund escrow (educational mock). Raises ValueError unless pending."""
+        self._claim([EscrowStatus.PENDING], EscrowStatus.FUNDED)
         self.funded_at = utcnow()
         self.funding_tx_id = funding_tx_id or self._generate_mock_tx_id()
-
-        # Create transaction record
         self._create_transaction('fund', self.amount)
 
-        db.session.commit()
-
     def release_to_vendor(self):
-        """
-        Release funds to vendor (Educational Mock)
-
-        Raises:
-            ValueError: If escrow cannot be released
-        """
-        if self.status not in [EscrowStatus.FUNDED.value, EscrowStatus.DISPUTED.value]:
-            raise ValueError("Escrow is not in funded or disputed state")
-
-        # Simulate release
-        self.status = EscrowStatus.RELEASED.value
+        """Release funds to vendor (educational mock). Raises ValueError unless funded/disputed."""
+        self._claim([EscrowStatus.FUNDED, EscrowStatus.DISPUTED], EscrowStatus.RELEASED)
         self.released_at = utcnow()
         self.release_tx_id = self._generate_mock_tx_id()
 
-        # Create transaction records
         self._create_transaction('release_vendor', self.vendor_amount)
         self._create_transaction('release_platform', self.commission)
 
-        # Update vendor statistics
+        # Vendor statistics, incremented in SQL: `vendor.vendor_total_sales += 1`
+        # is read-modify-write and loses counts under concurrency.
         from app.models.user import User
-        vendor = db.session.get(User, self.vendor_id)
-        if vendor:
-            vendor.vendor_total_sales += 1
-            db.session.commit()
-
-        db.session.commit()
+        db.session.query(User).filter(User.id == self.vendor_id).update(
+            {User.vendor_total_sales: db.func.coalesce(User.vendor_total_sales, 0) + 1},
+            synchronize_session=False)
 
     def refund_to_buyer(self):
-        """
-        Refund funds to buyer (Educational Mock)
-
-        Raises:
-            ValueError: If escrow cannot be refunded
-        """
-        if self.status not in [EscrowStatus.FUNDED.value, EscrowStatus.DISPUTED.value]:
-            raise ValueError("Escrow is not in funded or disputed state")
-
-        # Simulate refund
-        self.status = EscrowStatus.REFUNDED.value
+        """Refund funds to buyer (educational mock). Raises ValueError unless funded/disputed."""
+        self._claim([EscrowStatus.FUNDED, EscrowStatus.DISPUTED], EscrowStatus.REFUNDED)
         self.refunded_at = utcnow()
         self.refund_tx_id = self._generate_mock_tx_id()
-
-        # Create transaction record
         self._create_transaction('refund', self.amount)
 
-        db.session.commit()
-
     def mark_disputed(self):
-        """Mark escrow as disputed"""
-        if self.status != EscrowStatus.FUNDED.value:
-            raise ValueError("Can only dispute funded escrow")
+        """Freeze a funded escrow while a dispute is open."""
+        self._claim([EscrowStatus.FUNDED], EscrowStatus.DISPUTED)
 
-        self.status = EscrowStatus.DISPUTED.value
-        db.session.commit()
+    def cancel(self):
+        """Close an escrow that was never funded (order cancelled while pending)."""
+        self._claim([EscrowStatus.PENDING], EscrowStatus.CANCELLED)
 
     # =============================================================================
     # Helper Methods

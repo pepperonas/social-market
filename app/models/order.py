@@ -9,7 +9,8 @@ from decimal import Decimal
 from datetime import timedelta
 from enum import Enum
 from app.models.types import UUID
-from sqlalchemy import Index
+from sqlalchemy import CheckConstraint, Index
+from sqlalchemy.orm.attributes import set_committed_value
 
 from app import db
 from app.timeutil import utcnow
@@ -93,6 +94,8 @@ class Order(db.Model):
 
     # Indexes
     __table_args__ = (
+        CheckConstraint('quantity > 0', name='ck_order_quantity_positive'),
+        CheckConstraint('total_price >= 0', name='ck_order_total_nonnegative'),
         Index('idx_order_buyer_status', buyer_id, status),
         Index('idx_order_vendor_status', vendor_id, status),
         Index('idx_order_created', created_at.desc()),
@@ -157,54 +160,60 @@ class Order(db.Model):
 
     def transition_to(self, new_status, **kwargs):
         """
-        Transition order to new status
+        Move the order to ``new_status`` and apply the side effects.
 
-        Args:
-            new_status: Target status
-            **kwargs: Additional parameters for specific transitions
+        Two changes from the original, both about doing it exactly once:
+
+        * The status is claimed with a conditional UPDATE (``WHERE status =
+          <the state this object believes in>``). The old code compared the
+          in-memory status and then wrote it, so two requests -- a double click
+          on "complete", or the click racing the auto-finaliser -- could both
+          pass and both release the escrow. Now one of them changes a row and
+          the other gets rowcount 0 and a ValueError.
+        * Nothing here commits. It used to commit itself (as did the escrow,
+          the stock update and the shipping-field setters), so a failure half
+          way left half a state change persisted. The caller commits once;
+          a failure rolls everything back together.
 
         Raises:
-            ValueError: If transition is not allowed
+            ValueError: if the transition is not allowed or the order changed
+                underneath this object.
         """
+        new_status = OrderStatus(new_status)
         can_transition, error = self.can_transition_to(new_status)
         if not can_transition:
             raise ValueError(error)
 
         old_status = self.status
-        self.status = new_status
+        rows = db.session.query(Order).filter(
+            Order.id == self.id,
+            Order.status == old_status,
+        ).update({Order.status: new_status.value}, synchronize_session=False)
+        if rows != 1:
+            db.session.expire(self, ['status'])
+            raise ValueError('The order was changed in the meantime; reload and try again')
+        set_committed_value(self, 'status', new_status.value)
 
-        # Handle status-specific logic
-        if new_status == OrderStatus.PAID:
-            self._handle_paid(**kwargs)
-        elif new_status == OrderStatus.SHIPPED:
-            self._handle_shipped(**kwargs)
-        elif new_status == OrderStatus.DELIVERED:
-            self._handle_delivered()
-        elif new_status == OrderStatus.COMPLETED:
-            self._handle_completed()
-        elif new_status == OrderStatus.DISPUTED:
-            self._handle_disputed(**kwargs)
-        elif new_status == OrderStatus.REFUNDED:
-            self._handle_refunded()
+        handler = {
+            OrderStatus.PAID: self._handle_paid,
+            OrderStatus.SHIPPED: self._handle_shipped,
+            OrderStatus.DELIVERED: self._handle_delivered,
+            OrderStatus.COMPLETED: self._handle_completed,
+            OrderStatus.CANCELLED: self._handle_cancelled,
+            OrderStatus.DISPUTED: self._handle_disputed,
+            OrderStatus.REFUNDED: self._handle_refunded,
+        }[new_status]
+        handler(old_status=old_status, **kwargs)
 
-        # Audit log
         from app.services.audit_service import log_order_event
-        log_order_event(self.id, f'status_change_{old_status}_to_{new_status}')
-
-        db.session.commit()
+        log_order_event(self.id, f'status_change_{old_status}_to_{new_status.value}')
 
     def _handle_paid(self, **kwargs):
-        """Handle order paid transition"""
-        from flask import current_app
-
+        """
+        Payment confirmed. Stock was already reserved when the order was placed;
+        the auto-finalise clock starts at delivery, not here (see _handle_delivered).
+        """
         self.paid_at = utcnow()
-
-        # Set auto-finalize date
-        auto_release_days = current_app.config['ESCROW_AUTO_RELEASE_DAYS']
-        self.auto_finalize_at = utcnow() + timedelta(days=auto_release_days)
-
-        # Update product sales (with the ordered amount, not a flat 1)
-        self.product.record_sale(self.quantity)
 
     def _handle_shipped(self, tracking_number=None, **kwargs):
         """Handle order shipped transition"""
@@ -212,28 +221,65 @@ class Order(db.Model):
         if tracking_number:
             self.tracking_number = tracking_number
 
-    def _handle_delivered(self):
-        """Handle order delivered transition"""
+    def _handle_delivered(self, **kwargs):
+        """
+        Delivered: start the auto-finalise clock.
+
+        It used to be set at payment (paid_at + ESCROW_AUTO_RELEASE_DAYS) and
+        never moved. An order delivered late was then finalised almost at once,
+        before the buyer's dispute window -- which counts from delivery -- had
+        run. The clock now starts here and never ends before that window does.
+        """
+        from flask import current_app
+
         self.delivered_at = utcnow()
+        days = max(current_app.config['ESCROW_AUTO_RELEASE_DAYS'],
+                   current_app.config['ESCROW_DISPUTE_WINDOW_DAYS'])
+        self.auto_finalize_at = self.delivered_at + timedelta(days=days)
 
-    def _handle_completed(self):
-        """Handle order completed transition"""
+    def _handle_completed(self, **kwargs):
+        """Completed: the money moves to the vendor and the sale counts."""
         self.completed_at = utcnow()
-
-        # Release escrow
+        if kwargs.get('old_status') == OrderStatus.DISPUTED.value:
+            self.dispute_resolved_at = self.completed_at
         if self.escrow:
             self.escrow.release_to_vendor()
+        self.product.record_sale(self.quantity)
+
+    def _handle_cancelled(self, old_status=None, **kwargs):
+        """
+        Cancelled before shipping: stock goes back, and a paid order's escrow is
+        refunded.
+
+        There was no handler. Cancelling a paid order left the escrow `funded`
+        for ever -- the buyer never got the money back -- and the stock booked
+        for the order stayed gone.
+        """
+        self.product.release_stock(self.quantity)
+        if self.escrow:
+            if old_status == OrderStatus.PAID.value:
+                self.escrow.refund_to_buyer()
+            else:
+                self.escrow.cancel()
 
     def _handle_disputed(self, reason=None, **kwargs):
-        """Handle dispute opened"""
+        """
+        Dispute opened: freeze the escrow.
+
+        Escrow.mark_disputed() existed but nothing called it, so the money stayed
+        `funded` during a dispute and the escrow health check, which counts
+        disputed escrows, always reported "healthy".
+        """
         self.is_disputed = True
         self.dispute_opened_at = utcnow()
         if reason:
             self.dispute_reason = reason
+        if self.escrow and self.escrow.status == 'funded':
+            self.escrow.mark_disputed()
 
-    def _handle_refunded(self):
-        """Handle order refunded"""
-        # Release escrow to buyer
+    def _handle_refunded(self, **kwargs):
+        """Dispute decided for the buyer: the escrow goes back to them."""
+        self.dispute_resolved_at = utcnow()
         if self.escrow:
             self.escrow.refund_to_buyer()
 
@@ -253,8 +299,7 @@ class Order(db.Model):
             text("SELECT encrypt_data(:address)"),
             {'address': address}
         ).scalar()
-        self.shipping_address_encrypted = result
-        db.session.commit()
+        self.shipping_address_encrypted = result  # caller commits (checkout is one transaction)
 
     def get_shipping_address(self):
         """
@@ -280,8 +325,7 @@ class Order(db.Model):
             text("SELECT encrypt_data(:name)"),
             {'name': name}
         ).scalar()
-        self.shipping_name_encrypted = result
-        db.session.commit()
+        self.shipping_name_encrypted = result  # caller commits
 
     def get_shipping_name(self):
         """Get decrypted shipping name"""

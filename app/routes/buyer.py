@@ -71,6 +71,13 @@ def create_order():
         return redirect(url_for('marketplace.product_detail', product_id=product_id))
 
     try:
+        # Hold the stock now, atomically. Checking above and decrementing later
+        # (at payment) let any number of unpaid orders claim the same last unit.
+        if not product.reserve_stock(quantity):
+            db.session.rollback()
+            flash('Not enough stock left for this quantity', 'warning')
+            return redirect(url_for('marketplace.product_detail', product_id=product_id))
+
         order = Order(
             id=uuid.uuid4(),
             buyer_id=current_user.id,
@@ -107,6 +114,72 @@ def create_order():
     return redirect(url_for('buyer.order_detail', order_id=order.id))
 
 
+def _own_order(order_id):
+    """The order, if the current user is its buyer; otherwise None."""
+    order = db.session.get(Order, order_id)
+    if order is None or order.buyer_id != current_user.id:
+        return None
+    return order
+
+
+@buyer_bp.route('/order/<uuid:order_id>/pay', methods=['POST'])
+@login_required
+def pay_order(order_id):
+    """
+    Simulated payment: fund the escrow, order becomes PAID.
+
+    The missing step. Without it no order could ever leave `pending`, so
+    nothing after it -- shipping, delivery, completion, escrow release,
+    reviews, disputes -- was reachable in the running application.
+    """
+    order = _own_order(order_id)
+    if order is None:
+        flash('You do not have permission to pay for this order', 'danger')
+        return redirect(url_for('buyer.orders'))
+
+    try:
+        EscrowService.pay_order(order)
+        db.session.commit()
+    except ValueError:
+        db.session.rollback()
+        flash('This order cannot be paid (any more)', 'warning')
+        return redirect(url_for('buyer.order_detail', order_id=order_id))
+
+    flash('Payment received into escrow. The vendor has been asked to ship.', 'success')
+    return redirect(url_for('buyer.order_detail', order_id=order_id))
+
+
+@buyer_bp.route('/order/<uuid:order_id>/cancel', methods=['POST'])
+@login_required
+def cancel_order(order_id):
+    """
+    Buyer cancels an UNPAID order; the reserved stock goes back.
+
+    Without this, an order placed and never paid held its stock for ever.
+    A paid order is not the buyer's to cancel alone -- the vendor may already
+    be packing it; the buyer's way out there is a dispute.
+    """
+    order = _own_order(order_id)
+    if order is None:
+        flash('You do not have permission to cancel this order', 'danger')
+        return redirect(url_for('buyer.orders'))
+
+    if order.status != OrderStatus.PENDING.value:
+        flash('Only unpaid orders can be cancelled. Open a dispute instead.', 'warning')
+        return redirect(url_for('buyer.order_detail', order_id=order_id))
+
+    try:
+        order.transition_to(OrderStatus.CANCELLED)
+        db.session.commit()
+    except ValueError:
+        db.session.rollback()
+        flash('This order cannot be cancelled (any more)', 'warning')
+        return redirect(url_for('buyer.order_detail', order_id=order_id))
+
+    flash('Order cancelled', 'info')
+    return redirect(url_for('buyer.order_detail', order_id=order_id))
+
+
 @buyer_bp.route('/order/<uuid:order_id>/confirm-delivery', methods=['POST'])
 @login_required
 def confirm_delivery(order_id):
@@ -130,6 +203,7 @@ def confirm_delivery(order_id):
         db.session.commit()
         flash('Delivery confirmed! You can now leave a review.', 'success')
     except ValueError as e:
+        db.session.rollback()  # a half-applied transition must not survive
         flash(str(e), 'danger')
     except Exception as e:
         db.session.rollback()
@@ -161,6 +235,7 @@ def complete_order(order_id):
         db.session.commit()
         flash('Order completed! Funds have been released to the vendor.', 'success')
     except ValueError as e:
+        db.session.rollback()  # a half-applied transition must not survive
         flash(str(e), 'danger')
     except Exception as e:
         db.session.rollback()
@@ -191,6 +266,7 @@ def dispute_order(order_id):
         db.session.commit()
         flash('Dispute opened. An administrator will review your case.', 'warning')
     except ValueError as e:
+        db.session.rollback()  # a half-applied transition must not survive
         flash(str(e), 'danger')
     except Exception as e:
         db.session.rollback()

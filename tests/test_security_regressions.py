@@ -82,7 +82,15 @@ class TestOpenRedirect:
 
 
 class TestStockAccounting:
-    """record_sale() must reduce stock by the amount actually ordered."""
+    """
+    Stock must move by the amount actually ordered.
+
+    First regression: record_sale() reduced stock by a flat 1 per order. The
+    fix made it subtract the real quantity -- at PAID. Round 3 moved stock out
+    of record_sale() entirely: it is reserved atomically when the order is
+    placed (reserve_stock), because nothing ever reached PAID and an unpaid
+    order did not hold its unit at all. These tests follow the stock there.
+    """
 
     @pytest.fixture
     def product(self, app, sample_vendor):
@@ -113,23 +121,22 @@ class TestStockAccounting:
         db.session.delete(category)
         db.session.commit()
 
-    def test_sale_decrements_by_quantity(self, product):
+    def test_reservation_takes_the_ordered_quantity(self, product):
         """Regression: ordering 4 units used to reduce stock by 1."""
-        product.record_sale(4)
+        assert product.reserve_stock(4) is True
 
         assert product.quantity == 6
+
+    def test_sale_counts_units_not_orders(self, product):
+        product.record_sale(4)
+
         assert product.sales == 4
-
-    def test_default_is_single_unit(self, product):
-        product.record_sale()
-
-        assert product.quantity == 9
-        assert product.sales == 1
+        assert product.quantity == 10, 'recording a sale must not take stock twice'
 
     def test_stock_never_goes_negative(self, product):
-        product.record_sale(999)
+        assert product.reserve_stock(999) is False
 
-        assert product.quantity == 0
+        assert product.quantity == 10
 
     def test_digital_product_keeps_stock(self, app, product):
         from app import db
@@ -137,6 +144,7 @@ class TestStockAccounting:
         product.is_digital = True
         db.session.commit()
 
+        assert product.reserve_stock(3) is True
         product.record_sale(3)
 
         assert product.quantity == 10, 'digital goods are not stock-limited'
