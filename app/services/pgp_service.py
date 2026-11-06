@@ -9,7 +9,7 @@ import os
 import tempfile
 import shutil
 from flask import current_app
-from datetime import datetime
+from app.timeutil import utcnow
 
 
 class PGPService:
@@ -267,7 +267,7 @@ class PGPService:
                 'fingerprint': fingerprint,
                 'keyid': keyid,
                 'key_length': key_length,
-                'created_at': datetime.utcnow().isoformat()
+                'created_at': utcnow().isoformat()
             }
 
         except Exception as e:

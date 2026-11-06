@@ -7,7 +7,7 @@ Purpose: User authentication and authorization with security features
 import hmac
 import time
 import uuid
-from datetime import datetime, timedelta
+from datetime import timedelta
 from flask import current_app
 from flask_login import UserMixin
 from werkzeug.security import check_password_hash
@@ -16,6 +16,7 @@ from sqlalchemy import text
 import pyotp
 
 from app import db
+from app.timeutil import utcnow
 
 
 class User(UserMixin, db.Model):
@@ -77,8 +78,8 @@ class User(UserMixin, db.Model):
     # Profile information
     display_name = db.Column(db.String(100), nullable=True)
     bio = db.Column(db.Text, nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=utcnow, onupdate=utcnow)
 
     # Vendor-specific fields
     vendor_rating = db.Column(db.Float, default=0.0)
@@ -342,7 +343,7 @@ class User(UserMixin, db.Model):
         max_attempts = current_app.config['MAX_FAILED_LOGIN_ATTEMPTS']
         if self.failed_login_attempts >= max_attempts:
             lockout_duration = current_app.config['ACCOUNT_LOCKOUT_DURATION']
-            self.account_locked_until = datetime.utcnow() + timedelta(seconds=lockout_duration)
+            self.account_locked_until = utcnow() + timedelta(seconds=lockout_duration)
 
         db.session.commit()
 
@@ -355,7 +356,7 @@ class User(UserMixin, db.Model):
         """
         self.failed_login_attempts = 0
         self.account_locked_until = None
-        self.last_login = datetime.utcnow()
+        self.last_login = utcnow()
 
         if ip_address:
             self.last_login_ip = ip_address
@@ -372,7 +373,7 @@ class User(UserMixin, db.Model):
         if not self.account_locked_until:
             return False
 
-        if datetime.utcnow() < self.account_locked_until:
+        if utcnow() < self.account_locked_until:
             return True
 
         # Lock period expired, reset
@@ -398,7 +399,6 @@ class User(UserMixin, db.Model):
             ValueError: If key format is invalid
         """
         import gnupg
-        from datetime import datetime
 
         gpg = gnupg.GPG()
 
@@ -418,9 +418,9 @@ class User(UserMixin, db.Model):
 
             # Set timestamps
             if not is_update:
-                self.pgp_key_created_at = datetime.utcnow()
+                self.pgp_key_created_at = utcnow()
             else:
-                self.pgp_key_updated_at = datetime.utcnow()
+                self.pgp_key_updated_at = utcnow()
 
         except Exception as e:
             raise ValueError(f'Failed to import PGP key: {str(e)}')

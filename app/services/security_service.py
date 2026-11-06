@@ -7,10 +7,11 @@ Purpose: IP blocking, canary tokens, threat detection
 import hashlib
 import secrets
 import json
-from datetime import datetime, timedelta
+from datetime import timedelta
 from flask import request, current_app
 from sqlalchemy import text
 from app import db
+from app.timeutil import utcnow
 
 
 class SecurityService:
@@ -40,7 +41,7 @@ class SecurityService:
         try:
             expires_at = None
             if duration_hours > 0:
-                expires_at = datetime.utcnow() + timedelta(hours=duration_hours)
+                expires_at = utcnow() + timedelta(hours=duration_hours)
 
             db.session.execute(
                 text("""

@@ -8,6 +8,8 @@ import os
 import tempfile
 from datetime import timedelta
 
+from cachelib import SimpleCache
+
 
 class Config:
     """Base configuration class"""
@@ -43,7 +45,11 @@ class Config:
     # =============================================================================
     SESSION_TYPE = 'redis'
     SESSION_PERMANENT = True
-    SESSION_USE_SIGNER = True
+    # No SESSION_USE_SIGNER: Flask-Session 0.8 deprecated it and the next minor
+    # release removes it. Signing a server-side session id adds nothing — the id
+    # is 32 random bytes from ``secrets``, unguessable on its own, and all session
+    # data lives in Redis where the client cannot touch it. (Dropping it once
+    # invalidated the signed cookies already issued: everyone logs in again.)
     SESSION_KEY_PREFIX = 'marketplace:'
     SESSION_REDIS = None  # Set in __init__ from REDIS_URL
     SESSION_SERIALIZATION_FORMAT = 'json'  # Use JSON serialization to avoid bytes issues
@@ -256,8 +262,11 @@ class TestingConfig(Config):
     SQLALCHEMY_ENGINE_OPTIONS = {}
     WTF_CSRF_ENABLED = False
     RATELIMIT_ENABLED = False
-    # Tests must not need a Redis server.
-    SESSION_TYPE = 'filesystem'
+    # Tests must not need a Redis server. An in-process cache, not 'filesystem':
+    # that backend is deprecated, and it left one file per test session in a
+    # ./flask_session directory — which the deploy rsync then shipped to the server.
+    SESSION_TYPE = 'cachelib'
+    SESSION_CACHELIB = SimpleCache()
     RATELIMIT_STORAGE_URL = 'memory://'
     # The default is the container path /app/uploads, which does not exist (and
     # is not writable) outside Docker.

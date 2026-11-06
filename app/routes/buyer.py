@@ -10,8 +10,8 @@ from app import db
 from app.models.order import Order, OrderStatus
 from app.models.product import Product
 from app.services.escrow_service import EscrowService
-from datetime import datetime
 import uuid
+from app.timeutil import utcnow
 
 buyer_bp = Blueprint('buyer', __name__)
 
@@ -29,7 +29,7 @@ def orders():
 @login_required
 def order_detail(order_id):
     """Order detail"""
-    order = Order.query.get_or_404(order_id)
+    order = db.get_or_404(Order, order_id)
 
     # Check if user is the buyer of this order
     if order.buyer_id != current_user.id:
@@ -55,7 +55,7 @@ def create_order():
         flash('Quantity must be at least 1', 'danger')
         return redirect(url_for('marketplace.product_detail', product_id=product_id))
 
-    product = Product.query.get_or_404(product_id)
+    product = db.get_or_404(Product, product_id)
 
     # Go through the model's own gate rather than re-implementing it here.
     # This route used to check `product.active` -- a column that does not exist
@@ -83,7 +83,7 @@ def create_order():
             # column, so the insert raised before it ever reached the database.
             is_digital=product.is_digital,
             status=OrderStatus.PENDING.value,
-            created_at=datetime.utcnow()
+            created_at=utcnow()
         )
         db.session.add(order)
         db.session.flush()
@@ -113,7 +113,7 @@ def confirm_delivery(order_id):
     """Confirm order delivery"""
     from app.models.order import OrderStatus
 
-    order = Order.query.get_or_404(order_id)
+    order = db.get_or_404(Order, order_id)
 
     # Check if user is the buyer of this order
     if order.buyer_id != current_user.id:
@@ -144,7 +144,7 @@ def complete_order(order_id):
     """Complete order and release escrow"""
     from app.models.order import OrderStatus
 
-    order = Order.query.get_or_404(order_id)
+    order = db.get_or_404(Order, order_id)
 
     # Check if user is the buyer of this order
     if order.buyer_id != current_user.id:
@@ -173,7 +173,7 @@ def complete_order(order_id):
 @login_required
 def dispute_order(order_id):
     """Open dispute for order"""
-    order = Order.query.get_or_404(order_id)
+    order = db.get_or_404(Order, order_id)
 
     # Check if user is the buyer of this order
     if order.buyer_id != current_user.id:
@@ -205,7 +205,7 @@ def leave_review(order_id):
     """Leave a product review"""
     from app.models.product import ProductReview
 
-    order = Order.query.get_or_404(order_id)
+    order = db.get_or_404(Order, order_id)
 
     # Check if user is the buyer of this order
     if order.buyer_id != current_user.id:

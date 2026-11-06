@@ -10,6 +10,7 @@ from app import db
 from app.models.user import User
 from app.models.product import ProductCategory
 import secrets
+from app.timeutil import utcnow
 
 
 @click.command('init-db')
@@ -146,18 +147,17 @@ def generate_secret(length):
 @click.option('--dry-run', is_flag=True, help='Show what would be deleted')
 def cleanup_old_data(days, dry_run):
     """Clean up old messages and rate limit logs"""
-    from datetime import datetime
     from app.models.message import Message
 
     # Count expired messages
     expired_messages = Message.query.filter(
-        Message.expires_at < datetime.utcnow()
+        Message.expires_at < utcnow()
     ).count()
 
     if dry_run:
         click.echo(f'Would delete {expired_messages} expired messages')
     else:
-        Message.query.filter(Message.expires_at < datetime.utcnow()).delete()
+        Message.query.filter(Message.expires_at < utcnow()).delete()
         db.session.commit()
         click.echo(f'✓ Deleted {expired_messages} expired messages')
 
@@ -383,7 +383,6 @@ def generate_pgp_keys(username, passphrase, save_private):
     """Generate PGP key pair for a user"""
     from app.services.pgp_service import PGPService
     from app.services.audit_service import log_pgp_key_event
-    from datetime import datetime
 
     # Get user
     user = User.query.filter_by(username=username).first()
@@ -425,9 +424,9 @@ def generate_pgp_keys(username, passphrase, save_private):
     user.pgp_key_source = 'generated'
 
     if not is_update:
-        user.pgp_key_created_at = datetime.utcnow()
+        user.pgp_key_created_at = utcnow()
     else:
-        user.pgp_key_updated_at = datetime.utcnow()
+        user.pgp_key_updated_at = utcnow()
 
     db.session.commit()
 
@@ -482,7 +481,6 @@ def upload_pgp_key(username, key_file):
     """Upload existing PGP public key for a user"""
     from app.services.pgp_service import PGPService
     from app.services.audit_service import log_pgp_key_event
-    from datetime import datetime
 
     # Get user
     user = User.query.filter_by(username=username).first()
@@ -533,9 +531,9 @@ def upload_pgp_key(username, key_file):
     user.pgp_key_source = 'uploaded'
 
     if not is_update:
-        user.pgp_key_created_at = datetime.utcnow()
+        user.pgp_key_created_at = utcnow()
     else:
-        user.pgp_key_updated_at = datetime.utcnow()
+        user.pgp_key_updated_at = utcnow()
 
     db.session.commit()
 

@@ -1,8 +1,9 @@
 """Unit tests for the Notification model (per-user isolation, expiry, counts)."""
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 import pytest
+from app.timeutil import utcnow
 
 
 @pytest.fixture
@@ -42,7 +43,7 @@ class TestCreation:
     def test_expiry_default_is_set(self, notify):
         note = notify()
         assert note.expires_at is not None
-        assert note.expires_at > datetime.utcnow()
+        assert note.expires_at > utcnow()
 
     def test_zero_days_means_no_expiry(self, notify):
         assert notify(expires_days=0).expires_at is None
@@ -54,7 +55,7 @@ class TestCreation:
         from app import db
 
         note = notify()
-        note.expires_at = datetime.utcnow() - timedelta(seconds=1)
+        note.expires_at = utcnow() - timedelta(seconds=1)
         db.session.commit()
 
         assert note.is_expired() is True

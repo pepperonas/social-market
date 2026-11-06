@@ -5,11 +5,11 @@ Purpose: Product listings with security and metadata handling
 """
 
 import uuid
-from datetime import datetime
 from app.models.types import UUID
 from sqlalchemy import Index
 
 from app import db
+from app.timeutil import utcnow
 
 
 class ProductCategory(db.Model):
@@ -25,7 +25,7 @@ class ProductCategory(db.Model):
     slug = db.Column(db.String(100), unique=True, nullable=False)
     description = db.Column(db.Text, nullable=True)
     is_active = db.Column(db.Boolean, default=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=utcnow)
 
     # Relationships
     products = db.relationship('Product', backref='category', lazy='dynamic')
@@ -77,8 +77,8 @@ class Product(db.Model):
     rating_count = db.Column(db.Integer, default=0)
 
     # Timestamps
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=utcnow, onupdate=utcnow)
 
     # Relationships
     images = db.relationship('ProductImage', backref='product', lazy='dynamic',
@@ -272,7 +272,7 @@ class ProductImage(db.Model):
     is_primary = db.Column(db.Boolean, default=False)
 
     # Timestamps
-    uploaded_at = db.Column(db.DateTime, default=datetime.utcnow)
+    uploaded_at = db.Column(db.DateTime, default=utcnow)
 
     def __repr__(self):
         return f'<ProductImage {self.filename}>'
@@ -310,8 +310,8 @@ class ProductReview(db.Model):
     is_flagged = db.Column(db.Boolean, default=False)
 
     # Timestamps
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=utcnow)
+    updated_at = db.Column(db.DateTime, default=utcnow, onupdate=utcnow)
 
     # Relationships
     buyer = db.relationship('User', foreign_keys=[buyer_id])

@@ -7,6 +7,7 @@ Purpose: Background task processing
 from celery import Celery
 from celery.schedules import crontab
 from flask import current_app
+from app.timeutil import utcnow
 
 
 def make_celery(app):
@@ -55,13 +56,12 @@ def cleanup_expired_messages():
     Delete expired messages
     Runs daily
     """
-    from datetime import datetime
     from app import db
     from app.models.message import Message
 
     try:
         deleted = Message.query.filter(
-            Message.expires_at < datetime.utcnow()
+            Message.expires_at < utcnow()
         ).delete()
 
         db.session.commit()

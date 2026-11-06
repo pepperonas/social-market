@@ -22,6 +22,20 @@ from PIL import Image
 from app.services.cover_service import cover_filename, render_cover
 
 
+def fetch(client, url):
+    """
+    GET a media file and close the response.
+
+    send_from_directory streams from an open file handle; the test client leaves
+    it open until the response is closed, which shows up as ResourceWarning.
+    The body is read first, so assertions on it still work after closing.
+    """
+    response = client.get(url)
+    response.get_data()
+    response.close()
+    return response
+
+
 @pytest.fixture
 def product_with_cover(app, sample_vendor):
     from app import db
@@ -115,19 +129,19 @@ class TestImageUrl:
 class TestServing:
     def test_existing_cover_is_served(self, client, product_with_cover):
         _, filename = product_with_cover
-        response = client.get(f'/media/products/{filename}')
+        response = fetch(client, f'/media/products/{filename}')
 
         assert response.status_code == 200
         assert response.mimetype == 'image/png'
 
     def test_served_bytes_are_a_valid_image(self, client, product_with_cover):
         _, filename = product_with_cover
-        data = client.get(f'/media/products/{filename}').get_data()
+        data = fetch(client, f'/media/products/{filename}').get_data()
 
         assert Image.open(io.BytesIO(data)).size[0] > 0
 
     def test_unknown_file_is_404(self, client):
-        assert client.get('/media/products/nope.png').status_code == 404
+        assert fetch(client, '/media/products/nope.png').status_code == 404
 
     @pytest.mark.parametrize('attempt', [
         '../../../etc/passwd',
@@ -141,7 +155,7 @@ class TestServing:
         send_from_directory would also refuse these, but the filename is matched
         against a strict pattern first, so the attempt never reaches the disk.
         """
-        response = client.get(f'/media/products/{attempt}')
+        response = fetch(client, f'/media/products/{attempt}')
         assert response.status_code in (301, 308, 404), (
             f'{attempt!r} returned {response.status_code}'
         )
@@ -149,7 +163,7 @@ class TestServing:
     def test_response_is_cacheable(self, client, product_with_cover):
         """Covers are immutable per title; re-fetching them every time is waste."""
         _, filename = product_with_cover
-        response = client.get(f'/media/products/{filename}')
+        response = fetch(client, f'/media/products/{filename}')
 
         assert 'max-age' in response.headers.get('Cache-Control', '')
 
@@ -176,6 +190,6 @@ class TestNotRateLimited:
         _, filename = product_with_cover
         app.config['RATELIMIT_ENABLED'] = True
 
-        codes = [client.get(f'/media/products/{filename}').status_code for _ in range(25)]
+        codes = [fetch(client, f'/media/products/{filename}').status_code for _ in range(25)]
 
         assert codes.count(200) == 25, f'throttled its own images: {set(codes)}'

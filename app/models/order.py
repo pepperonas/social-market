@@ -6,12 +6,13 @@ Purpose: Order management with escrow integration
 
 import uuid
 from decimal import Decimal
-from datetime import datetime, timedelta
+from datetime import timedelta
 from enum import Enum
 from app.models.types import UUID
 from sqlalchemy import Index
 
 from app import db
+from app.timeutil import utcnow
 
 
 class OrderStatus(str, Enum):
@@ -66,7 +67,7 @@ class Order(db.Model):
     digital_content_url = db.Column(db.Text, nullable=True)
 
     # Timestamps
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
     paid_at = db.Column(db.DateTime, nullable=True)
     shipped_at = db.Column(db.DateTime, nullable=True)
     delivered_at = db.Column(db.DateTime, nullable=True)
@@ -196,28 +197,28 @@ class Order(db.Model):
         """Handle order paid transition"""
         from flask import current_app
 
-        self.paid_at = datetime.utcnow()
+        self.paid_at = utcnow()
 
         # Set auto-finalize date
         auto_release_days = current_app.config['ESCROW_AUTO_RELEASE_DAYS']
-        self.auto_finalize_at = datetime.utcnow() + timedelta(days=auto_release_days)
+        self.auto_finalize_at = utcnow() + timedelta(days=auto_release_days)
 
         # Update product sales (with the ordered amount, not a flat 1)
         self.product.record_sale(self.quantity)
 
     def _handle_shipped(self, tracking_number=None, **kwargs):
         """Handle order shipped transition"""
-        self.shipped_at = datetime.utcnow()
+        self.shipped_at = utcnow()
         if tracking_number:
             self.tracking_number = tracking_number
 
     def _handle_delivered(self):
         """Handle order delivered transition"""
-        self.delivered_at = datetime.utcnow()
+        self.delivered_at = utcnow()
 
     def _handle_completed(self):
         """Handle order completed transition"""
-        self.completed_at = datetime.utcnow()
+        self.completed_at = utcnow()
 
         # Release escrow
         if self.escrow:
@@ -226,7 +227,7 @@ class Order(db.Model):
     def _handle_disputed(self, reason=None, **kwargs):
         """Handle dispute opened"""
         self.is_disputed = True
-        self.dispute_opened_at = datetime.utcnow()
+        self.dispute_opened_at = utcnow()
         if reason:
             self.dispute_reason = reason
 
@@ -306,7 +307,7 @@ class Order(db.Model):
         if not self.auto_finalize_at:
             return False
 
-        return datetime.utcnow() >= self.auto_finalize_at
+        return utcnow() >= self.auto_finalize_at
 
     def auto_finalize(self):
         """Auto-finalize order (release escrow)"""
@@ -329,7 +330,7 @@ class Order(db.Model):
         if self.status == OrderStatus.DELIVERED and self.delivered_at:
             dispute_window = current_app.config['ESCROW_DISPUTE_WINDOW_DAYS']
             window_end = self.delivered_at + timedelta(days=dispute_window)
-            if datetime.utcnow() > window_end:
+            if utcnow() > window_end:
                 return False, "Dispute window has expired"
 
         return True, None

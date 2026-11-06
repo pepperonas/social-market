@@ -51,7 +51,7 @@ def unread():
 @login_required
 def mark_read(notification_id):
     """Mark single notification as read"""
-    notification = Notification.query.get_or_404(notification_id)
+    notification = db.get_or_404(Notification, notification_id)
 
     # Verify ownership
     if str(notification.user_id) != str(current_user.id):
@@ -80,7 +80,7 @@ def mark_all_read():
 @login_required
 def delete(notification_id):
     """Delete single notification"""
-    notification = Notification.query.get_or_404(notification_id)
+    notification = db.get_or_404(Notification, notification_id)
 
     # Verify ownership
     if str(notification.user_id) != str(current_user.id):
@@ -125,7 +125,7 @@ def api_recent():
 @login_required
 def api_mark_read(notification_id):
     """Mark notification as read (AJAX)"""
-    notification = Notification.query.get_or_404(notification_id)
+    notification = db.get_or_404(Notification, notification_id)
 
     if str(notification.user_id) != str(current_user.id):
         return jsonify({'success': False, 'error': 'Not found'}), 404

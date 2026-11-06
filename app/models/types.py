@@ -30,7 +30,7 @@ class UUID(TypeDecorator):
 
     Also accepts a *string* as a bind value. ``postgresql.UUID`` tolerated that
     -- psycopg2 adapted it -- and call sites rely on it, e.g. looking a user up
-    by an id taken from the session (``User.query.get(session['...'])``).
+    by an id taken from the session (``db.session.get(User, session['...'])``).
     Plain ``sqlalchemy.Uuid`` would raise AttributeError there.
     """
 

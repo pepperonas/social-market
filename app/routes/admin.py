@@ -9,6 +9,7 @@ from flask_login import login_required, current_user
 from functools import wraps
 from sqlalchemy import text
 from app import db, csrf
+from app.timeutil import utcnow
 
 admin_bp = Blueprint('admin', __name__)
 
@@ -113,10 +114,10 @@ def users():
 def security():
     """Security dashboard"""
     from app.models.user import User
-    from datetime import datetime, timedelta
+    from datetime import timedelta
 
     # Security statistics for template
-    recent_time = datetime.utcnow() - timedelta(hours=1)
+    recent_time = utcnow() - timedelta(hours=1)
 
     # Rate limit hits from security_events table
     rate_limit_hits = 0
@@ -305,7 +306,6 @@ def system_health():
     - Service uptime
     """
     import psutil
-    from datetime import datetime
 
     health = {
         'database': {'status': 'unknown', 'latency': 0},
@@ -397,7 +397,7 @@ def system_health():
     return render_template('admin/system_health.html',
                          health=health,
                          health_score=health_score,
-                         timestamp=datetime.utcnow())
+                         timestamp=utcnow())
 
 
 @admin_bp.route('/user/<uuid:user_id>')
@@ -409,7 +409,7 @@ def user_detail(user_id):
     from app.models.product import Product
     from app.models.order import Order
 
-    user = User.query.get_or_404(user_id)
+    user = db.get_or_404(User, user_id)
 
     # Get user statistics
     stats = {}
@@ -428,7 +428,7 @@ def user_detail(user_id):
 def deactivate_user(user_id):
     """Deactivate user account"""
     from app.models.user import User
-    user = User.query.get_or_404(user_id)
+    user = db.get_or_404(User, user_id)
     user.is_active = False
     db.session.commit()
     flash(f'User {user.username} deactivated', 'success')
@@ -441,7 +441,7 @@ def deactivate_user(user_id):
 def activate_user(user_id):
     """Activate user account"""
     from app.models.user import User
-    user = User.query.get_or_404(user_id)
+    user = db.get_or_404(User, user_id)
     user.is_active = True
     db.session.commit()
     flash(f'User {user.username} activated', 'success')
@@ -456,7 +456,7 @@ def unlock_user(user_id):
     from app.models.user import User
     from app.services.audit_service import log_admin_action, log_security_event
 
-    user = User.query.get_or_404(user_id)
+    user = db.get_or_404(User, user_id)
 
     if not user.account_locked_until and user.failed_login_attempts == 0:
         flash(f'User {user.username} is not locked', 'info')
@@ -500,7 +500,7 @@ def approve_vendor(user_id):
     from app.models.user import User
     from app.services.audit_service import log_admin_action, log_security_event
 
-    user = User.query.get_or_404(user_id)
+    user = db.get_or_404(User, user_id)
 
     if user.role != 'vendor':
         flash(f'User {user.username} is not a vendor', 'warning')

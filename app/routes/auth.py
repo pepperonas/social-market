@@ -5,7 +5,6 @@ Purpose: User authentication with security features
 """
 
 import re
-from datetime import datetime
 from urllib.parse import urlparse
 
 from flask import Blueprint, render_template, redirect, url_for, flash, request, session, current_app
@@ -15,6 +14,7 @@ from sqlalchemy import text
 from app import db, limiter
 from app.models.user import User
 from app.services.password_service import get_password_service
+from app.timeutil import utcnow
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -84,7 +84,7 @@ def login():
                     # Store user ID in session for 2FA verification
                     session['pending_2fa_user_id'] = str(user.id)
                     session['pending_2fa_remember'] = remember
-                    session['pending_2fa_started'] = datetime.utcnow().timestamp()
+                    session['pending_2fa_started'] = utcnow().timestamp()
                     return redirect(url_for('auth.verify_2fa'))
 
                 # Successful login
@@ -137,7 +137,7 @@ def verify_2fa():
     if not pending_user_id:
         return redirect(url_for('auth.login'))
 
-    user = User.query.get(pending_user_id)
+    user = db.session.get(User, pending_user_id)
     if not user:
         session.pop('pending_2fa_user_id', None)
         return redirect(url_for('auth.login'))
@@ -152,7 +152,7 @@ def verify_2fa():
 
     # Pending 2FA must not stay valid indefinitely
     started = session.get('pending_2fa_started')
-    if started and (datetime.utcnow().timestamp() - started) > PENDING_2FA_TIMEOUT_SECONDS:
+    if started and (utcnow().timestamp() - started) > PENDING_2FA_TIMEOUT_SECONDS:
         _clear_pending_2fa()
         flash('Two-factor verification timed out. Please log in again.', 'error')
         return redirect(url_for('auth.login'))

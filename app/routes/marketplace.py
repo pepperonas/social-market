@@ -9,7 +9,7 @@ from flask import Blueprint, render_template, request, abort
 from flask_login import login_required
 from sqlalchemy import or_, and_
 
-from app import limiter
+from app import db, limiter
 from app.models.product import Product, ProductCategory, ProductReview
 
 marketplace_bp = Blueprint('marketplace', __name__)
@@ -159,7 +159,7 @@ def product_detail(product_id):
     - Reviews
     - Similar products
     """
-    product = Product.query.get_or_404(product_id)
+    product = db.get_or_404(Product, product_id)
 
     # Check if product is accessible
     if not product.is_active or not product.is_approved:
@@ -195,7 +195,7 @@ def product_detail(product_id):
 @limiter.limit("10 per second")
 def category(category_id):
     """Browse products by category"""
-    category = ProductCategory.query.get_or_404(category_id)
+    category = db.get_or_404(ProductCategory, category_id)
 
     if not category.is_active:
         abort(404)
@@ -236,7 +236,7 @@ def vendor_profile(vendor_id):
     """Public vendor profile"""
     from app.models.user import User
 
-    vendor = User.query.get_or_404(vendor_id)
+    vendor = db.get_or_404(User, vendor_id)
 
     if not vendor.is_vendor() or not vendor.is_active:
         abort(404)

@@ -6,12 +6,12 @@ Purpose: Password management, session control, GDPR compliance
 
 from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, current_app, session
 from flask_login import login_required, current_user, logout_user
-from datetime import datetime
 import json
 import uuid
 
 from app import db, limiter
 from app.services.audit_service import log_auth_event, log_security_event
+from app.timeutil import utcnow
 
 account_bp = Blueprint('account', __name__)
 
@@ -148,7 +148,7 @@ def security_settings():
     # Calculate password age
     password_age_days = None
     if current_user.updated_at:
-        password_age = datetime.utcnow() - current_user.updated_at
+        password_age = utcnow() - current_user.updated_at
         password_age_days = password_age.days
 
     return render_template('account/security.html',
@@ -265,7 +265,7 @@ def export_data():
 
     try:
         data = {
-            'export_date': datetime.utcnow().isoformat(),
+            'export_date': utcnow().isoformat(),
             'user_id': str(current_user.id),
             'profile': {
                 'username': current_user.username,
@@ -336,7 +336,7 @@ def export_data():
         # Return as downloadable JSON
         response = make_response(json.dumps(data, indent=2))
         response.headers['Content-Type'] = 'application/json'
-        response.headers['Content-Disposition'] = f'attachment; filename=data_export_{current_user.username}_{datetime.utcnow().strftime("%Y%m%d")}.json'
+        response.headers['Content-Disposition'] = f'attachment; filename=data_export_{current_user.username}_{utcnow().strftime("%Y%m%d")}.json'
 
         return response
 

@@ -92,7 +92,7 @@ class TestVisualQuality:
         """
         image = Image.open(io.BytesIO(render_cover('A Fairly Long Product Title Here')))
         band = image.crop((0, HEIGHT - 200, WIDTH, HEIGHT - 60))
-        pixels = list(band.getdata())
+        pixels = list(band.get_flattened_data())
         mean_luma = sum(0.2126 * r + 0.7152 * g + 0.0722 * b for r, g, b in pixels) / len(pixels)
 
         assert mean_luma < 110, f'text band too light ({mean_luma:.0f}) for white text'

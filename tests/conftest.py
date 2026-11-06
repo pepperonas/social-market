@@ -4,6 +4,7 @@ Uses SQLite in-memory database to avoid PostgreSQL dependency in tests.
 """
 
 import os
+import sqlite3
 import uuid
 from datetime import datetime
 
@@ -16,6 +17,16 @@ os.environ['SECRET_KEY'] = 'test-secret-key-for-testing-only'
 os.environ['PASSWORD_PEPPER'] = 'a' * 64  # 64-char test pepper
 os.environ['WTF_CSRF_ENABLED'] = 'false'
 os.environ['RATELIMIT_ENABLED'] = 'false'
+
+# Imported only now: importing anything under ``app`` runs app/__init__.py and
+# app/config.py, whose class attributes read the environment at import time.
+# An import above the block above would build the config without the test pepper.
+from app.timeutil import utcnow  # noqa: E402
+
+# Python 3.12 deprecated sqlite3's implicit datetime adapter. Register the same
+# conversion explicitly (ISO format with a space, what the default produced) so
+# the SQLite test database keeps storing timestamps exactly as before.
+sqlite3.register_adapter(datetime, lambda value: value.isoformat(' '))
 
 
 @pytest.fixture(scope='session')
@@ -42,6 +53,9 @@ def app():
 
     with app.app_context():
         db.drop_all()
+        # Close the pooled in-memory connection; otherwise it is only released
+        # by the garbage collector at exit ("ResourceWarning: unclosed database").
+        db.engine.dispose()
 
 
 @pytest.fixture(autouse=True)
@@ -158,7 +172,7 @@ def _register_sqlite_functions(db):
         # "not blocked" -- the control would silently fail open in tests.
         dbapi_connection.create_function(
             'NOW', 0,
-            lambda: datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+            lambda: utcnow().strftime('%Y-%m-%d %H:%M:%S')
         )
 
     event.listen(engine, 'connect', _register)

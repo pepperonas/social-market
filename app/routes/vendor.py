@@ -8,6 +8,7 @@ from flask import Blueprint, render_template, redirect, url_for, flash, request,
 from flask_login import login_required, current_user
 from functools import wraps
 from app import db
+from app.timeutil import utcnow
 
 vendor_bp = Blueprint('vendor', __name__)
 
@@ -124,7 +125,6 @@ def add_product():
     from app import db
     from flask import request
     import uuid
-    from datetime import datetime
 
     if request.method == 'POST':
         try:
@@ -155,7 +155,7 @@ def add_product():
                 return redirect(url_for('vendor.add_product'))
 
             # Verify category exists
-            category = ProductCategory.query.get(category_id)
+            category = db.session.get(ProductCategory, category_id)
             if not category:
                 flash('Invalid category', 'danger')
                 return redirect(url_for('vendor.add_product'))
@@ -173,7 +173,7 @@ def add_product():
                 tags=tags if tags else None,
                 is_active=True,
                 is_approved=True,  # Auto-approve for training environment
-                created_at=datetime.utcnow()
+                created_at=utcnow()
             )
 
             db.session.add(product)
@@ -203,7 +203,7 @@ def order_detail(order_id):
     from app.models.order import Order
     from app.models.user import User
 
-    order = Order.query.get_or_404(order_id)
+    order = db.get_or_404(Order, order_id)
 
     # Verify vendor owns this order
     if str(order.vendor_id) != str(current_user.id):
@@ -211,7 +211,7 @@ def order_detail(order_id):
         return redirect(url_for('vendor.orders'))
 
     # Get buyer info
-    buyer = User.query.get(order.buyer_id)
+    buyer = db.session.get(User, order.buyer_id)
 
     # Get shipping info (decrypted) for paid orders
     shipping_name = None
@@ -242,7 +242,7 @@ def ship_order(order_id):
     from app.models.order import Order, OrderStatus
     from app import db
 
-    order = Order.query.get_or_404(order_id)
+    order = db.get_or_404(Order, order_id)
 
     # Verify vendor owns this order
     if str(order.vendor_id) != str(current_user.id):
@@ -281,7 +281,7 @@ def cancel_order(order_id):
     from app.models.order import Order, OrderStatus
     from app import db
 
-    order = Order.query.get_or_404(order_id)
+    order = db.get_or_404(Order, order_id)
 
     # Verify vendor owns this order
     if str(order.vendor_id) != str(current_user.id):
@@ -318,9 +318,8 @@ def edit_product(product_id):
     from app.models.product import Product, ProductCategory
     from app import db
     from flask import request
-    from datetime import datetime
 
-    product = Product.query.get_or_404(product_id)
+    product = db.get_or_404(Product, product_id)
 
     # Check if user is the vendor of this product
     if product.vendor_id != current_user.id:
@@ -337,7 +336,7 @@ def edit_product(product_id):
             product.quantity = int(request.form.get('quantity', 0))
             product.is_digital = request.form.get('is_digital') == 'on'
             product.tags = request.form.get('tags', '').strip() or None
-            product.updated_at = datetime.utcnow()
+            product.updated_at = utcnow()
 
             # Validation
             if not product.title or len(product.title) < 3:
@@ -377,7 +376,7 @@ def delete_product(product_id):
     from app.models.product import Product
     from app import db
 
-    product = Product.query.get_or_404(product_id)
+    product = db.get_or_404(Product, product_id)
 
     # Check if user is the vendor of this product
     if product.vendor_id != current_user.id:
@@ -406,7 +405,7 @@ def upload_product_image(product_id):
     from app import db
     import uuid
 
-    product = Product.query.get_or_404(product_id)
+    product = db.get_or_404(Product, product_id)
 
     # Verify vendor owns this product
     if str(product.vendor_id) != str(current_user.id):
@@ -477,14 +476,14 @@ def delete_product_image(product_id, image_id):
     from app.services.image_service import get_image_service
     from app import db
 
-    product = Product.query.get_or_404(product_id)
+    product = db.get_or_404(Product, product_id)
 
     # Verify vendor owns this product
     if str(product.vendor_id) != str(current_user.id):
         flash('You do not have permission to modify this product', 'danger')
         return redirect(url_for('vendor.products'))
 
-    image = ProductImage.query.get_or_404(image_id)
+    image = db.get_or_404(ProductImage, image_id)
 
     # Verify image belongs to product
     if str(image.product_id) != str(product_id):

@@ -5,11 +5,12 @@ Purpose: PGP-encrypted messaging system for buyer-vendor communication
 """
 
 import uuid
-from datetime import datetime, timedelta
+from datetime import timedelta
 from app.models.types import UUID
 from sqlalchemy import Index
 
 from app import db
+from app.timeutil import utcnow
 
 
 class MessageThread(db.Model):
@@ -42,8 +43,8 @@ class MessageThread(db.Model):
     is_active = db.Column(db.Boolean, default=True)
 
     # Timestamps
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    last_message_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
+    last_message_at = db.Column(db.DateTime, default=utcnow)
 
     # Relationships
     messages = db.relationship('Message', backref='thread', lazy='dynamic',
@@ -108,7 +109,7 @@ class MessageThread(db.Model):
         self.messages.filter_by(
             recipient_id=user_id,
             is_read=False
-        ).update({'is_read': True, 'read_at': datetime.utcnow()})
+        ).update({'is_read': True, 'read_at': utcnow()})
         db.session.commit()
 
     def is_participant(self, user_id):
@@ -233,7 +234,7 @@ class Message(db.Model):
     read_at = db.Column(db.DateTime, nullable=True)
 
     # Timestamps
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
     expires_at = db.Column(db.DateTime, nullable=True)
 
     # Deletion (OPSEC)
@@ -333,7 +334,7 @@ class Message(db.Model):
         """Mark message as read"""
         if not self.is_read:
             self.is_read = True
-            self.read_at = datetime.utcnow()
+            self.read_at = utcnow()
             db.session.commit()
 
     def delete_for_user(self, user_id):
@@ -374,7 +375,7 @@ class Message(db.Model):
         """Check if message should be auto-deleted"""
         if not self.expires_at:
             return False
-        return datetime.utcnow() >= self.expires_at
+        return utcnow() >= self.expires_at
 
     # =============================================================================
     # Utility Methods
@@ -436,7 +437,7 @@ def set_message_expiry(mapper, connection, target):
 
     if not target.expires_at:
         retention_days = current_app.config.get('MESSAGE_RETENTION_DAYS', 30)
-        target.expires_at = datetime.utcnow() + timedelta(days=retention_days)
+        target.expires_at = utcnow() + timedelta(days=retention_days)
 
 
 @event.listens_for(Message, 'after_insert')

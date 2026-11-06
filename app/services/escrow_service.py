@@ -9,6 +9,7 @@ from app import db
 from app.models.escrow import Escrow, EscrowStatus
 from app.models.order import Order, OrderStatus
 from app.services.audit_service import log_order_event, log_security_event
+from app.timeutil import utcnow
 
 
 class EscrowService:
@@ -69,7 +70,7 @@ class EscrowService:
             escrow.fund(funding_tx_id)
 
             # Update order status
-            order = Order.query.get(escrow.order_id)
+            order = db.session.get(Order, escrow.order_id)
             if order:
                 order.transition_to(OrderStatus.PAID)
 
@@ -152,12 +153,11 @@ class EscrowService:
         Returns:
             int: Number of orders auto-finalized
         """
-        from datetime import datetime
 
         # Find orders ready for auto-finalization
         orders_to_finalize = Order.query.filter(
             Order.status == OrderStatus.DELIVERED,
-            Order.auto_finalize_at <= datetime.utcnow()
+            Order.auto_finalize_at <= utcnow()
         ).all()
 
         count = 0

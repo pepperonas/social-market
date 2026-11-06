@@ -8,12 +8,12 @@ from flask import Blueprint, render_template, redirect, url_for, flash, request,
 from flask_login import login_required, current_user
 from decimal import Decimal
 import uuid
-from datetime import datetime
 
 from app import db, limiter
 from app.models.cart import Cart
 from app.models.order import Order
 from app.services.escrow_service import EscrowService
+from app.timeutil import utcnow
 
 cart_bp = Blueprint('cart', __name__)
 
@@ -31,7 +31,7 @@ def view_cart():
     from app.models.user import User
     vendors = {}
     for vendor_id in items_by_vendor.keys():
-        vendor = User.query.get(vendor_id)
+        vendor = db.session.get(User, vendor_id)
         if vendor:
             vendors[vendor_id] = vendor
 
@@ -179,7 +179,7 @@ def checkout():
     from app.models.user import User
     vendors = {}
     for vendor_id in items_by_vendor.keys():
-        vendor = User.query.get(vendor_id)
+        vendor = db.session.get(User, vendor_id)
         if vendor:
             vendors[vendor_id] = vendor
 
@@ -223,7 +223,7 @@ def checkout():
                         commission=commission,
                         is_digital=item.product.is_digital,
                         buyer_notes=buyer_notes if buyer_notes else None,
-                        created_at=datetime.utcnow()
+                        created_at=utcnow()
                     )
 
                     db.session.add(order)

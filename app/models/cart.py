@@ -5,10 +5,10 @@ Purpose: Secure shopping cart with session persistence
 """
 
 import uuid
-from datetime import datetime
 from app.models.types import UUID
 
 from app import db
+from app.timeutil import utcnow
 
 
 class Cart(db.Model):
@@ -26,8 +26,8 @@ class Cart(db.Model):
     user_id = db.Column(UUID(as_uuid=True), db.ForeignKey('users.id'), nullable=False, unique=True)
 
     # Timestamps
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=utcnow, onupdate=utcnow)
 
     # Relationships
     items = db.relationship('CartItem', backref='cart', lazy='dynamic', cascade='all, delete-orphan')
@@ -62,7 +62,7 @@ class Cart(db.Model):
         """
         from app.models.product import Product
 
-        product = Product.query.get(product_id)
+        product = db.session.get(Product, product_id)
         if not product:
             raise ValueError('Product not found')
 
@@ -115,7 +115,7 @@ class Cart(db.Model):
         if quantity <= 0:
             db.session.delete(item)
         else:
-            product = Product.query.get(product_id)
+            product = db.session.get(Product, product_id)
             if not product.is_digital and product.quantity < quantity:
                 raise ValueError(f'Only {product.quantity} items available')
             item.quantity = quantity
@@ -192,7 +192,7 @@ class CartItem(db.Model):
     unit_price = db.Column(db.Numeric(10, 2), nullable=False)  # Price at time of adding
 
     # Timestamps
-    added_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    added_at = db.Column(db.DateTime, default=utcnow, nullable=False)
 
     # Relationships
     product = db.relationship('Product')

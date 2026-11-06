@@ -8,11 +8,11 @@ import os
 import uuid
 import hashlib
 from io import BytesIO
-from datetime import datetime
 from flask import current_app
 from werkzeug.utils import secure_filename
 from PIL import Image
 import piexif
+from app.timeutil import utcnow
 
 
 class ImageService:
@@ -237,7 +237,7 @@ class ImageService:
             # Generate unique filename
             original_ext = secure_filename(file.filename).rsplit('.', 1)[-1].lower()
             unique_id = uuid.uuid4().hex[:16]
-            timestamp = datetime.utcnow().strftime('%Y%m%d')
+            timestamp = utcnow().strftime('%Y%m%d')
             filename = f"{timestamp}_{unique_id}.{original_ext}"
 
             # Create directory if needed

@@ -118,7 +118,7 @@ def thread(thread_id):
     - Messages are decrypted client-side (user provides private key)
     - No plaintext messages in database
     """
-    thread = MessageThread.query.get_or_404(thread_id)
+    thread = db.get_or_404(MessageThread, thread_id)
 
     # Verify user is participant
     if not thread.is_participant(current_user.id):
@@ -160,7 +160,7 @@ def new_thread(recipient_id):
     - Rate limited to prevent spam
     """
     # Get recipient
-    recipient = User.query.get_or_404(recipient_id)
+    recipient = db.get_or_404(User, recipient_id)
 
     # Prevent self-messaging
     if str(recipient_id) == str(current_user.id):
@@ -280,7 +280,7 @@ def send_message(thread_id):
 
     Same security as new_thread - mandatory encryption
     """
-    thread = MessageThread.query.get_or_404(thread_id)
+    thread = db.get_or_404(MessageThread, thread_id)
 
     # Verify user is participant
     if not thread.is_participant(current_user.id):
@@ -399,7 +399,7 @@ def decrypt_message():
     except (ValueError, AttributeError, TypeError):
         return jsonify({'success': False, 'error': 'Invalid message id'}), 400
 
-    message = Message.query.get_or_404(message_uuid)
+    message = db.get_or_404(Message, message_uuid)
 
     # Verify user is recipient
     if str(message.recipient_id) != str(current_user.id):
@@ -436,7 +436,7 @@ def delete_message(message_id):
     - Deletion is per-user (soft delete)
     - Message deleted from DB only when both users delete
     """
-    message = Message.query.get_or_404(message_id)
+    message = db.get_or_404(Message, message_id)
 
     # Verify user has access
     if not (str(message.sender_id) == str(current_user.id) or

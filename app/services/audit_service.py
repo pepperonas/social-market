@@ -91,7 +91,7 @@ def log_order_event(order_id, action, metadata=None):
     """
     try:
         from app.models.order import Order
-        order = Order.query.get(order_id)
+        order = db.session.get(Order, order_id)
 
         if not order:
             return
@@ -132,7 +132,7 @@ def log_message_event(message_id, sender_id, recipient_id, action):
     """
     try:
         from app.models.message import Message
-        message = Message.query.get(message_id)
+        message = db.session.get(Message, message_id)
 
         db.session.execute(
             text(

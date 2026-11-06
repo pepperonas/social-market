@@ -5,11 +5,11 @@ Purpose: User notifications for orders, messages, security alerts
 """
 
 import uuid
-from datetime import datetime
 from app.models.types import UUID
 from sqlalchemy import Index
 
 from app import db
+from app.timeutil import utcnow
 
 
 class NotificationType:
@@ -71,7 +71,7 @@ class Notification(db.Model):
     priority = db.Column(db.String(20), default='normal')  # low, normal, high, urgent
 
     # Timestamps
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
     expires_at = db.Column(db.DateTime, nullable=True)  # Auto-delete after
 
     # Relationships
@@ -90,12 +90,12 @@ class Notification(db.Model):
         """Mark notification as read"""
         if not self.is_read:
             self.is_read = True
-            self.read_at = datetime.utcnow()
+            self.read_at = utcnow()
             db.session.commit()
 
     def is_expired(self):
         """Check if notification has expired"""
-        if self.expires_at and datetime.utcnow() > self.expires_at:
+        if self.expires_at and utcnow() > self.expires_at:
             return True
         return False
 
@@ -142,7 +142,7 @@ class Notification(db.Model):
 
         expires_at = None
         if expires_days > 0:
-            expires_at = datetime.utcnow() + timedelta(days=expires_days)
+            expires_at = utcnow() + timedelta(days=expires_days)
 
         notification = cls(
             user_id=user_id,
@@ -192,14 +192,14 @@ class Notification(db.Model):
         """Mark all notifications as read for user"""
         cls.query.filter_by(user_id=user_id, is_read=False).update({
             'is_read': True,
-            'read_at': datetime.utcnow()
+            'read_at': utcnow()
         })
         db.session.commit()
 
     @classmethod
     def cleanup_expired(cls):
         """Delete expired notifications"""
-        cls.query.filter(cls.expires_at < datetime.utcnow()).delete()
+        cls.query.filter(cls.expires_at < utcnow()).delete()
         db.session.commit()
 
 

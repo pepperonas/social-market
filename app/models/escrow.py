@@ -5,12 +5,12 @@ Purpose: Escrow system for secure transactions (Educational Mock)
 """
 
 import uuid
-from datetime import datetime
 from enum import Enum
 from app.models.types import UUID
 from sqlalchemy import Index
 
 from app import db
+from app.timeutil import utcnow
 
 
 class EscrowStatus(str, Enum):
@@ -62,7 +62,7 @@ class Escrow(db.Model):
     refund_tx_id = db.Column(db.String(255), nullable=True)
 
     # Timestamps
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
     funded_at = db.Column(db.DateTime, nullable=True)
     released_at = db.Column(db.DateTime, nullable=True)
     refunded_at = db.Column(db.DateTime, nullable=True)
@@ -96,7 +96,7 @@ class Escrow(db.Model):
 
         # Simulate funding
         self.status = EscrowStatus.FUNDED.value
-        self.funded_at = datetime.utcnow()
+        self.funded_at = utcnow()
         self.funding_tx_id = funding_tx_id or self._generate_mock_tx_id()
 
         # Create transaction record
@@ -116,7 +116,7 @@ class Escrow(db.Model):
 
         # Simulate release
         self.status = EscrowStatus.RELEASED.value
-        self.released_at = datetime.utcnow()
+        self.released_at = utcnow()
         self.release_tx_id = self._generate_mock_tx_id()
 
         # Create transaction records
@@ -125,7 +125,7 @@ class Escrow(db.Model):
 
         # Update vendor statistics
         from app.models.user import User
-        vendor = User.query.get(self.vendor_id)
+        vendor = db.session.get(User, self.vendor_id)
         if vendor:
             vendor.vendor_total_sales += 1
             db.session.commit()
@@ -144,7 +144,7 @@ class Escrow(db.Model):
 
         # Simulate refund
         self.status = EscrowStatus.REFUNDED.value
-        self.refunded_at = datetime.utcnow()
+        self.refunded_at = utcnow()
         self.refund_tx_id = self._generate_mock_tx_id()
 
         # Create transaction record
@@ -264,8 +264,8 @@ class EscrowTransaction(db.Model):
     confirmed = db.Column(db.Boolean, default=True)  # Auto-confirmed in mock
 
     # Timestamps
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    confirmed_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
+    confirmed_at = db.Column(db.DateTime, default=utcnow)
 
     # Relationship
     escrow = db.relationship('Escrow', backref='transactions')

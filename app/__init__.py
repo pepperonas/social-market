@@ -234,7 +234,7 @@ def initialize_extensions(app):
             # Convert string to UUID if necessary
             if isinstance(user_id, str):
                 user_id = UUID(user_id)
-            return User.query.get(user_id)
+            return db.session.get(User, user_id)
         except (ValueError, AttributeError):
             return None
 

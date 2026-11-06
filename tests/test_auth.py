@@ -10,7 +10,8 @@ Tests cover:
 """
 
 from unittest.mock import patch
-from datetime import datetime, timedelta
+from datetime import timedelta
+from app.timeutil import utcnow
 
 
 class TestLogin:
@@ -76,7 +77,7 @@ class TestLogin:
             # so mutating it here would never be flushed by this session.
             user = reload_user(sample_user.id)
             user.failed_login_attempts = 5
-            user.account_locked_until = datetime.utcnow() + timedelta(minutes=15)
+            user.account_locked_until = utcnow() + timedelta(minutes=15)
             db.session.commit()
 
             response = client.post('/auth/login', data={
@@ -95,7 +96,7 @@ class TestLogin:
 
             user = reload_user(sample_user.id)
             user.failed_login_attempts = 5
-            user.account_locked_until = datetime.utcnow() - timedelta(minutes=1)
+            user.account_locked_until = utcnow() - timedelta(minutes=1)
             db.session.commit()
 
             response = client.post('/auth/login', data={
