@@ -441,7 +441,13 @@ class SecurityService:
 # request is cheap, but there is no reason to repeat it for every image on a
 # page. Cleared on block/unblock in this process; other workers pick a change
 # up within IP_BLOCK_CACHE_SECONDS.
+#
+# Bounded: one entry per client address, and addresses are cheap to rotate
+# (a single IPv6 /64 holds 2**64 of them). The first version never removed an
+# entry, so a client cycling through addresses could grow every worker's memory
+# without limit -- found by an automated review of the commit that added it.
 _block_cache = {}
+BLOCK_CACHE_MAX = 10000
 
 
 def request_is_blocked(ip_address):
@@ -453,6 +459,11 @@ def request_is_blocked(ip_address):
         return hit[1]
     result = SecurityService.is_ip_blocked(ip_address)
     if ttl > 0:
+        if len(_block_cache) >= BLOCK_CACHE_MAX:
+            for key in [k for k, (until, _) in _block_cache.items() if until <= now]:
+                del _block_cache[key]
+            if len(_block_cache) >= BLOCK_CACHE_MAX:
+                _block_cache.clear()  # all fresh: a cold cache only costs lookups
         _block_cache[ip_address] = (now + ttl, result)
     return result
 

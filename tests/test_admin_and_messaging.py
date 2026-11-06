@@ -437,3 +437,17 @@ class TestIpBlockCache:
         SecurityService.unblock_ip(PUBLIC_IP)
 
         assert client.get('/auth/login').status_code == 200
+
+    def test_cache_stays_bounded_when_addresses_rotate(self, app, monkeypatch):
+        """One entry per address and nothing ever evicted: rotating IPv6 addresses grew it forever."""
+        from app.services import security_service
+
+        monkeypatch.setitem(app.config, 'IP_BLOCK_CACHE_SECONDS', 60)
+        monkeypatch.setattr(security_service, 'BLOCK_CACHE_MAX', 50)
+        security_service._block_cache.clear()
+
+        with app.test_request_context():
+            for n in range(500):
+                security_service.request_is_blocked(f'2001:db8::{n:x}')
+
+        assert len(security_service._block_cache) <= 50
