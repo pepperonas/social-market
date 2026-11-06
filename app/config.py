@@ -167,6 +167,9 @@ class Config:
     # Messaging Configuration
     # =============================================================================
     MESSAGE_RETENTION_DAYS = int(os.environ.get('MESSAGE_RETENTION_DAYS', 30))
+    # An order holds its stock from the moment it is placed (Product.reserve_stock).
+    # Unpaid after this long, the expire-unpaid-orders job cancels it.
+    ORDER_PAYMENT_TIMEOUT_HOURS = int(os.environ.get('ORDER_PAYMENT_TIMEOUT_HOURS', 48))
     MESSAGE_MAX_LENGTH = int(os.environ.get('MESSAGE_MAX_LENGTH', 5000))
     REQUIRE_PGP_ENCRYPTION = os.environ.get('REQUIRE_PGP_ENCRYPTION', 'true').lower() == 'true'
 

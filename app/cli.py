@@ -687,6 +687,44 @@ def security_check():
         click.echo('✓ Custom secret key configured')
 
 
+@click.command('run-job')
+@click.argument('names', nargs=-1)
+@click.option('--list', 'list_jobs', is_flag=True, help='List the available jobs')
+def run_job(names, list_jobs):
+    """
+    Run background jobs by name (see app/jobs.py).
+
+    Called by the systemd timers in deploy/systemd/. Every named job runs even
+    if an earlier one fails, and the command exits non-zero if any failed --
+    the exit code is the only thing a timer can see.
+    """
+    from app.jobs import JOBS
+
+    if list_jobs or not names:
+        for name, job in JOBS.items():
+            click.echo(f'{name:30} {job.schedule:7} {job.description}')
+        if not names:
+            return
+
+    unknown = [n for n in names if n not in JOBS]
+    if unknown:
+        raise click.UsageError(f'Unknown job(s): {", ".join(unknown)}')
+
+    failed = []
+    for name in names:
+        try:
+            result = JOBS[name].func()
+            click.echo(f'{name}: ok {result}')
+        except Exception as exc:
+            db.session.rollback()
+            current_app.logger.exception('Job %s failed', name)
+            click.echo(f'{name}: FAILED {exc}', err=True)
+            failed.append(name)
+
+    if failed:
+        raise SystemExit(1)
+
+
 def register_commands(app):
     """Register all CLI commands"""
     app.cli.add_command(init_db)
@@ -695,6 +733,7 @@ def register_commands(app):
     app.cli.add_command(reset_password)
     app.cli.add_command(generate_secret)
     app.cli.add_command(cleanup_old_data)
+    app.cli.add_command(run_job)
     app.cli.add_command(seed_data)
     app.cli.add_command(backup_now)
     app.cli.add_command(security_check)

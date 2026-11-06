@@ -133,7 +133,7 @@ services:
       - redis
       - postgres
     restart: unless-stopped
-    command: celery -A app.celery worker --loglevel=info --logfile=/var/log/marketplace/celery.log
+    command: celery -A celery_worker.celery worker --loglevel=info --logfile=/var/log/marketplace/celery.log
     security_opt:
       - no-new-privileges:true
     deploy:
@@ -168,7 +168,7 @@ services:
       - redis
       - postgres
     restart: unless-stopped
-    command: celery -A app.celery beat --loglevel=info --schedule=/tmp/celerybeat-schedule
+    command: celery -A celery_worker.celery beat --loglevel=info --schedule=/tmp/celerybeat-schedule
     security_opt:
       - no-new-privileges:true
     deploy:

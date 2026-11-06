@@ -1,0 +1,49 @@
+# EDUCATIONAL SECURITY TRAINING ENVIRONMENT
+# daily jobs (purge expired messages and notifications)
+#
+# Background jobs used to be Celery tasks that could not even be imported
+# (app/tasks.py), and no worker ran on this server: escrow auto-finalisation,
+# message expiry and the failed-login scan never executed. They run now as
+# `flask run-job`, a oneshot under the same user and sandbox as the web service.
+# The command exits non-zero if any job fails, so a failure shows up as a
+# failed unit (systemctl --failed / journalctl -u socialmarket-jobs-daily).
+
+[Unit]
+Description=Social Market - daily jobs (purge expired messages and notifications)
+After=network.target postgresql.service redis-server.service
+Wants=postgresql.service redis-server.service
+
+[Service]
+Type=oneshot
+User=socialmarket
+Group=socialmarket
+WorkingDirectory=/opt/socialmarket
+EnvironmentFile=/opt/socialmarket/.env
+Environment=FLASK_APP=app:create_app()
+ExecStart=/opt/socialmarket/venv/bin/flask run-job purge-expired-messages purge-expired-notifications
+TimeoutStartSec=10min
+UMask=0027
+
+# Sandbox
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectKernelLogs=true
+ProtectProc=invisible
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+LockPersonality=true
+MemoryDenyWriteExecute=false
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+CapabilityBoundingSet=
+ReadWritePaths=/var/log/socialmarket /opt/socialmarket/app/uploads

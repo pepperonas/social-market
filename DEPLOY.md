@@ -31,6 +31,31 @@ ssh root@<host> 'cd /opt/socialmarket && ./venv/bin/pip -q install -r app/requir
   && systemctl restart socialmarket && systemctl is-active socialmarket'
 ```
 
+## Background jobs
+
+The unit files are versioned in [`deploy/systemd/`](deploy/systemd/) (the web service too).
+Jobs run as oneshots under the same user and sandbox, through one command:
+
+```bash
+flask run-job --list                       # what exists, and on which schedule
+flask run-job auto-finalize-orders ...     # run by name; non-zero exit if any failed
+```
+
+| Timer | Jobs |
+|---|---|
+| `socialmarket-jobs-hourly.timer` (:07) | auto-finalize-orders, expire-unpaid-orders, security-scan |
+| `socialmarket-jobs-daily.timer` (03:17) | purge-expired-messages, purge-expired-notifications |
+
+```bash
+# install / update the units
+scp deploy/systemd/socialmarket-jobs-* root@<host>:/etc/systemd/system/
+ssh root@<host> 'systemctl daemon-reload && systemctl enable --now socialmarket-jobs-hourly.timer socialmarket-jobs-daily.timer'
+ssh root@<host> 'systemctl list-timers "socialmarket-*"; journalctl -u socialmarket-jobs-hourly -n 20'
+```
+
+`tests/test_jobs.py` checks that every job in `app/jobs.py` appears in the unit for its
+schedule. Until November 2026 no job ran here at all (see `docs/REVIEW-2026-11.md`, K2).
+
 ## Gotchas
 
 - **nginx 1.24 does not accept `http2 on;`** — that directive needs 1.25+. Use
@@ -50,6 +75,8 @@ ssh root@<host> 'cd /opt/socialmarket && ./venv/bin/pip -q install -r app/requir
   working directory, which `ProtectSystem=strict` makes read-only, so the master
   logs `Control server error: Read-only file system`. Fixed with
   `RuntimeDirectory=socialmarket` plus `--control-socket /run/socialmarket/...`.
+- **`systemctl enable` does not start a timer** -- use `enable --now`, or the first run is
+  silently skipped until the next boot.
 - **`EnvironmentFile` is read at process start, not on reload.** `systemctl
   reload` sends HUP, which recycles workers but keeps the master's environment.
   New variables in `.env` need a full `restart`.

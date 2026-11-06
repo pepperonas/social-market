@@ -1,0 +1,60 @@
+[Unit]
+Description=Social Market - blue team training environment (socialmarket.celox.io)
+Documentation=https://github.com/pepperonas/social-market
+After=network.target postgresql.service redis-server.service
+Wants=postgresql.service redis-server.service
+
+[Service]
+Type=simple
+User=socialmarket
+Group=socialmarket
+WorkingDirectory=/opt/socialmarket
+EnvironmentFile=/opt/socialmarket/.env
+# gunicorn >= 26 opens a control socket; its default lands in the working
+# directory, which ProtectSystem=strict makes read-only. RuntimeDirectory
+# gives the service its own writable /run path.
+RuntimeDirectory=socialmarket
+RuntimeDirectoryMode=0750
+ExecStart=/opt/socialmarket/venv/bin/gunicorn \
+    --control-socket /run/socialmarket/gunicorn.ctl \
+    --bind 127.0.0.1:4264 \
+    --workers 3 \
+    --timeout 60 \
+    --access-logfile /var/log/socialmarket/access.log \
+    --error-logfile /var/log/socialmarket/error.log \
+    "app:create_app()"
+# Graceful reload: gunicorn replaces workers one by one on HUP, so a deploy
+# does not drop in-flight requests (a plain restart briefly 502s).
+ExecReload=/bin/kill -s HUP $MAINPID
+KillSignal=SIGTERM
+TimeoutStopSec=30
+Restart=on-failure
+RestartSec=5
+UMask=0027
+
+# Sandbox
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectKernelLogs=true
+ProtectProc=invisible
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+LockPersonality=true
+MemoryDenyWriteExecute=false
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+CapabilityBoundingSet=
+ReadWritePaths=/var/log/socialmarket /opt/socialmarket/app/uploads
+
+[Install]
+WantedBy=multi-user.target

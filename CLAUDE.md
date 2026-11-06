@@ -226,6 +226,16 @@ production does not merely miss bugs; it certifies them.
 - **PostgreSQL sorts NaN above every number** — `CHECK (price > 0)` accepts NaN. Keep the upper
   bound in the constraint.
 
+### Background jobs
+
+- Jobs are plain functions in `app/jobs.py` (registry `JOBS`), run by `flask run-job NAME`.
+  Live: systemd timers in `deploy/systemd/`; docker-compose: `app/tasks.py` + `celery_worker.py`.
+  A new job needs an entry in `JOBS` **and** in the unit of its schedule (tested).
+- Jobs raise on failure; `run-job` exits non-zero. Never return `{'success': False}`.
+- **Bind time cutoffs for `TIMESTAMPTZ` columns as aware datetimes.** The live DB session runs
+  in Europe/Berlin and reads a naive value as local time. The model columns are naive UTC
+  (`app/timeutil.utcnow`); the audit tables are `TIMESTAMPTZ`.
+
 ### Infrastructure
 
 - **Docker Compose does not expand `${VAR}` inside `.env` values.** Write them out.

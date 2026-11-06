@@ -1,0 +1,12 @@
+# EDUCATIONAL SECURITY TRAINING ENVIRONMENT
+[Unit]
+Description=Social Market - daily jobs (timer)
+
+[Timer]
+OnCalendar=*-*-* 03:17:00
+RandomizedDelaySec=5min
+# Catch up after downtime: a missed auto-finalisation run must still happen.
+Persistent=true
+
+[Install]
+WantedBy=timers.target
