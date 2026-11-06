@@ -185,11 +185,44 @@ class TestNotRateLimited:
             'the media route must be exempt from the global rate limit'
         )
 
-    def test_many_requests_all_succeed(self, app, client, product_with_cover):
-        """Exercise it, not just the decorator."""
-        _, filename = product_with_cover
-        app.config['RATELIMIT_ENABLED'] = True
+    def test_many_requests_all_succeed(self):
+        """
+        Exercise it, not just the decorator -- with the limiter actually ON.
 
-        codes = [fetch(client, f'/media/products/{filename}').status_code for _ in range(25)]
+        The first version set app.config['RATELIMIT_ENABLED'] = True inside the
+        test. Flask-Limiter reads that flag once, in init_app; disabled there, it
+        registers no hooks at all. The limiter never ran and the test passed
+        whatever the route did -- blind (found in review round 3).
 
-        assert codes.count(200) == 25, f'throttled its own images: {set(codes)}'
+        The suite's app is built with the limiter off, and the limiter is a
+        module-level object shared by every test, so this builds a second app in
+        a separate process with it on. A burst of 25 requests at a 10/s default
+        limit: the media route must answer every one (404 here -- there is no
+        such file -- but never 429). The search route, which is limited, is the
+        control: it must throttle, or the experiment proves nothing.
+        """
+        import subprocess
+        import sys
+
+        script = (
+            "import os\n"
+            "os.environ.update(TESTING='true', SECRET_KEY='x', PASSWORD_PEPPER='a'*64,"
+            " RATELIMIT_ENABLED='true', RATELIMIT_STORAGE_URL='memory://')\n"
+            "from app.config import TestingConfig\n"
+            "TestingConfig.RATELIMIT_ENABLED = True\n"   # must be set BEFORE init_app
+            "from app import create_app\n"
+            "app = create_app('testing')\n"
+            "c = app.test_client()\n"
+            "media = [c.get('/media/products/nope.png').status_code for _ in range(25)]\n"
+            "login = [c.post('/auth/verify-2fa').status_code for _ in range(25)]\n"
+            "print(sorted(set(media)), 429 in login)\n"
+        )
+        env = {k: v for k, v in __import__('os').environ.items()
+               if k not in ('RATELIMIT_ENABLED',)}
+        env['RATELIMIT_ENABLED'] = 'true'
+        result = subprocess.run([sys.executable, '-c', script], capture_output=True,
+                                text=True, timeout=120, env=env)
+        last = result.stdout.strip().splitlines()[-1]
+
+        assert last.endswith('True'), f'control failed -- limiter not active: {result.stderr[-500:]}'
+        assert last.startswith('[404]'), f'throttled its own images: {last}'

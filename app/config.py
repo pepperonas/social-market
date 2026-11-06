@@ -240,7 +240,8 @@ class Config:
     # =============================================================================
     ADMIN_EMAIL = os.environ.get('ADMIN_EMAIL', 'admin@localhost')
     ADMIN_USERNAME = os.environ.get('ADMIN_USERNAME', 'admin')
-    ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'ChangeMe123!')
+    # No default: init-admin generates one when this is not set (see cli.py).
+    ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD') or None
 
     # Dead Man's Switch
     DEADMAN_ENABLED = os.environ.get('DEADMAN_ENABLED', 'false').lower() == 'true'

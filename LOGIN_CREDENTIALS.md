@@ -9,7 +9,7 @@
 
 ### Admin Account
 - **Username:** `admin`
-- **Password:** `ChangeMe123!`
+- **Password:** local setups: the value of `ADMIN_PASSWORD` in your `.env` (`.env.example` sets `ChangeMe123!`); without it, `flask init-admin` prints a generated passphrase once. The live demo's admin password is not public.
 - **Access:** Admin Dashboard, User Management, Security Monitoring, Audit Logs
 
 ### Buyer Accounts (10 available)

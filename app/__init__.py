@@ -32,6 +32,29 @@ limiter = Limiter(
 celery = Celery()
 
 
+# Values config.py falls back to when the environment does not set them.
+DEVELOPMENT_SECRETS = {
+    'SECRET_KEY': 'dev-key-change-me-in-production',
+    'PASSWORD_PEPPER': 'dev-pepper-CHANGE-ME-IN-PRODUCTION',
+    'DB_ENCRYPTION_KEY': 'dev-encryption-key',
+}
+
+
+def refuse_development_secrets(config):
+    """
+    Refuse to start in production with a fallback secret.
+
+    config.py falls back to well-known values when an environment variable is
+    missing. A typo in the .env file would otherwise run production with a
+    session key, a password pepper and an encryption key that are printed in a
+    public repository. Failing to start is the only safe answer.
+    """
+    weak = [name for name, value in DEVELOPMENT_SECRETS.items() if config.get(name) == value]
+    if weak:
+        raise RuntimeError(
+            f'Refusing to start in production with development value(s) for: {", ".join(weak)}')
+
+
 def create_app(config_name=None):
     """
     Application factory pattern for creating Flask app instance
@@ -68,6 +91,9 @@ def create_app(config_name=None):
                 f'Available: {", ".join(sorted(config_map))}'
             )
         app.config.from_object(config_map[config_name])
+
+    if config_name == 'production':
+        refuse_development_secrets(app.config)
 
     # Trust the reverse proxy, if and only if explicitly configured.
     #
@@ -399,7 +425,12 @@ def setup_security(app):
         strict_transport_security_max_age=31536000,
         content_security_policy=csp,
         content_security_policy_nonce_in=['script-src'],  # Use nonce for scripts
-        referrer_policy='no-referrer',
+        # same-origin, not no-referrer: Flask-WTF's WTF_CSRF_SSL_STRICT (on in
+        # ProductionConfig) rejects every HTTPS POST without a same-origin
+        # Referer, and no-referrer told browsers never to send one. Together
+        # they broke every form -- which is presumably why ProductionConfig was
+        # never switched on. same-origin still sends nothing to other sites.
+        referrer_policy='same-origin',
         feature_policy={
             'geolocation': "'none'",
             'microphone': "'none'",

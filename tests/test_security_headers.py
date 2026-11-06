@@ -47,7 +47,11 @@ class TestSecurityHeaders:
         assert 'nonce-' in script_src
 
     def test_referrer_policy_is_strict(self, response):
-        assert response.headers.get('Referrer-Policy') == 'no-referrer'
+        # Was 'no-referrer'. That made every HTTPS form fail under
+        # ProductionConfig (WTF_CSRF_SSL_STRICT needs a same-origin Referer) --
+        # see tests/test_production_config.py. same-origin still sends nothing
+        # to other sites.
+        assert response.headers.get('Referrer-Policy') == 'same-origin'
 
     def test_hsts_sent_over_https(self, client):
         """

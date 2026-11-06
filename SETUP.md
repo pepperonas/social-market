@@ -94,7 +94,7 @@ curl --socks5-hostname localhost:9050 http://$ONION
 
 **Admin Account:**
 - Username: `admin`
-- Password: `ChangeMe123!`
+- Password: the value of `ADMIN_PASSWORD` in your `.env` (`.env.example` sets `ChangeMe123!`); without it, `flask init-admin` prints a generated passphrase once
 
 ⚠️ **CHANGE IMMEDIATELY AFTER FIRST LOGIN**
 

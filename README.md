@@ -82,7 +82,7 @@ into and click through while reading the code.
 
 | Role | Username | Password |
 |---|---|---|
-| Admin | `admin` | `ChangeMe123!` |
+| Admin | `admin` | not public -- the live admin password is generated at deploy time |
 | Buyer | any of the ten below | `Password123!` |
 | Vendor | any of the five below | `Password123!` |
 
@@ -424,9 +424,9 @@ This project implements a fully-featured, security-hardened marketplace platform
 
 | Role | Username | Password |
 |------|----------|----------|
-| **Admin** | `admin` | `ChangeMe123!` |
-| **Buyers** | `buyer1` - `buyer10` | `Password123!` |
-| **Vendors** | `vendor1` - `vendor5` | `Password123!` |
+| **Admin** | `admin` | the value of `ADMIN_PASSWORD` in your `.env` (`.env.example` sets `ChangeMe123!`); without it, `flask init-admin` prints a generated passphrase once |
+| **Buyers** | the ten personas in `LOGIN_CREDENTIALS.md` | `Password123!` |
+| **Vendors** | the five personas in `LOGIN_CREDENTIALS.md` | `Password123!` |
 
 ⚠️ **Change passwords immediately in production environments!**
 

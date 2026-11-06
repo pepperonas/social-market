@@ -50,13 +50,15 @@
             </div>
         </div>
 
-        <!-- Default Credentials (Training Environment Only) -->
-        <div class="alert alert-warning mt-3">
-            <strong>Training Environment Default Credentials:</strong>
+        {# This box advertised admin / ChangeMe123! -- on the live login page.
+           Admin credentials do not belong on a login page, not even in a demo
+           (and that one was wrong anyway). The demo personas are public on
+           purpose; see SECURITY.md. #}
+        <div class="alert alert-info mt-3">
+            <strong>Demo accounts</strong> (public on purpose, reset regularly):
             <br>
-            Username: <code>admin</code> / Password: <code>ChangeMe123!</code>
-            <br>
-            <small>⚠️ Change immediately after first login!</small>
+            Buyer <code>bob_from_accounting</code>, vendor <code>rubber_ducky</code>
+            &ndash; password <code>Password123!</code>
         </div>
     </div>
 </div>

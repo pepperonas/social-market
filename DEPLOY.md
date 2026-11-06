@@ -22,14 +22,24 @@ the existing reverse proxy.
 ## Deploying an update
 
 ```bash
-rsync -az --delete \
-  --exclude '.git' --exclude '__pycache__' --exclude 'venv' \
-  --exclude '.env' --exclude 'app/uploads/*' \
-  ./ root@<host>:/opt/socialmarket/
-
-ssh root@<host> 'cd /opt/socialmarket && ./venv/bin/pip -q install -r app/requirements.txt \
-  && systemctl restart socialmarket && systemctl is-active socialmarket'
+deploy/deploy.sh          # dry run: lists every change on the server
+deploy/deploy.sh --go     # sync, pip install, restart, health check (non-zero exit on failure)
 ```
+
+An **allow list** of what the service needs (`app/`, `migrations/`, `postgres/`, `deploy/`,
+`celery_worker.py`, licence and security notes); `--delete-excluded` removes everything else from
+the server, protect rules keep the venv, `.env`, uploads and `__pycache__`. Until November 2026
+this was an rsync of the whole working tree with a few excludes: 92 old test sessions,
+`LOGIN_CREDENTIALS.md`, `tests/`, `docs/` and a local `.env.bak` with development secrets all
+ended up on the server. A deny list fails open -- every new file is published until someone
+remembers to exclude it.
+
+Database migrations (`migrations/*.sql`) are applied by hand as `postgres` **before** `--go`,
+followed by `GRANT ... TO socialmarket` for new tables (see Gotchas).
+
+The service runs with `APP_CONFIG=production` (since November 2026): CSRF referrer checks on,
+and it refuses to start if `SECRET_KEY`, `PASSWORD_PEPPER` or `DB_ENCRYPTION_KEY` fall back to
+the development values in `config.py`.
 
 ## Background jobs
 
@@ -68,7 +78,12 @@ schedule. Until November 2026 no job ran here at all (see `docs/REVIEW-2026-11.m
   `postgres` and the app role gets `permission denied for table auth_log` until
   `GRANT ... ON ALL TABLES` (plus `ALTER DEFAULT PRIVILEGES`) is run.
 - **The admin password is generated at deploy time**, not the one in
-  `LOGIN_CREDENTIALS.md`. It lives in `/root/.socialmarket-adminpw`.
+  `LOGIN_CREDENTIALS.md`. It lives in `/root/.socialmarket-adminpw`. (In November 2026 it no
+  longer matched the account -- nobody could log in as admin. Reset to the file's value.)
+  `flask init-admin` has no default any more: without `ADMIN_PASSWORD` it generates one.
+- **`Referrer-Policy: no-referrer` and `WTF_CSRF_SSL_STRICT` cannot coexist.** Strict CSRF
+  rejects every HTTPS POST without a same-origin `Referer`; `no-referrer` tells browsers never
+  to send one. The policy is `same-origin`.
 - **Rotating `PASSWORD_PEPPER` invalidates every existing password hash.** That
   is the point of a pepper; plan a re-seed, do not "fix" it by reverting.
 - **gunicorn >= 26 opens a control socket.** Its default path lands in the

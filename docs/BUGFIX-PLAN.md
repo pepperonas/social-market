@@ -69,6 +69,11 @@ verwendete** Redis-Passwort im Klartext. Getrackt in git seit Commit `018e8f3`
 ("Harden app, fix bugs…"), liegt also in der Historie und in jedem Klon.
 
 Repo ist privat (GitHub 404) — kein öffentlicher Leak, aber:
+
+> ⚠️ **Nachtrag 2026-11:** Das Repo ist inzwischen **öffentlich**. Das alte Passwort steht damit
+> für jeden lesbar in der Historie (`018e8f3`). Es ist rotiert und damit wertlos — genau deshalb
+> ist die Rotation der eigentliche Fix und nicht das Umschreiben der Historie. Der Satz oben
+> bleibt als Stand vom August stehen.
 - **Fix:** Passwort **rotieren** (in `.env`, Redis, docker-compose). Default im Code auf
   `redis://redis:6379/1` ohne Credentials ändern; fehlende Env-Var soll laut scheitern.
 - Historie: `git filter-repo`/BFG nur sinnvoll, wenn nach der Rotation noch nötig — Rotation

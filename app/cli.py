@@ -54,7 +54,13 @@ def init_admin():
 
     # Get credentials from config or use defaults
     admin_username = current_app.config.get('ADMIN_USERNAME', 'admin')
-    admin_password = current_app.config.get('ADMIN_PASSWORD', 'ChangeMe123!')
+    # It used to fall back to 'ChangeMe123!', a password printed in this
+    # public repository. Without ADMIN_PASSWORD a random passphrase is
+    # generated and shown once.
+    admin_password = current_app.config.get('ADMIN_PASSWORD')
+    if not admin_password:
+        from app.services.passphrase_service import get_passphrase_service
+        admin_password = get_passphrase_service().generate(word_count=6)['passphrase']
     admin_email = current_app.config.get('ADMIN_EMAIL', 'admin@localhost')
 
     # Create admin user
@@ -74,8 +80,11 @@ def init_admin():
 
     click.echo('✓ Admin user created')
     click.echo(f'  Username: {admin_username}')
-    click.echo(f'  Password: {admin_password}')
-    click.echo('  ⚠️  CHANGE PASSWORD IMMEDIATELY!')
+    if current_app.config.get('ADMIN_PASSWORD'):
+        click.echo('  Password: (from ADMIN_PASSWORD)')
+    else:
+        click.echo(f'  Password: {admin_password}')
+        click.echo('  Shown once -- store it now.')
 
 
 @click.command('create-user')
@@ -355,7 +364,7 @@ def seed_data(products):
 
     click.echo('✨ Database seeding completed!')
     click.echo('\n📝 Test Accounts:')
-    click.echo('   Admin: admin / ChangeMe123!')
+    click.echo('   Admin: admin / (set by init-admin: ADMIN_PASSWORD or the generated passphrase)')
     click.echo('   Vendors: ' + ', '.join(u for u, _, _ in VENDOR_PERSONAS) + ' / Password123!')
     click.echo('   Buyers:  ' + ', '.join(u for u, _, _ in BUYER_PERSONAS) + ' / Password123!')
 
