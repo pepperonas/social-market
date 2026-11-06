@@ -7,6 +7,7 @@ Purpose: Buyer orders and purchases
 from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app
 from flask_login import login_required, current_user
 from app import db
+from app.routes import flash_internal_error
 from app.models.order import Order, OrderStatus
 from app.models.product import Product
 from app.services.escrow_service import EscrowService
@@ -205,9 +206,9 @@ def confirm_delivery(order_id):
     except ValueError as e:
         db.session.rollback()  # a half-applied transition must not survive
         flash(str(e), 'danger')
-    except Exception as e:
+    except Exception:
         db.session.rollback()
-        flash(f'Error confirming delivery: {str(e)}', 'danger')
+        flash_internal_error('confirming the delivery')
 
     return redirect(url_for('buyer.order_detail', order_id=order_id))
 
@@ -237,9 +238,9 @@ def complete_order(order_id):
     except ValueError as e:
         db.session.rollback()  # a half-applied transition must not survive
         flash(str(e), 'danger')
-    except Exception as e:
+    except Exception:
         db.session.rollback()
-        flash(f'Error completing order: {str(e)}', 'danger')
+        flash_internal_error('completing the order')
 
     return redirect(url_for('buyer.order_detail', order_id=order_id))
 
@@ -268,9 +269,9 @@ def dispute_order(order_id):
     except ValueError as e:
         db.session.rollback()  # a half-applied transition must not survive
         flash(str(e), 'danger')
-    except Exception as e:
+    except Exception:
         db.session.rollback()
-        flash(f'Error opening dispute: {str(e)}', 'danger')
+        flash_internal_error('opening the dispute')
 
     return redirect(url_for('buyer.order_detail', order_id=order_id))
 
@@ -334,8 +335,8 @@ def leave_review(order_id):
             flash('Thank you for your review!', 'success')
             return redirect(url_for('buyer.order_detail', order_id=order_id))
 
-        except Exception as e:
+        except Exception:
             db.session.rollback()
-            flash(f'Error submitting review: {str(e)}', 'danger')
+            flash_internal_error('submitting the review')
 
     return render_template('buyer/leave_review.html', order=order)

@@ -10,7 +10,9 @@
                 <h4 class="mb-0">Login</h4>
             </div>
             <div class="card-body">
-                <form method="POST" action="{{ url_for('auth.login') }}">
+                {# The action dropped the query string, so ?next= never reached the POST and
+   every login ended on the start page instead of where the user was going. #}
+                <form method="POST" action="{{ url_for('auth.login', next=request.args.get('next')) if request.args.get('next') else url_for('auth.login') }}">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
                     <div class="mb-3">

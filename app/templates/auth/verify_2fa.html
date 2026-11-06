@@ -26,7 +26,10 @@
                 <hr class="my-4">
 
                 <p class="text-center mb-0">
-                    <a href="{{ url_for('auth.logout') }}">Cancel and Logout</a>
+                    <form method="POST" action="{{ url_for('auth.logout') }}" class="d-inline">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                        <button type="submit" class="btn btn-link p-0">Cancel</button>
+                    </form>
                 </p>
             </div>
         </div>

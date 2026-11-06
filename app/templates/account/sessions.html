@@ -49,7 +49,7 @@
                             <tbody>
                                 {% for session in sessions %}
                                 <tr>
-                                    <td>{{ session.timestamp.strftime('%Y-%m-%d %H:%M') }}</td>
+                                    <td>{{ session.timestamp|when }}</td>
                                     <td><code>{{ session.ip_address }}</code></td>
                                     <td class="small text-muted">{{ (session.user_agent or 'unknown')[:60] }}</td>
                                 </tr>

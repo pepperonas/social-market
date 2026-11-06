@@ -165,8 +165,13 @@ def product_detail(product_id):
     if not product.is_active or not product.is_approved:
         abort(404)
 
-    # Increment view count
-    product.increment_views()
+    # Count a view once per session. Every GET used to count, so anyone could
+    # reload a page to push a product up the default "most viewed" sort.
+    from flask import session
+    seen = session.get('viewed_products', [])
+    if str(product.id) not in seen:
+        product.increment_views()
+        session['viewed_products'] = (seen + [str(product.id)])[-200:]
 
     # Get reviews
     reviews = ProductReview.query.filter_by(

@@ -86,7 +86,7 @@
                         {% for log in logs %}
                         <tr>
                             {% if log_type == 'auth' %}
-                            <td class="small">{{ log.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                            <td class="small">{{ log.timestamp|when('%Y-%m-%d %H:%M:%S') }}</td>
                             <td><code>{{ log.username }}</code></td>
                             <td>
                                 <span class="badge 
@@ -103,7 +103,7 @@
                             <td class="small text-muted">{{ log.failure_reason or '-' }}</td>
                             
                             {% elif log_type == 'security' %}
-                            <td class="small">{{ log.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                            <td class="small">{{ log.timestamp|when('%Y-%m-%d %H:%M:%S') }}</td>
                             <td><strong>{{ log.event_type }}</strong></td>
                             <td>
                                 <span class="badge 
@@ -119,7 +119,7 @@
                             <td class="small">{{ log.description[:100] if log.description else '-' }}</td>
                             
                             {% elif log_type == 'admin' %}
-                            <td class="small">{{ log.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                            <td class="small">{{ log.timestamp|when('%Y-%m-%d %H:%M:%S') }}</td>
                             <td><code>{{ log.admin_user_id|string|truncate(8, True, '') }}</code></td>
                             <td><strong>{{ log.action }}</strong></td>
                             <td>{{ log.target_type }}: {{ log.target_id|string|truncate(8, True, '') if log.target_id else '-' }}</td>
@@ -127,7 +127,7 @@
                             <td class="small">{{ log.reason or '-' }}</td>
                             
                             {% else %}
-                            <td class="small">{{ log.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                            <td class="small">{{ log.timestamp|when('%Y-%m-%d %H:%M:%S') }}</td>
                             <td><code>{{ log.user_id|string|truncate(8, True, '') if log.user_id else '-' }}</code></td>
                             <td><strong>{{ log.action }}</strong></td>
                             <td>{{ log.table_name }}</td>

@@ -8,6 +8,7 @@ from flask import Blueprint, render_template, redirect, url_for, flash, request,
 from flask_login import login_required, current_user
 from functools import wraps
 from app import db
+from app.routes import flash_internal_error
 from app.timeutil import utcnow
 
 vendor_bp = Blueprint('vendor', __name__)
@@ -183,9 +184,9 @@ def add_product():
         except ValueError as e:
             flash(f'Invalid input: {str(e)}', 'danger')
             return redirect(url_for('vendor.add_product'))
-        except Exception as e:
+        except Exception:
             db.session.rollback()
-            flash(f'Error creating product: {str(e)}', 'danger')
+            flash_internal_error('creating the product')
             return redirect(url_for('vendor.add_product'))
 
     # GET request - show form
@@ -265,9 +266,9 @@ def ship_order(order_id):
     except ValueError as e:
         db.session.rollback()  # a half-applied transition must not survive
         flash(str(e), 'danger')
-    except Exception as e:
+    except Exception:
         db.session.rollback()
-        flash(f'Error updating order: {str(e)}', 'danger')
+        flash_internal_error('updating the order')
 
     return redirect(url_for('vendor.order_detail', order_id=order_id))
 
@@ -303,9 +304,9 @@ def cancel_order(order_id):
     except ValueError as e:
         db.session.rollback()  # a half-applied transition must not survive
         flash(str(e), 'danger')
-    except Exception as e:
+    except Exception:
         db.session.rollback()
-        flash(f'Error cancelling order: {str(e)}', 'danger')
+        flash_internal_error('cancelling the order')
 
     return redirect(url_for('vendor.orders'))
 
@@ -359,9 +360,9 @@ def edit_product(product_id):
         except ValueError as e:
             flash(f'Invalid input: {str(e)}', 'danger')
             return redirect(url_for('vendor.edit_product', product_id=product_id))
-        except Exception as e:
+        except Exception:
             db.session.rollback()
-            flash(f'Error updating product: {str(e)}', 'danger')
+            flash_internal_error('updating the product')
             return redirect(url_for('vendor.edit_product', product_id=product_id))
 
     # GET request - show form
@@ -389,9 +390,9 @@ def delete_product(product_id):
         db.session.delete(product)
         db.session.commit()
         flash(f'Product "{product_title}" deleted successfully', 'success')
-    except Exception as e:
+    except Exception:
         db.session.rollback()
-        flash(f'Error deleting product: {str(e)}', 'danger')
+        flash_internal_error('deleting the product')
 
     return redirect(url_for('vendor.products'))
 
@@ -459,11 +460,11 @@ def upload_product_image(product_id):
 
         flash('Image uploaded successfully (metadata stripped for privacy)', 'success')
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         # Try to delete uploaded file
         image_service.delete_image(result['filepath'])
-        flash(f'Error saving image: {str(e)}', 'danger')
+        flash_internal_error('saving the image')
 
     return redirect(url_for('vendor.edit_product', product_id=product_id))
 
@@ -506,8 +507,8 @@ def delete_product_image(product_id, image_id):
 
         flash('Image deleted', 'success')
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
-        flash(f'Error deleting image: {str(e)}', 'danger')
+        flash_internal_error('deleting the image')
 
     return redirect(url_for('vendor.edit_product', product_id=product_id))

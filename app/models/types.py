@@ -43,8 +43,16 @@ class UUID(TypeDecorator):
         try:
             return _uuid.UUID(str(value))
         except (ValueError, AttributeError, TypeError):
-            # Let the database reject it rather than masking a bad lookup
-            return value
+            # Not a UUID, so it cannot be the id of anything: bind the nil UUID,
+            # which matches no row. A lookup then finds nothing (404, "not
+            # found"), an insert fails on its foreign key.
+            #
+            # This used to pass the raw string through "to let the database
+            # reject it". PostgreSQL did -- with a DataError, i.e. a 500 -- for
+            # any user who typed into a URL: ?category=abc, a tampered
+            # product_id in a form. Validating at the type boundary covers every
+            # route, including the ones not written yet.
+            return _uuid.UUID(int=0)
 
 # ``INET`` is used bare (not called), so this is deliberately an *instance*.
 

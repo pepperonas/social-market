@@ -214,6 +214,15 @@ class TestManualModeIsVerified:
 
         assert len(sent) == 1 and sent[0].is_encrypted
 
+    def test_recipient_is_notified(self, app, sample_user, keyed_recipient, keys):
+        """notify_new_message() existed and nothing called it: messages arrived silently."""
+        from app.models.notification import Notification
+
+        self._send(app, sample_user, keyed_recipient, keys['encrypt']('hi', 'recipient'))
+
+        assert Notification.query.filter_by(user_id=keyed_recipient.id,
+                                            related_type='message').count() == 1
+
     def test_rejected_message_leaves_no_empty_thread(self, app, sample_user, keyed_recipient):
         """The thread was created before the content was checked."""
         from app.models.message import MessageThread

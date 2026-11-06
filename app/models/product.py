@@ -112,8 +112,9 @@ class Product(db.Model):
     # =============================================================================
 
     def increment_views(self):
-        """Increment product view count"""
-        self.views += 1
+        """Count a view, in SQL (`self.views += 1` loses counts under concurrency)."""
+        db.session.query(Product).filter(Product.id == self.id).update(
+            {Product.views: db.func.coalesce(Product.views, 0) + 1}, synchronize_session=False)
         db.session.commit()
 
     # Upper bounds keep a typo from becoming a 7-digit price or a stock level

@@ -139,6 +139,7 @@ def _clear_pending_2fa():
     session.pop('pending_2fa_user_id', None)
     session.pop('pending_2fa_remember', None)
     session.pop('pending_2fa_started', None)
+    session.pop('pending_2fa_next', None)
 
 
 @auth_bp.route('/login', methods=['GET', 'POST'])
@@ -166,7 +167,8 @@ def login():
             return render_template('auth/login.html')
 
         # Find user
-        user = User.query.filter_by(username=username).first()
+        # Case-insensitive, matching registration (see register()).
+        user = User.query.filter(db.func.lower(User.username) == username.lower()).first()
 
         # Get client IP
         client_ip = request.remote_addr
@@ -206,6 +208,10 @@ def login():
                     # Store user ID in session for 2FA verification
                     session['pending_2fa_user_id'] = str(user.id)
                     session['pending_2fa_remember'] = remember
+                    # Carry `next` across the 2FA step; it used to be dropped there.
+                    next_page = request.args.get('next')
+                    if next_page and _is_safe_url(next_page):
+                        session['pending_2fa_next'] = next_page
                     session['pending_2fa_started'] = utcnow().timestamp()
                     return redirect(url_for('auth.verify_2fa'))
 
@@ -291,6 +297,7 @@ def verify_2fa():
         if user.verify_totp(token):
             # Successful 2FA
             remember = session.get('pending_2fa_remember', False)
+            next_page = session.get('pending_2fa_next')  # read before the cleanup below
             _start_authenticated_session(user, remember=remember)
             user.record_successful_login(request.remote_addr)
 
@@ -302,6 +309,9 @@ def verify_2fa():
             _clear_pending_2fa()
 
             flash('Login successful', 'success')
+
+            if next_page and _is_safe_url(next_page):
+                return redirect(next_page)
 
             # Redirect based on role
             if user.is_vendor():
@@ -327,13 +337,21 @@ def verify_2fa():
     return render_template('auth/verify_2fa.html')
 
 
-@auth_bp.route('/logout')
-@login_required
+@auth_bp.route('/logout', methods=['POST'])
 def logout():
-    """User logout"""
-    # Log logout
-    _log_auth_event(current_user.username, current_user.id, 'logout',
-                   request.remote_addr, session.get('session_id'))
+    """
+    Log out -- POST only, CSRF-protected.
+
+    It was a GET link. Any page on any site could log a visitor out with an
+    <img src=".../auth/logout"> (SameSite=Lax still sends cookies on top-level
+    GET navigations, and an image needs none of that for the request to land).
+    It also required login, so the "Cancel" link on the 2FA page -- where the
+    user is not logged in yet -- bounced to the login page with the half-done
+    2FA state still in the session. Logging out now always clears the session.
+    """
+    if current_user.is_authenticated:
+        _log_auth_event(current_user.username, current_user.id, 'logout',
+                        request.remote_addr, session.get('session_id'))
 
     logout_user()
     session.clear()
@@ -424,10 +442,15 @@ def register():
         # leaking username availability anyway, and hiding it would only make
         # the form worse without making the leak go away. Rate limiting
         # (10/hour) is what actually bounds enumeration here.
-        if not errors.get('username') and User.query.filter_by(username=username).first():
+        # Compared case-insensitively. "Admin" could be registered next to
+        # "admin" -- a ready-made impersonation in every message thread and
+        # order list -- and "Bob@x" next to "bob@x".
+        if not errors.get('username') and User.query.filter(
+                db.func.lower(User.username) == username.lower()).first():
             errors['username'] = 'That username is already taken.'
 
-        if not errors.get('email') and User.query.filter_by(email=email).first():
+        if not errors.get('email') and User.query.filter(
+                db.func.lower(User.email) == email.lower()).first():
             errors['email'] = 'An account with that email already exists.'
 
         if errors:

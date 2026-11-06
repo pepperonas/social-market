@@ -252,7 +252,7 @@ class TestOrderListsRender:
         product = sellable()
         _login(client, sample_user)
         _order(client, product)
-        client.get('/auth/logout')
+        client.post('/auth/logout')
         _login(client, sample_vendor)
 
         for url in ('/vendor/dashboard', '/vendor/orders'):

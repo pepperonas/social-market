@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import text
 from app import db, csrf, limiter
+from app.routes import flash_internal_error
 from app.timeutil import utcnow
 
 admin_bp = Blueprint('admin', __name__)
@@ -172,7 +173,7 @@ def users():
     # Get filter parameters
     role = request.args.get('role', '')
     search = request.args.get('search', '')
-    page = request.args.get('page', 1, type=int)
+    page = max(1, request.args.get('page', 1, type=int) or 1)
 
     # Build query
     query = User.query
@@ -369,7 +370,9 @@ def audit_logs():
     from sqlalchemy import text
 
     log_type = request.args.get('type', 'auth')
-    page = request.args.get('page', 1, type=int)
+    # page=0 or negative produced a negative OFFSET: a database error, shown
+    # to the admin with its SQL. Clamp it.
+    page = max(1, request.args.get('page', 1, type=int) or 1)
     per_page = 50
     offset = (page - 1) * per_page
 
@@ -445,8 +448,8 @@ def audit_logs():
             count_result = db.session.execute(text("SELECT COUNT(*) FROM audit_log"))
             total_count = count_result.scalar()
 
-    except Exception as e:
-        flash(f'Error loading logs: {str(e)}', 'danger')
+    except Exception:
+        flash_internal_error('loading the logs')
 
     total_pages = (total_count + per_page - 1) // per_page
 

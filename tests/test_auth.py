@@ -230,5 +230,5 @@ class TestLogout:
     def test_logout(self, mock_log, auth_client, app):
         """Logout should redirect to index."""
         with app.app_context():
-            response = auth_client.get('/auth/logout', follow_redirects=False)
+            response = auth_client.post('/auth/logout', follow_redirects=False)
             assert response.status_code in (302, 303)

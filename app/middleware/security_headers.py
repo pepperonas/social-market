@@ -4,7 +4,12 @@ Security Headers Middleware
 Purpose: Additional security headers for defense-in-depth
 """
 
+import re
 import uuid
+
+# What a request id may look like when it comes from upstream (nginx's
+# $request_id is 32 hex characters). Anything else is replaced.
+_REQUEST_ID = re.compile(r'^[A-Za-z0-9-]{8,64}$')
 
 
 class SecurityHeadersMiddleware:
@@ -19,8 +24,11 @@ class SecurityHeadersMiddleware:
     def __call__(self, environ, start_response):
         """Process request and add security headers to response"""
 
-        # Generate or reuse request ID from upstream (e.g. Nginx)
-        request_id = environ.get('HTTP_X_REQUEST_ID') or str(uuid.uuid4())
+        # Reuse the upstream request id only if it looks like one. It was taken
+        # verbatim from the client header: reflected in a response header and
+        # carried into the logs, i.e. a way to write arbitrary text there.
+        incoming = environ.get('HTTP_X_REQUEST_ID', '')
+        request_id = incoming if _REQUEST_ID.match(incoming) else uuid.uuid4().hex
         # Store in environ so Flask can access it via request.environ
         environ['HTTP_X_REQUEST_ID'] = request_id
 
@@ -31,11 +39,10 @@ class SecurityHeadersMiddleware:
             # Add custom security headers
             headers.append(('X-Security-Environment', 'Educational-Training-Only'))
 
-            # Additional CORS restrictions
-            headers.append(('Access-Control-Allow-Origin', 'self'))
-
-            # Prevent MIME type sniffing
-            headers.append(('X-Content-Type-Options', 'nosniff'))
+            # Removed: `Access-Control-Allow-Origin: self`. 'self' is not a valid
+            # value for that header (it takes an origin or '*'); not sending it
+            # is what keeps cross-origin reads blocked. And X-Content-Type-Options
+            # came twice -- Flask-Talisman already sets it.
 
             # Remove server identification
             headers = [(name, value) for name, value in headers

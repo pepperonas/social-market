@@ -11,6 +11,7 @@ from sqlalchemy.orm import joinedload
 import uuid
 
 from app import db, limiter
+from app.routes import flash_internal_error
 from app.models.message import Message, MessageThread
 from app.models.user import User
 from app.services.pgp_service import PGPService
@@ -219,6 +220,7 @@ def new_thread(recipient_id):
             flash('Could not send the message. Please try again.', 'danger')
             return redirect(url_for('messages.new_thread', recipient_id=recipient_id))
 
+        _notify(recipient, thread)
         flash('Message sent successfully (encrypted)', 'success')
         return redirect(url_for('messages.thread', thread_id=thread.id))
 
@@ -279,8 +281,23 @@ def send_message(thread_id):
         flash('Could not send the message. Please try again.', 'danger')
         return redirect(url_for('messages.thread', thread_id=thread_id))
 
+    _notify(recipient, thread)
     flash('Message sent successfully (encrypted)', 'success')
     return redirect(url_for('messages.thread', thread_id=thread_id))
+
+
+def _notify(recipient, thread):
+    """
+    Tell the recipient. notify_new_message() existed and nothing called it:
+    messages arrived silently, the notification bell never rang for them.
+    After the commit, and never at the message's expense.
+    """
+    from app.models.notification import notify_new_message
+    try:
+        notify_new_message(current_user._get_current_object(), recipient, thread)
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception('Could not create the message notification')
 
 
 def _ciphertext_for(recipient, content, mode):
@@ -373,8 +390,9 @@ def decrypt_message():
 
         return jsonify({'success': True, 'decrypted_message': result})
 
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+    except Exception:
+        current_app.logger.exception('Decryption endpoint failed')
+        return jsonify({'success': False, 'error': 'Decryption failed'}), 500
 
 
 @messages_bp.route('/delete/<uuid:message_id>', methods=['POST'])
@@ -403,9 +421,9 @@ def delete_message(message_id):
         flash('Message deleted', 'success')
         return redirect(url_for('messages.thread', thread_id=thread_id))
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
-        flash(f'Error deleting message: {str(e)}', 'danger')
+        flash_internal_error('deleting the message')
         return redirect(url_for('messages.inbox'))
 
 
