@@ -7,11 +7,43 @@ Purpose: Admin dashboard and moderation
 from flask import Blueprint, render_template, redirect, url_for, flash, request, current_app
 from flask_login import login_required, current_user
 from functools import wraps
+from datetime import datetime, timedelta, timezone
+
 from sqlalchemy import text
-from app import db, csrf
+from app import db, csrf, limiter
 from app.timeutil import utcnow
 
 admin_bp = Blueprint('admin', __name__)
+
+
+@admin_bp.app_template_filter('severity_color')
+def severity_color(severity):
+    """
+    Bootstrap colour for a severity badge.
+
+    The templates read `alert.severity_color` -- but the alerts are raw SQL
+    rows, which have no such attribute. Production rendered "bg-" (no colour,
+    silently); the test suite never saw it because no test had ever put a
+    security event in the database until review round 3 did.
+    """
+    return {'critical': 'danger', 'high': 'danger', 'medium': 'warning',
+            'low': 'info', 'info': 'secondary'}.get((severity or '').lower(), 'secondary')
+
+
+@admin_bp.app_template_filter('when')
+def when(value, fmt='%Y-%m-%d %H:%M'):
+    """
+    Format a timestamp from a raw SQL row.
+
+    The audit rows come from text() queries. psycopg2 hands back datetimes;
+    sqlite3 (the test database) hands back strings -- so a template calling
+    .strftime() works in production and breaks in tests, or the other way round.
+    """
+    if value is None:
+        return ''
+    if hasattr(value, 'strftime'):
+        return value.strftime(fmt)
+    return str(value)[:19]
 
 
 def admin_required(f):
@@ -172,7 +204,6 @@ def users():
 def security():
     """Security dashboard"""
     from app.models.user import User
-    from datetime import timedelta
 
     # Security statistics for template
     recent_time = utcnow() - timedelta(hours=1)
@@ -244,7 +275,24 @@ def security():
     except Exception:
         health['celery'] = False
 
-    return render_template('admin/security.html', stats=stats, health=health)
+    # The template had panels for recent events and failed logins, but the view
+    # never passed either -- both always read "none recorded".
+    from app.services.audit_service import get_recent_security_events
+    security_events = get_recent_security_events(hours=24)
+    failed_logins = []
+    try:
+        failed_logins = db.session.execute(text("""
+            SELECT timestamp, username, ip_address, action FROM auth_log
+            WHERE (action LIKE 'login_failed%' OR action IN ('2fa_failed', 'reauth_failed'))
+              AND timestamp > :since
+            ORDER BY timestamp DESC LIMIT 20
+        """), {'since': datetime.now(timezone.utc) - timedelta(hours=24)}).fetchall()
+    except Exception as exc:
+        db.session.rollback()
+        current_app.logger.warning('Could not load failed logins: %s', exc)
+
+    return render_template('admin/security.html', stats=stats, health=health,
+                           security_events=security_events, failed_logins=failed_logins)
 
 
 @admin_bp.route('/audit-logs')
@@ -484,11 +532,41 @@ def user_detail(user_id):
 @login_required
 @admin_required
 def deactivate_user(user_id):
-    """Deactivate user account"""
+    """
+    Deactivate a user account.
+
+    Was three lines: no audit entry (unlike unlock and approve right next to
+    it), and no guard -- an admin could deactivate their own account, and if it
+    was the only admin, nobody would have been left to undo it.
+    """
     from app.models.user import User
+    from app.services.audit_service import log_admin_action
+
     user = db.get_or_404(User, user_id)
+
+    # Refusing self-deactivation is also what protects the last admin: whoever
+    # performs this is an active admin, so another active admin always remains.
+    # (A separate "last admin" check was written first and turned out to be
+    # unreachable for exactly that reason.)
+    if user.id == current_user.id:
+        flash('You cannot deactivate your own account', 'danger')
+        return redirect(url_for('admin.user_detail', user_id=user_id))
+
+    if not user.is_active:
+        flash(f'User {user.username} is already deactivated', 'info')
+        return redirect(url_for('admin.users'))
+
     user.is_active = False
+    # End their sessions now rather than on the next request: is_authenticated
+    # already turns an inactive user away, but a remember-me cookie should not
+    # come back to life if the account is reactivated later.
+    user.end_all_sessions()
     db.session.commit()
+
+    log_admin_action(admin_user_id=current_user.id, action='deactivate_user',
+                     target_type='user', target_id=user.id,
+                     before_state={'is_active': True}, after_state={'is_active': False},
+                     reason=request.form.get('reason', '').strip()[:500] or None)
     flash(f'User {user.username} deactivated', 'success')
     return redirect(url_for('admin.users'))
 
@@ -497,11 +575,21 @@ def deactivate_user(user_id):
 @login_required
 @admin_required
 def activate_user(user_id):
-    """Activate user account"""
+    """Activate user account (audited, like every other admin action)."""
     from app.models.user import User
+    from app.services.audit_service import log_admin_action
+
     user = db.get_or_404(User, user_id)
+    if user.is_active:
+        flash(f'User {user.username} is already active', 'info')
+        return redirect(url_for('admin.users'))
+
     user.is_active = True
     db.session.commit()
+
+    log_admin_action(admin_user_id=current_user.id, action='activate_user',
+                     target_type='user', target_id=user.id,
+                     before_state={'is_active': False}, after_state={'is_active': True})
     flash(f'User {user.username} activated', 'success')
     return redirect(url_for('admin.users'))
 
@@ -608,40 +696,59 @@ def approve_vendor(user_id):
     return redirect(url_for('admin.user_detail', user_id=user_id))
 
 
-@admin_bp.route('/csp-report', methods=['POST'])
-@login_required
-@admin_required
-def csp_violations():
-    """View CSP violation reports"""
-    # This is the viewing endpoint; the report-uri endpoint is below
-    pass
+# A CSP report is at most a few hundred bytes; anything bigger is not one.
+CSP_REPORT_MAX_BYTES = 8 * 1024
+CSP_REPORT_FIELDS = ('blocked-uri', 'violated-directive', 'effective-directive',
+                     'document-uri', 'source-file', 'line-number', 'disposition')
 
 
 @admin_bp.route('/csp-report-uri', methods=['POST'])
 @csrf.exempt
+@limiter.limit("30 per minute")
 def csp_report_uri():
     """
-    CSP violation reporting endpoint (CSRF-exempt as it's called by the browser).
-    Logs CSP violations for security monitoring.
+    CSP violation reports, posted by browsers (hence CSRF-exempt and anonymous).
+
+    That makes it the one endpoint anybody can write to without logging in, and
+    it was treated like trusted input:
+
+    * no size limit and only the global rate limit;
+    * the raw values went into the application log, newlines included -- a
+      report could forge log lines;
+    * metadata was passed as str(dict), a Python repr. The column is JSONB, the
+      INSERT failed, the error was swallowed and the event was lost.
+
+    Now: a byte limit, a tighter rate limit, only the known fields, each
+    truncated and stripped of control characters, and real JSON as metadata.
+    (A POST view at /admin/csp-report, meant to "show" reports, returned None --
+    a 500 on every call. It is gone.)
     """
-    try:
-        report = request.get_json(force=True)
-        csp_report = report.get('csp-report', report)
+    from app.services.audit_service import log_security_event
 
-        current_app.logger.warning(
-            f'CSP Violation: blocked-uri={csp_report.get("blocked-uri")} '
-            f'violated-directive={csp_report.get("violated-directive")} '
-            f'document-uri={csp_report.get("document-uri")}'
-        )
+    if (request.content_length or 0) > CSP_REPORT_MAX_BYTES:
+        return '', 413
 
-        from app.services.audit_service import log_security_event
-        log_security_event(
-            'csp_violation',
-            'medium',
-            f'CSP violation: {csp_report.get("violated-directive")} - {csp_report.get("blocked-uri")}',
-            metadata=str(csp_report)
-        )
-    except Exception as e:
-        current_app.logger.error(f'Failed to process CSP report: {e}')
+    report = request.get_json(force=True, silent=True)
+    if not isinstance(report, dict):
+        return '', 400
+    body = report.get('csp-report', report)
+    if not isinstance(body, dict):
+        return '', 400
+
+    clean = {key: _log_safe(body.get(key)) for key in CSP_REPORT_FIELDS if key in body}
+
+    current_app.logger.warning(
+        'CSP violation: directive=%s blocked=%s document=%s',
+        clean.get('violated-directive'), clean.get('blocked-uri'), clean.get('document-uri'))
+    log_security_event(
+        'csp_violation', 'medium',
+        f'CSP violation: {clean.get("violated-directive")} - {clean.get("blocked-uri")}',
+        metadata=clean)
 
     return '', 204
+
+
+def _log_safe(value, limit=300):
+    """A report value as a short single-line string: no CR/LF, no control characters."""
+    text_value = str(value)[:limit]
+    return ''.join(ch if ch.isprintable() else ' ' for ch in text_value)

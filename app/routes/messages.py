@@ -4,7 +4,7 @@ Messages Routes - PGP-Encrypted Messaging
 Purpose: Secure communication between users with mandatory encryption
 """
 
-from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
+from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, current_app
 from flask_login import login_required, current_user
 from sqlalchemy import or_, and_, func
 from sqlalchemy.orm import joinedload
@@ -184,87 +184,43 @@ def new_thread(recipient_id):
             flash('Message is too long (max 10,000 characters)', 'danger')
             return redirect(url_for('messages.new_thread', recipient_id=recipient_id))
 
+        if len(subject) > 200:
+            flash('Subject is too long (max 200 characters)', 'danger')
+            return redirect(url_for('messages.new_thread', recipient_id=recipient_id))
+
+        # Encrypt / verify BEFORE creating anything. The thread used to be created
+        # first, so every rejected message left an empty thread behind.
+        ciphertext, error = _ciphertext_for(recipient, message_content, encryption_mode)
+        if error:
+            flash(error, 'danger')
+            return redirect(url_for('messages.new_thread', recipient_id=recipient_id))
+
         try:
-            # Find or create thread
             thread = MessageThread.find_or_create_thread(
                 participant_1_id=current_user.id,
                 participant_2_id=recipient_id,
                 subject=subject if subject else None
             )
-
-            # Create message
             message = Message(
                 id=uuid.uuid4(),
                 thread_id=thread.id,
                 sender_id=current_user.id,
-                recipient_id=recipient_id
+                recipient_id=recipient_id,
+                content_encrypted=ciphertext,
+                is_encrypted=True,
             )
-
-            # Encrypt message based on mode
-            if encryption_mode == 'auto':
-                # Auto-encryption mode: System encrypts with recipient's public key
-                if not has_recipient_key:
-                    flash('Recipient does not have a PGP public key. Cannot auto-encrypt.', 'danger')
-                    return redirect(url_for('messages.new_thread', recipient_id=recipient_id))
-
-                # Validate message is plaintext (not already encrypted)
-                if message_content.startswith('-----BEGIN PGP MESSAGE-----'):
-                    flash('Message appears to be already encrypted. Use manual mode for pre-encrypted messages.', 'warning')
-                    return redirect(url_for('messages.new_thread', recipient_id=recipient_id))
-
-                # Encrypt with PGP service
-                pgp_service = PGPService(use_temp_home=True)
-                success, result = pgp_service.encrypt_message(
-                    message=message_content,
-                    recipient_public_key=recipient.pgp_public_key
-                )
-
-                if not success:
-                    flash(f'Encryption failed: {result}', 'danger')
-                    return redirect(url_for('messages.new_thread', recipient_id=recipient_id))
-
-                # Store encrypted message
-                message.content_encrypted = result.encode('utf-8')
-                message.is_encrypted = True
-
-            elif encryption_mode == 'manual':
-                # Manual mode: User provides pre-encrypted message
-                # Validate it's actually encrypted
-                if not message_content.startswith('-----BEGIN PGP MESSAGE-----'):
-                    flash('Manual mode requires PGP-encrypted message (must start with -----BEGIN PGP MESSAGE-----)', 'danger')
-                    return redirect(url_for('messages.new_thread', recipient_id=recipient_id))
-
-                if not message_content.rstrip().endswith('-----END PGP MESSAGE-----'):
-                    flash('Invalid PGP message format (must end with -----END PGP MESSAGE-----)', 'danger')
-                    return redirect(url_for('messages.new_thread', recipient_id=recipient_id))
-
-                # Store pre-encrypted message
-                message.content_encrypted = message_content.encode('utf-8')
-                message.is_encrypted = True
-
-            else:
-                flash('Invalid encryption mode', 'danger')
-                return redirect(url_for('messages.new_thread', recipient_id=recipient_id))
-
-            # CRITICAL: Verify message is encrypted before saving
-            if not message.is_encrypted:
-                raise ValueError('SECURITY: Attempted to send unencrypted message')
-
-            # Verify encrypted content exists
-            if not message.content_encrypted:
-                raise ValueError('SECURITY: No encrypted content')
-
-            # Save message
             db.session.add(message)
             db.session.commit()
-
-            flash('Message sent successfully (encrypted)', 'success')
-            return redirect(url_for('messages.thread', thread_id=thread.id))
-
-        except Exception as e:
+        except Exception:
             db.session.rollback()
-            flash(f'Error sending message: {str(e)}', 'danger')
+            # Log the detail, not the page: str(e) put SQL and constraint names
+            # in front of the user.
+            current_app.logger.exception('Sending a message failed')
+            flash('Could not send the message. Please try again.', 'danger')
             return redirect(url_for('messages.new_thread', recipient_id=recipient_id))
+
+        flash('Message sent successfully (encrypted)', 'success')
+        return redirect(url_for('messages.thread', thread_id=thread.id))
 
     return render_template('messages/new_thread.html',
                          recipient=recipient,
@@ -302,73 +258,69 @@ def send_message(thread_id):
         flash('Message is too long (max 10,000 characters)', 'danger')
         return redirect(url_for('messages.thread', thread_id=thread_id))
 
+    ciphertext, error = _ciphertext_for(recipient, message_content, encryption_mode)
+    if error:
+        flash(error, 'danger')
+        return redirect(url_for('messages.thread', thread_id=thread_id))
+
     try:
-        # Create message
-        message = Message(
+        db.session.add(Message(
             id=uuid.uuid4(),
             thread_id=thread.id,
             sender_id=current_user.id,
-            recipient_id=recipient.id
-        )
-
-        # Encrypt message based on mode
-        if encryption_mode == 'auto':
-            # Auto-encryption mode
-            if not recipient.pgp_public_key:
-                flash('Recipient does not have a PGP public key. Cannot auto-encrypt.', 'danger')
-                return redirect(url_for('messages.thread', thread_id=thread_id))
-
-            # Validate not already encrypted
-            if message_content.startswith('-----BEGIN PGP MESSAGE-----'):
-                flash('Message appears to be already encrypted. Use manual mode.', 'warning')
-                return redirect(url_for('messages.thread', thread_id=thread_id))
-
-            # Encrypt
-            pgp_service = PGPService(use_temp_home=True)
-            success, result = pgp_service.encrypt_message(
-                message=message_content,
-                recipient_public_key=recipient.pgp_public_key
-            )
-
-            if not success:
-                flash(f'Encryption failed: {result}', 'danger')
-                return redirect(url_for('messages.thread', thread_id=thread_id))
-
-            message.content_encrypted = result.encode('utf-8')
-            message.is_encrypted = True
-
-        elif encryption_mode == 'manual':
-            # Manual mode: Validate PGP format
-            if not message_content.startswith('-----BEGIN PGP MESSAGE-----'):
-                flash('Manual mode requires PGP-encrypted message', 'danger')
-                return redirect(url_for('messages.thread', thread_id=thread_id))
-
-            if not message_content.rstrip().endswith('-----END PGP MESSAGE-----'):
-                flash('Invalid PGP message format', 'danger')
-                return redirect(url_for('messages.thread', thread_id=thread_id))
-
-            message.content_encrypted = message_content.encode('utf-8')
-            message.is_encrypted = True
-
-        else:
-            flash('Invalid encryption mode', 'danger')
-            return redirect(url_for('messages.thread', thread_id=thread_id))
-
-        # CRITICAL: Verify encryption before saving
-        if not message.is_encrypted or not message.content_encrypted:
-            raise ValueError('SECURITY: Attempted to send unencrypted message')
-
-        # Save message
-        db.session.add(message)
+            recipient_id=recipient.id,
+            content_encrypted=ciphertext,
+            is_encrypted=True,
+        ))
         db.session.commit()
-
-        flash('Message sent successfully (encrypted)', 'success')
-        return redirect(url_for('messages.thread', thread_id=thread_id))
-
-    except Exception as e:
+    except Exception:
         db.session.rollback()
-        flash(f'Error sending message: {str(e)}', 'danger')
+        current_app.logger.exception('Sending a message failed')
+        flash('Could not send the message. Please try again.', 'danger')
         return redirect(url_for('messages.thread', thread_id=thread_id))
+
+    flash('Message sent successfully (encrypted)', 'success')
+    return redirect(url_for('messages.thread', thread_id=thread_id))
+
+
+def _ciphertext_for(recipient, content, mode):
+    """
+    Turn a submitted message into ciphertext for ``recipient``, or refuse.
+
+    Returns (bytes, None) or (None, user-facing error). Shared by new_thread and
+    send_message, which carried two diverging copies of this logic.
+
+    * auto:   the server encrypts with the recipient's public key.
+    * manual: the sender pasted an already encrypted message. It used to be
+              accepted if its first and last lines looked like PGP armour, so
+              plain text between those two lines was stored as "encrypted".
+              Now gpg checks the packets and the recipient key id
+              (PGPService.is_encrypted_for).
+
+    There is no third way: a message is stored encrypted or not at all.
+    """
+    if not recipient.pgp_public_key:
+        return None, 'The recipient has no PGP public key yet, so messages cannot be encrypted for them.'
+
+    pgp = PGPService(use_temp_home=True)
+
+    if mode == 'auto':
+        if content.startswith('-----BEGIN PGP MESSAGE-----'):
+            return None, 'This looks already encrypted. Use manual mode for pre-encrypted messages.'
+        success, result = pgp.encrypt_message(message=content,
+                                              recipient_public_key=recipient.pgp_public_key)
+        if not success:
+            current_app.logger.warning('Encryption failed: %s', result)
+            return None, 'Encryption failed. Check the recipient key and try again.'
+        return result.encode('utf-8'), None
+
+    if mode == 'manual':
+        ok, reason = pgp.is_encrypted_for(content, recipient.pgp_public_key)
+        if not ok:
+            return None, f'Not sent: {reason}.'
+        return content.encode('utf-8'), None
+
+    return None, 'Invalid encryption mode'
 
 
 @messages_bp.route('/decrypt', methods=['POST'])

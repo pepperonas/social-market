@@ -6,6 +6,7 @@ Purpose: Centralized audit logging
 
 import json
 import uuid
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 from sqlalchemy import text
@@ -325,9 +326,13 @@ def get_recent_security_events(hours=24, severity=None):
         list: Security events
     """
     try:
+        # Was `NOW() - INTERVAL ':hours hours'`: a bind parameter inside a quoted
+        # literal is never substituted, so this raised, was caught, and every
+        # caller got [] -- "no events" whatever had happened. The cutoff is bound
+        # as a timezone-aware value (the column is TIMESTAMPTZ; see jobs.security_scan).
         query = """
             SELECT * FROM security_events
-            WHERE timestamp > NOW() - INTERVAL ':hours hours'
+            WHERE timestamp > :since
         """
 
         if severity:
@@ -337,7 +342,7 @@ def get_recent_security_events(hours=24, severity=None):
 
         result = db.session.execute(
             text(query),
-            {'hours': hours, 'severity': severity}
+            {'since': datetime.now(timezone.utc) - timedelta(hours=hours), 'severity': severity}
         )
         return result.fetchall()
     except Exception as e:

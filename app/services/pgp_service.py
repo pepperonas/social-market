@@ -5,6 +5,8 @@ Purpose: PGP encryption/decryption for messaging with RSA-4096 support
 """
 
 import gnupg
+import subprocess
+import re
 import os
 import tempfile
 import shutil
@@ -116,6 +118,71 @@ class PGPService:
 
         except Exception as e:
             return False, str(e)
+
+    def is_encrypted_for(self, armored_message, recipient_public_key):
+        """
+        Check that ``armored_message`` really is an OpenPGP message encrypted
+        to ``recipient_public_key``.
+
+        "Manual mode" used to check only the first and the last line:
+        ``-----BEGIN PGP MESSAGE-----``, any plain text, ``-----END PGP
+        MESSAGE-----`` was stored with is_encrypted=True, and the "mandatory
+        encryption" every later check relies on was a formality. Here gpg reads
+        the packets (``--list-packets``) and reports the key ids the session key
+        was encrypted to; one of them must belong to the recipient's key or one
+        of its subkeys.
+
+        A message with hidden recipients (``--throw-keyids``) is refused: it
+        might be addressed to the recipient, but the server cannot tell.
+
+        Returns:
+            tuple: (ok, reason) -- reason is a user-facing message when not ok
+        """
+        try:
+            imported = self.gpg.import_keys(recipient_public_key)
+            if imported.count == 0:
+                return False, 'The recipient has no usable PGP key'
+
+            key_ids = set()
+            for key in self.gpg.list_keys():
+                key_ids.add(key['keyid'].upper())
+                for sub in key.get('subkeys', []):
+                    key_ids.add(sub[0].upper())
+
+            recipients, has_payload = self._packet_recipients(armored_message)
+        except Exception:
+            return False, 'This is not a valid PGP message'
+
+        if not recipients or not has_payload:
+            return False, 'This is not a PGP message encrypted to a public key'
+        if recipients == {'0000000000000000'}:
+            return False, 'The message hides its recipient; it cannot be verified'
+        if not recipients & key_ids:
+            return False, "This message is not encrypted to the recipient's key"
+        return True, None
+
+    _PKESK = re.compile(r'^:pubkey enc packet:.*\bkeyid ([0-9A-F]{16})\b', re.M)
+    _PAYLOAD = re.compile(r'^:(?:encrypted data|aead encrypted|encrypted data packet)', re.M)
+
+    def _packet_recipients(self, armored_message):
+        """
+        Key ids from the message's public-key-encrypted session key packets, and
+        whether an encrypted payload follows. Reads `gpg --list-packets`.
+
+        Not python-gnupg's get_recipients(): that parses gpg's human-readable
+        stderr ("gpg: public key is ...") with an English regular expression.
+        On a German system gpg says something else, the regex finds nothing, and
+        every message looks like it has no recipients -- found because the
+        development machine runs gpg in German. The packet dump is not
+        translated; LC_ALL=C is set anyway.
+        """
+        homedir = ['--homedir', self.gnupghome] if self.gnupghome else []
+        result = subprocess.run(
+            [self.gpg.gpgbinary, *homedir, '--batch', '--no-tty', '--list-packets'],
+            input=armored_message.encode('utf-8'), capture_output=True, timeout=10,
+            env={**os.environ, 'LC_ALL': 'C', 'LANGUAGE': 'C'})
+        dump = result.stdout.decode('utf-8', 'replace')
+        return set(self._PKESK.findall(dump)), bool(self._PAYLOAD.search(dump))
 
     def decrypt_message(self, encrypted_message, private_key, passphrase=None):
         """

@@ -5,6 +5,7 @@ Purpose: Management commands for initialization and maintenance
 """
 
 import click
+import os
 from flask import current_app
 from app import db
 from app.models.user import User
@@ -460,7 +461,14 @@ def generate_pgp_keys(username, passphrase, save_private):
     # Save private key to file if requested
     if save_private:
         filename = f'{username}_private_key.asc'
-        with open(filename, 'w') as f:
+        # Created 0600 and never over an existing file. open(filename, 'w') used
+        # the process umask -- typically 0644, a private key readable by every
+        # account on the machine -- and silently replaced whatever was there.
+        try:
+            fd = os.open(filename, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        except FileExistsError:
+            raise click.ClickException(f'{filename} already exists; not overwriting a key file')
+        with os.fdopen(fd, 'w') as f:
             f.write(private_key)
         click.echo(f'\n⚠️  Private key saved to: {filename}')
         click.echo('⚠️  SECURITY WARNING: Delete this file after copying to secure storage!')

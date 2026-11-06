@@ -67,18 +67,18 @@
                         <tbody>
                             {% for event in security_events %}
                             <tr>
-                                <td>{{ event.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
-                                <td><span class="badge bg-{{ event.severity_color }}">{{ event.severity }}</span></td>
+                                <td>{{ event.timestamp|when('%Y-%m-%d %H:%M:%S') }}</td>
+                                <td><span class="badge bg-{{ event.severity|severity_color }}">{{ event.severity }}</span></td>
                                 <td><span class="badge bg-secondary">{{ event.event_type }}</span></td>
                                 <td>
-                                    {% if event.user %}
-                                    {{ event.user.username }}
+                                    {% if event.user_id %}
+                                    <code>{{ (event.user_id|string)[:8] }}</code>
                                     {% else %}
                                     <em>Anonymous</em>
                                     {% endif %}
                                 </td>
                                 <td><code>{{ event.ip_address }}</code></td>
-                                <td>{{ event.message }}</td>
+                                <td>{{ event.description }}</td>
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -112,7 +112,7 @@
                         <tbody>
                             {% for login in failed_logins %}
                             <tr>
-                                <td>{{ login.created_at.strftime('%H:%M:%S') }}</td>
+                                <td>{{ login.timestamp|when('%H:%M:%S') }}</td>
                                 <td>{{ login.username }}</td>
                                 <td><code>{{ login.ip_address }}</code></td>
                             </tr>
