@@ -119,6 +119,21 @@ def reauth_allowed():
     return not current_user.is_account_locked()
 
 
+def reauth_refused(back_to):
+    """
+    The account is already locked: refuse, change nothing, revoke nothing.
+
+    The first version answered with reauth_locked(), i.e. ended every session.
+    But a lock can come from the LOGIN form, where anybody can produce one with
+    five wrong guesses at a username. The owner then opened "change password"
+    and was logged out everywhere -- the denial-of-service button that
+    reauth_locked() was explicitly meant not to be. Revoking all sessions stays
+    reserved for a lock this session tripped itself (reauth_failed).
+    """
+    flash('Sign-in is paused after repeated failed attempts. Try again later.', 'error')
+    return redirect(back_to)
+
+
 def _clear_pending_2fa():
     """Drop all pending-2FA state from the session."""
     session.pop('pending_2fa_user_id', None)
@@ -619,7 +634,7 @@ def disable_2fa():
     password = request.form.get('password', '')
 
     if not reauth_allowed():
-        return reauth_locked()
+        return reauth_refused(url_for('account.security_settings'))
 
     if not password:
         flash('Password is required to disable 2FA', 'error')

@@ -570,7 +570,34 @@ class TestReauthFormsCountTowardsLockout:
         user = _reload(twofa_user.id)
         assert user.two_factor_enabled is True
         assert user.password_hash == old_hash
-        assert not _is_logged_in(client)
+
+    def test_existing_lock_does_not_end_the_owners_sessions(self, client, second_client,
+                                                            sample_user):
+        """
+        A lock from the LOGIN form can be produced by anybody (five wrong
+        guesses). If the owner's next visit to a re-auth form then ended all
+        their sessions, that would be a remote logout button. Refuse, change
+        nothing. (Automated review of commit 19af682.)
+        """
+        from datetime import timedelta
+
+        from app import db
+        from app.timeutil import utcnow
+
+        _login(client, sample_user)
+        _login(second_client, sample_user)
+        user = _reload(sample_user.id)
+        user.account_locked_until = utcnow() + timedelta(minutes=15)
+        db.session.commit()
+        version = user.session_version
+
+        client.post('/account/change-password', data={
+            'current_password': PASSWORD, 'new_password': NEW_PASSWORD,
+            'confirm_password': NEW_PASSWORD})
+
+        assert _reload(sample_user.id).session_version == version
+        assert _is_logged_in(client)
+        assert _is_logged_in(second_client)
 
     def test_account_cannot_be_deleted_during_lock(self, client, twofa_user):
         from datetime import timedelta
