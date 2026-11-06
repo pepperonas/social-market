@@ -22,6 +22,41 @@ auth_bp = Blueprint('auth', __name__)
 PENDING_2FA_TIMEOUT_SECONDS = 300
 
 
+_DUMMY_HASH = None
+
+
+def burn_password_check(password):
+    """
+    Spend the same Argon2 work as a real password check, for a user that does
+    not exist.
+
+    Without it, "unknown username" returned in a few milliseconds while "wrong
+    password" paid for an Argon2id verification -- a difference a stopwatch can
+    read across the network, which turns the login form into a way to test
+    whether an account exists. The result is ignored on purpose.
+    """
+    global _DUMMY_HASH
+    service = get_password_service()
+    if _DUMMY_HASH is None:
+        import secrets
+        _DUMMY_HASH = service.hash_password(secrets.token_urlsafe(16))
+    service.verify_password(password, _DUMMY_HASH)
+
+
+def _start_authenticated_session(user, remember=False):
+    """
+    Log the user in on a fresh session id.
+
+    login_user() keeps whatever session id the browser arrived with. Anyone who
+    managed to plant that id beforehand (a shared machine, a cookie set by a
+    sibling subdomain) would share the authenticated session afterwards:
+    session fixation. regenerate() moves the data to a new id and deletes the old
+    one in the store.
+    """
+    login_user(user, remember=remember)
+    current_app.session_interface.regenerate(session)
+
+
 def _clear_pending_2fa():
     """Drop all pending-2FA state from the session."""
     session.pop('pending_2fa_user_id', None)
@@ -60,16 +95,23 @@ def login():
         client_ip = request.remote_addr
 
         if user:
-            # Check if account is locked
-            if user.is_account_locked():
-                # Log failed attempt
-                _log_auth_event(username, user.id, 'login_failed_locked', client_ip)
+            # The lock is checked only AFTER the password. Checked first, the
+            # message "account is locked" answered "does this username exist?"
+            # for anyone who typed one -- and five wrong guesses lock any account,
+            # so an attacker could produce that answer at will. Now only someone
+            # holding the right password learns that the account is locked.
+            password_ok = user.check_password(password)
 
-                flash('Account is temporarily locked due to multiple failed login attempts', 'error')
+            if user.is_account_locked():
+                _log_auth_event(username, user.id, 'login_failed_locked', client_ip)
+                if password_ok:
+                    flash('Account is temporarily locked due to multiple failed login attempts', 'error')
+                else:
+                    flash('Invalid username or password', 'error')
                 return render_template('auth/login.html')
 
             # Verify password
-            if user.check_password(password):
+            if password_ok:
                 # Check if account is active.
                 # This MUST come before the 2FA branch: a deactivated account with
                 # 2FA enabled would otherwise be handed to verify_2fa and log in,
@@ -88,7 +130,7 @@ def login():
                     return redirect(url_for('auth.verify_2fa'))
 
                 # Successful login
-                login_user(user, remember=remember)
+                _start_authenticated_session(user, remember=remember)
                 user.record_successful_login(client_ip)
 
                 # Commit database changes
@@ -117,7 +159,8 @@ def login():
                 _log_auth_event(username, user.id, 'login_failed_password', client_ip,
                                failure_reason='Invalid password')
         else:
-            # User not found
+            # User not found -- still pay for a hash check (see burn_password_check)
+            burn_password_check(password)
             _log_auth_event(username, None, 'login_failed_user_not_found', client_ip,
                            failure_reason='User not found')
 
@@ -127,7 +170,7 @@ def login():
 
 
 @auth_bp.route('/verify-2fa', methods=['GET', 'POST'])
-@limiter.limit("5 per minute")
+@limiter.limit("5 per minute", methods=['POST'])
 def verify_2fa():
     """
     2FA verification (TOTP)
@@ -168,7 +211,7 @@ def verify_2fa():
         if user.verify_totp(token):
             # Successful 2FA
             remember = session.get('pending_2fa_remember', False)
-            login_user(user, remember=remember)
+            _start_authenticated_session(user, remember=remember)
             user.record_successful_login(request.remote_addr)
 
             # Log successful login
@@ -188,9 +231,17 @@ def verify_2fa():
             else:
                 return redirect(url_for('marketplace.index'))
         else:
-            # Failed 2FA
+            # Failed 2FA. Counts towards the same lockout as a wrong password:
+            # the password is already known at this point, so the code is the
+            # only thing left to guess, and a per-IP rate limit alone does not
+            # stop an attacker who spreads the attempts over many addresses.
+            user.record_failed_login(request.remote_addr)
             _log_auth_event(user.username, user.id, '2fa_failed', request.remote_addr,
                            failure_reason='Invalid token')
+            if user.is_account_locked():
+                _clear_pending_2fa()
+                flash('Invalid username or password', 'error')
+                return redirect(url_for('auth.login'))
             flash('Invalid 2FA token', 'error')
 
     return render_template('auth/verify_2fa.html')
@@ -384,26 +435,45 @@ def profile():
     return render_template('auth/profile.html', user=current_user)
 
 
+# display_name is VARCHAR(100); the two text fields are TEXT and get a sane cap.
+PROFILE_LIMITS = {'display_name': 100, 'bio': 2000, 'vendor_description': 5000}
+
+
 @auth_bp.route('/profile/edit', methods=['GET', 'POST'])
 @login_required
 def edit_profile():
     """Edit user profile"""
+    # The template used to post email and password fields instead of these, so
+    # every save blanked display name and bio and reported success. The field
+    # names are now pinned against the template in tests.
     if request.method == 'POST':
         display_name = request.form.get('display_name', '').strip()
         bio = request.form.get('bio', '').strip()
+        vendor_description = request.form.get('vendor_description', '').strip()
 
-        current_user.display_name = display_name
-        current_user.bio = bio
+        errors = []
+        if len(display_name) > PROFILE_LIMITS['display_name']:
+            errors.append(f"Display name: at most {PROFILE_LIMITS['display_name']} characters")
+        if len(bio) > PROFILE_LIMITS['bio']:
+            errors.append(f"Bio: at most {PROFILE_LIMITS['bio']} characters")
+        if len(vendor_description) > PROFILE_LIMITS['vendor_description']:
+            errors.append(f"Shop description: at most {PROFILE_LIMITS['vendor_description']} characters")
+        if errors:
+            for message in errors:
+                flash(message, 'error')
+            return render_template('auth/edit_profile.html', limits=PROFILE_LIMITS)
+
+        current_user.display_name = display_name or None
+        current_user.bio = bio or None
 
         if current_user.is_vendor():
-            vendor_description = request.form.get('vendor_description', '').strip()
-            current_user.vendor_description = vendor_description
+            current_user.vendor_description = vendor_description or None
 
         db.session.commit()
         flash('Profile updated successfully', 'success')
         return redirect(url_for('auth.profile'))
 
-    return render_template('auth/edit_profile.html')
+    return render_template('auth/edit_profile.html', limits=PROFILE_LIMITS)
 
 
 @auth_bp.route('/profile/pgp', methods=['GET', 'POST'])
@@ -466,10 +536,13 @@ def enable_2fa():
     img = qr.make_image(fill_color="black", back_color="white")
     buf = io.BytesIO()
     img.save(buf, format='PNG')
-    qr_code_base64 = base64.b64encode(buf.getvalue()).decode()
+    # A data URI, not bare base64: <img src="iVBOR..."> is a relative URL to a
+    # file that does not exist, and the QR code never appeared. (The CSP already
+    # allows img-src data:.)
+    qr_code_uri = 'data:image/png;base64,' + base64.b64encode(buf.getvalue()).decode()
 
     return render_template('auth/enable_2fa.html',
-                          qr_code=qr_code_base64,
+                          qr_code=qr_code_uri,
                           secret=current_user.two_factor_secret)
 
 
@@ -485,14 +558,20 @@ def disable_2fa():
 
     if not current_user.check_password(password):
         flash('Invalid password', 'error')
-        return redirect(url_for('auth.profile'))
+        return redirect(url_for('account.security_settings'))
+
+    # Password alone is exactly the single factor that 2FA exists to back up.
+    # Someone who has only the password must not be able to remove the second one.
+    if not current_user.verify_totp(request.form.get('token', '').strip()):
+        flash('Enter a current code from your authenticator app to disable 2FA', 'error')
+        return redirect(url_for('account.security_settings'))
 
     current_user.disable_two_factor()
     _log_auth_event(current_user.username, current_user.id, '2fa_disabled',
                    request.remote_addr)
 
     flash('2FA disabled successfully', 'success')
-    return redirect(url_for('auth.profile'))
+    return redirect(url_for('account.security_settings'))
 
 
 # =============================================================================
@@ -662,6 +741,10 @@ def download_key_file(key_type):
         flash('Invalid key type', 'danger')
         return redirect(url_for('auth.download_keys'))
 
+    if key_type in ('private', 'both') and 'private_key' not in generated_keys:
+        flash('The private key was already downloaded and removed from the server', 'warning')
+        return redirect(url_for('auth.download_keys'))
+
     # Prepare file content
     if key_type == 'public':
         content = generated_keys['public_key']
@@ -675,6 +758,14 @@ def download_key_file(key_type):
         content = f"{generated_keys['public_key']}\n\n{generated_keys['private_key']}"
         filename = f'keypair_{generated_keys["keyid"]}.asc'
         mime_type = 'application/pgp-keys'
+
+    # The private key leaves the server with this download. Until now it stayed
+    # in the (Redis-backed) session until the session expired, while the page
+    # promised it was "not stored on the server". Keep only the public half.
+    if key_type in ('private', 'both'):
+        remaining = {k: v for k, v in generated_keys.items() if k != 'private_key'}
+        session['generated_keys'] = remaining
+        session.modified = True
 
     # Create response
     response = make_response(content)

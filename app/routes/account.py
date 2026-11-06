@@ -5,7 +5,7 @@ Purpose: Password management, session control, GDPR compliance
 """
 
 from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, current_app, session
-from flask_login import login_required, current_user, logout_user
+from flask_login import login_required, current_user, login_user, logout_user
 import json
 import uuid
 
@@ -22,7 +22,7 @@ account_bp = Blueprint('account', __name__)
 
 @account_bp.route('/change-password', methods=['GET', 'POST'])
 @login_required
-@limiter.limit("5 per hour")
+@limiter.limit("5 per hour", methods=['POST'])
 def change_password():
     """
     Change user password with security validation
@@ -37,7 +37,6 @@ def change_password():
         current_password = request.form.get('current_password', '')
         new_password = request.form.get('new_password', '')
         confirm_password = request.form.get('confirm_password', '')
-        invalidate_sessions = request.form.get('invalidate_sessions') == 'on'
 
         # Validate current password
         if not current_user.check_password(current_password):
@@ -56,26 +55,15 @@ def change_password():
             flash('New passwords do not match', 'danger')
             return render_template('account/change_password.html')
 
-        # Validate password strength
-        min_length = current_app.config.get('PASSWORD_MIN_LENGTH', 12)
-        if len(new_password) < min_length:
-            flash(f'Password must be at least {min_length} characters', 'danger')
-            return render_template('account/change_password.html')
-
-        # Check password complexity
-        has_upper = any(c.isupper() for c in new_password)
-        has_lower = any(c.islower() for c in new_password)
-        has_digit = any(c.isdigit() for c in new_password)
-        has_special = any(c in '!@#$%^&*()_+-=[]{}|;:,.<>?' for c in new_password)
-
-        if not all([has_upper, has_lower, has_digit, has_special]):
-            flash('Password must contain uppercase, lowercase, digit, and special character', 'danger')
-            return render_template('account/change_password.html')
-
+        # The policy is enforced by set_password() (PasswordService.validate_policy).
+        # This route used to re-implement it with a different special-character
+        # set, so the same password could pass registration and fail here.
         try:
-            # Update password
+            # Update password. This also ends every existing session and
+            # remember-me cookie of the user (User.end_all_sessions).
             current_user.set_password(new_password)
             db.session.commit()
+            _keep_this_browser_logged_in()
 
             # Log successful change
             log_auth_event(
@@ -93,13 +81,7 @@ def change_password():
                 request.remote_addr
             )
 
-            flash('Password changed successfully', 'success')
-
-            # Optionally invalidate other sessions
-            if invalidate_sessions:
-                _invalidate_other_sessions(current_user.id)
-                flash('Other sessions have been invalidated', 'info')
-
+            flash('Password changed successfully. All other sessions have been signed out.', 'success')
             return redirect(url_for('account.security_settings'))
 
         except ValueError as e:
@@ -188,7 +170,9 @@ def active_sessions():
 def terminate_all_sessions():
     """Terminate all other sessions"""
     try:
-        _invalidate_other_sessions(current_user.id)
+        current_user.end_all_sessions()
+        db.session.commit()
+        _keep_this_browser_logged_in()
 
         log_security_event(
             'sessions_terminated',
@@ -348,7 +332,7 @@ def export_data():
 
 @account_bp.route('/delete-account', methods=['GET', 'POST'])
 @login_required
-@limiter.limit("3 per hour")
+@limiter.limit("3 per hour", methods=['POST'])
 def delete_account():
     """
     Delete user account (GDPR Right to Erasure)
@@ -367,6 +351,12 @@ def delete_account():
         # Verify password
         if not current_user.check_password(password):
             flash('Incorrect password', 'danger')
+            return render_template('account/delete_account.html')
+
+        # With 2FA on, the password alone must not be enough to destroy the account
+        if current_user.two_factor_enabled and \
+                not current_user.verify_totp(request.form.get('token', '').strip()):
+            flash('Enter a current code from your authenticator app', 'danger')
             return render_template('account/delete_account.html')
 
         # Verify confirmation phrase
@@ -398,6 +388,7 @@ def delete_account():
             current_user.two_factor_secret = None
             current_user.two_factor_enabled = False
             current_user.is_active = False
+            current_user.end_all_sessions()
 
             # Clear sensitive fields
             current_user.last_login_ip = None
@@ -469,51 +460,20 @@ def check_password_strength():
 # Internal Helpers
 # =============================================================================
 
-def _invalidate_other_sessions(user_id):
+def _keep_this_browser_logged_in():
     """
-    Invalidate all Redis sessions for a user except the current one.
+    After end_all_sessions(), log the current browser back in.
 
-    Scans Redis for session keys matching the app prefix, loads each session,
-    and deletes those belonging to the given user_id.
+    Raising session_version invalidates every identifier issued so far -- this
+    browser's included. login_user() stores the new one; regenerate() moves the
+    session to a fresh id, so the old id is gone from the store as well. A
+    remember-me cookie the browser already had is reissued, not dropped.
 
-    Args:
-        user_id: UUID of the user whose sessions should be invalidated
+    This replaces _invalidate_other_sessions(), which scanned Redis for session
+    keys and deleted those belonging to the user. It could not reach a
+    remember-me cookie (that lives in the browser, not in Redis), swallowed
+    every error, and only ran when an unchecked-by-default box was ticked.
     """
-    try:
-        import redis as redis_lib
-        from flask import session as flask_session
-
-        r = redis_lib.from_url(current_app.config['REDIS_URL'])
-        prefix = current_app.config.get('SESSION_KEY_PREFIX', 'marketplace:')
-        current_sid = flask_session.sid if hasattr(flask_session, 'sid') else None
-
-        # Scan for all session keys
-        deleted = 0
-        for key in r.scan_iter(match=f'{prefix}*', count=100):
-            try:
-                # Skip current session
-                key_str = key.decode('utf-8') if isinstance(key, bytes) else key
-                session_id = key_str.replace(prefix, '')
-                if current_sid and session_id == current_sid:
-                    continue
-
-                # Load session data and check user_id
-                session_data = r.get(key)
-                if session_data:
-                    import json
-                    try:
-                        data = json.loads(session_data)
-                    except (json.JSONDecodeError, TypeError):
-                        continue
-
-                    # Check if this session belongs to the user
-                    session_user_id = data.get('_user_id')
-                    if session_user_id and str(session_user_id) == str(user_id):
-                        r.delete(key)
-                        deleted += 1
-            except Exception:
-                continue
-
-        current_app.logger.info(f'Invalidated {deleted} sessions for user {user_id}')
-    except Exception as e:
-        current_app.logger.error(f'Session invalidation error: {e}')
+    had_remember = current_app.config['REMEMBER_COOKIE_NAME'] in request.cookies
+    login_user(current_user._get_current_object(), remember=had_remember)
+    current_app.session_interface.regenerate(session)

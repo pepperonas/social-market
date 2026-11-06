@@ -25,6 +25,23 @@
                                 <div>
                                     <strong class="text-success">2FA Enabled</strong>
                                     <p class="mb-0 small text-muted">Your account is protected</p>
+                                    {# The disable route existed but nothing linked to it, so 2FA
+                                       could be switched on and never off. It asks for password
+                                       AND a current code: the password alone is the single factor
+                                       2FA is there to back up. #}
+                                    <details id="disable-2fa" class="mt-2 small">
+                                        <summary>Turn off 2FA</summary>
+                                        <form method="POST" action="{{ url_for('auth.disable_2fa') }}" class="mt-2">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                            <input type="password" class="form-control form-control-sm mb-2"
+                                                   name="password" placeholder="Password"
+                                                   autocomplete="current-password" required>
+                                            <input type="text" class="form-control form-control-sm mb-2"
+                                                   name="token" placeholder="6-digit code" inputmode="numeric"
+                                                   pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" required>
+                                            <button type="submit" class="btn btn-sm btn-outline-danger">Turn off 2FA</button>
+                                        </form>
+                                    </details>
                                 </div>
                                 {% else %}
                                 <div class="bg-warning text-dark rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 48px; height: 48px;">
@@ -124,7 +141,7 @@
                             </div>
                             <i class="bi bi-chevron-right"></i>
                         </a>
-                        <a href="{{ url_for('auth.enable_2fa') }}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                        <a href="{% if current_user.two_factor_enabled %}#disable-2fa{% else %}{{ url_for('auth.enable_2fa') }}{% endif %}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
                             <div>
                                 <i class="bi bi-shield-check me-2"></i> Two-Factor Authentication
                                 <p class="mb-0 small text-muted">{% if current_user.two_factor_enabled %}Manage{% else %}Enable{% endif %} 2FA</p>

@@ -32,6 +32,15 @@
                                    name="password" required>
                         </div>
                         
+                        {% if current_user.two_factor_enabled %}
+                        <div class="mb-3">
+                            <label for="token" class="form-label">Code from your authenticator app</label>
+                            <input type="text" class="form-control" id="token" name="token"
+                                   inputmode="numeric" pattern="[0-9]{6}" maxlength="6"
+                                   autocomplete="one-time-code" required>
+                        </div>
+                        {% endif %}
+
                         <div class="mb-4">
                             <label for="confirmation" class="form-label">
                                 Type <code>DELETE {{ current_user.username }}</code> to confirm

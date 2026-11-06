@@ -230,13 +230,30 @@ def initialize_extensions(app):
 
     @login_manager.user_loader
     def load_user(user_id):
+        """
+        Resolve the identifier from the session or remember-me cookie.
+
+        The identifier is ``"<uuid>:<session_version>"`` (User.get_id). Anything
+        minted before the user's last password change or "sign out everywhere"
+        carries an older version and is refused. A bare uuid -- the format before
+        the version existed -- is refused too: those sessions log in once more.
+
+        Deactivated accounts need no check here: Flask-Login's UserMixin defines
+        is_authenticated as is_active, so login_required already turns them away.
+        (Pinned in tests/test_session_integrity.py -- a different user mixin
+        would silently drop that.)
+        """
         try:
-            # Convert string to UUID if necessary
-            if isinstance(user_id, str):
-                user_id = UUID(user_id)
-            return db.session.get(User, user_id)
+            raw_id, _, raw_version = str(user_id).partition(':')
+            if not raw_version:
+                return None
+            user = db.session.get(User, UUID(raw_id))
         except (ValueError, AttributeError):
             return None
+
+        if user is None or str(user.session_version or 0) != raw_version:
+            return None
+        return user
 
 
 def register_blueprints(app):

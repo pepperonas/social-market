@@ -5,6 +5,7 @@ Purpose: User authentication and authorization with security features
 """
 
 import hmac
+import re
 import time
 import uuid
 from datetime import timedelta
@@ -52,6 +53,10 @@ class User(UserMixin, db.Model):
     # Highest TOTP counter already accepted. Prevents replay of a code that is
     # still inside its validity window (see verify_totp).
     two_factor_last_counter = db.Column(db.BigInteger, nullable=True)
+
+    # Part of the login identifier (see get_id). Raising it ends every session
+    # and every remember-me cookie of this user at once, in all browsers.
+    session_version = db.Column(db.Integer, nullable=False, default=0, server_default='0')
 
     # PGP key (for encrypted messaging)
     pgp_public_key = db.Column(db.Text, nullable=True)
@@ -107,6 +112,37 @@ class User(UserMixin, db.Model):
         return f'<User {self.username}>'
 
     # =============================================================================
+    # Session identity
+    # =============================================================================
+
+    def get_id(self):
+        """
+        The identifier Flask-Login stores in the session AND in the remember-me
+        cookie: ``"<uuid>:<session_version>"``.
+
+        It used to be the bare id. That made a session independent of anything
+        that happened to the account afterwards: changing the password -- usually
+        because someone else might know it -- left the other person's session
+        running, and a remember-me cookie stayed valid for a year regardless.
+        "Sign out other sessions" tried to fix that by scanning Redis, which
+        cannot reach a cookie that lives in a browser.
+
+        With the version in the identifier, the user loader (app/__init__.py)
+        rejects every identifier minted before the last bump -- wherever it is
+        stored.
+        """
+        return f'{self.id}:{self.session_version or 0}'
+
+    def end_all_sessions(self):
+        """
+        Invalidate every existing session and remember-me cookie of this user.
+
+        The caller commits. To keep the *current* browser logged in, call
+        login_user() again afterwards: it then stores the new identifier.
+        """
+        self.session_version = (self.session_version or 0) + 1
+
+    # =============================================================================
     # Password Management
     # =============================================================================
 
@@ -146,6 +182,23 @@ class User(UserMixin, db.Model):
         # Hash with Argon2id + pepper
         self.password_hash = password_service.hash_password(password)
 
+        # A new password ends all existing sessions. Whoever changes a password
+        # usually does so because someone else might know the old one.
+        self.end_all_sessions()
+
+    def _rehash(self, password):
+        """
+        Store a new hash for a password that was just verified.
+
+        Only the hash *format* changes (legacy -> Argon2id, or new Argon2
+        parameters); the password is the same. Going through set_password would
+        log the user out of every browser on the next login after a parameter
+        change, so this bypasses both the policy and the session bump.
+        """
+        from app.services.password_service import get_password_service
+
+        self.password_hash = get_password_service().hash_password(password)
+
     def check_password(self, password):
         """
         Verify password against Argon2id hash
@@ -176,7 +229,7 @@ class User(UserMixin, db.Model):
                 current_app.logger.info(f'Upgrading password hash to Argon2id for user {self.username}')
                 # Re-hash only: this password was already accepted, so it must not
                 # be re-validated against a policy that may have tightened since.
-                self.set_password(password, enforce_policy=False)
+                self._rehash(password)
                 db.session.commit()
 
             return is_valid
@@ -187,7 +240,7 @@ class User(UserMixin, db.Model):
         # Check if hash needs rehashing (parameters changed)
         if is_valid and password_service.needs_rehash(self.password_hash):
             current_app.logger.info(f'Rehashing password with updated parameters for user {self.username}')
-            self.set_password(password, enforce_policy=False)
+            self._rehash(password)
             db.session.commit()
 
         return is_valid
@@ -286,6 +339,13 @@ class User(UserMixin, db.Model):
             bool: True if the code was valid and previously unused
         """
         if not self.two_factor_secret or not token:
+            return False
+
+        # Exactly six ASCII digits. hmac.compare_digest raises TypeError on a
+        # non-ASCII str, and the form value used to reach it unchecked -- a code
+        # typed with full-width digits ('１２３４５６') was a 500. (str.isdigit()
+        # would not help: it is True for those digits too.)
+        if not isinstance(token, str) or not re.fullmatch(r'[0-9]{6}', token):
             return False
 
         totp = pyotp.TOTP(self.two_factor_secret)

@@ -41,13 +41,27 @@ def app():
         'WTF_CSRF_ENABLED': False,
         'SERVER_NAME': 'localhost',
         'RATELIMIT_ENABLED': False,
-        'SESSION_TYPE': 'filesystem',
         'PASSWORD_PEPPER': 'a' * 64,
         'REDIS_URL': 'redis://localhost:6379/0',
     })
 
     with app.app_context():
         _create_sqlite_tables(db)
+
+    @app.teardown_request
+    def _forget_loaded_user(exc):
+        """
+        Make every request resolve its user from its own cookies again.
+
+        Within one test, requests share the per-test app context (see
+        _app_context below), and Flask-Login caches the loaded user on `g`. The
+        second request therefore saw the first request's user -- even from a
+        different test client, and even after that user's session had been
+        invalidated. A test of "the other browser is logged out" could not fail.
+        Production pushes a fresh app context per request; this restores that.
+        """
+        from flask import g
+        g.pop('_login_user', None)
 
     yield app
 
@@ -366,7 +380,7 @@ def sample_admin(app):
 def auth_client(client, sample_user):
     """Create an authenticated test client (buyer)."""
     with client.session_transaction() as sess:
-        sess['_user_id'] = str(sample_user.id)
+        sess['_user_id'] = sample_user.get_id()
     return client
 
 
@@ -374,7 +388,7 @@ def auth_client(client, sample_user):
 def vendor_client(client, sample_vendor):
     """Create an authenticated vendor test client."""
     with client.session_transaction() as sess:
-        sess['_user_id'] = str(sample_vendor.id)
+        sess['_user_id'] = sample_vendor.get_id()
     return client
 
 
@@ -382,7 +396,7 @@ def vendor_client(client, sample_vendor):
 def admin_client(client, sample_admin):
     """Create an authenticated admin test client."""
     with client.session_transaction() as sess:
-        sess['_user_id'] = str(sample_admin.id)
+        sess['_user_id'] = sample_admin.get_id()
     return client
 
 

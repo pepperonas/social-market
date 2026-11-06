@@ -3,6 +3,14 @@
 {% block title %}Edit Profile{% endblock %}
 
 {% block content %}
+{#
+  This form used to post email, current_password and new_password, while the
+  route read display_name and bio. Every save therefore blanked both fields and
+  still reported success. Field names here must match edit_profile() in
+  routes/auth.py -- tests/test_session_integrity.py checks both sides.
+  Email and password changes live on their own pages, which verify the
+  current password.
+#}
 <div class="row justify-content-center">
     <div class="col-md-6">
         <div class="card">
@@ -14,34 +22,36 @@
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
 
                     <div class="mb-3">
-                        <label for="email" class="form-label">Email</label>
-                        <input type="email" class="form-control" id="email" name="email" value="{{ current_user.email }}" required>
+                        <label for="display_name" class="form-label">Display name</label>
+                        <input type="text" class="form-control" id="display_name" name="display_name"
+                               maxlength="{{ limits.display_name }}"
+                               value="{{ current_user.display_name or '' }}">
+                        <div class="form-text">Shown instead of your username. Optional.</div>
                     </div>
 
                     <div class="mb-3">
-                        <label for="current_password" class="form-label">Current Password</label>
-                        <input type="password" class="form-control" id="current_password" name="current_password" required>
-                        <div class="form-text">Required to confirm changes</div>
+                        <label for="bio" class="form-label">Bio</label>
+                        <textarea class="form-control" id="bio" name="bio" rows="4"
+                                  maxlength="{{ limits.bio }}">{{ current_user.bio or '' }}</textarea>
                     </div>
 
-                    <hr class="my-4">
-
-                    <h5>Change Password (Optional)</h5>
-
+                    {% if current_user.is_vendor() %}
                     <div class="mb-3">
-                        <label for="new_password" class="form-label">New Password</label>
-                        <input type="password" class="form-control" id="new_password" name="new_password">
-                        <div class="form-text">Leave blank to keep current password</div>
+                        <label for="vendor_description" class="form-label">Shop description</label>
+                        <textarea class="form-control" id="vendor_description" name="vendor_description" rows="5"
+                                  maxlength="{{ limits.vendor_description }}">{{ current_user.vendor_description or '' }}</textarea>
                     </div>
-
-                    <div class="mb-3">
-                        <label for="new_password_confirm" class="form-label">Confirm New Password</label>
-                        <input type="password" class="form-control" id="new_password_confirm" name="new_password_confirm">
-                    </div>
+                    {% endif %}
 
                     <button type="submit" class="btn btn-primary">Save Changes</button>
                     <a href="{{ url_for('auth.profile') }}" class="btn btn-secondary">Cancel</a>
                 </form>
+
+                <hr class="my-4">
+                <p class="small text-muted mb-0">
+                    To change your password, use
+                    <a href="{{ url_for('account.change_password') }}">Change password</a>.
+                </p>
             </div>
         </div>
     </div>

@@ -24,9 +24,9 @@
         <div class="alert alert-danger">
             <strong>⚠️ CRITICAL: Download Your Keys Now!</strong>
             <ul class="mb-0 mt-2">
-                <li>Keys are <strong>NOT stored on the server</strong></li>
-                <li>This is your <strong>ONLY chance</strong> to download them</li>
-                <li>Once you leave this page, keys will be permanently deleted</li>
+                <li>The private key is <strong>not written to the database</strong>. It is held in
+                    your session only until you download it, then removed from the server.</li>
+                <li>This is your <strong>ONLY chance</strong> to download it</li>
                 <li>Store your private key and passphrase in a secure location</li>
             </ul>
         </div>
@@ -97,7 +97,14 @@
                 <div class="alert alert-warning small">
                     ⚠️ Never share your private key with anyone!
                 </div>
+                {% if keys.private_key is defined %}
                 <textarea class="form-control font-monospace small" rows="10" readonly>{{ keys.private_key }}</textarea>
+                {% else %}
+                <div class="alert alert-secondary small mb-0">
+                    Already downloaded and removed from the server. If you did not save it,
+                    generate a new keypair.
+                </div>
+                {% endif %}
             </div>
         </div>
     </div>

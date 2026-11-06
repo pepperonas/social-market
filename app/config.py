@@ -62,6 +62,16 @@ class Config:
     SESSION_COOKIE_SAMESITE = 'Lax'
     PERMANENT_SESSION_LIFETIME = timedelta(seconds=int(os.environ.get('PERMANENT_SESSION_LIFETIME', 3600)))
 
+    # Remember-me cookie. Never configured before, so Flask-Login's defaults
+    # applied: valid for 365 days, sent over plain HTTP, no SameSite. It carries
+    # the same versioned identifier as the session (User.get_id), so a password
+    # change invalidates it as well.
+    REMEMBER_COOKIE_NAME = 'marketplace_remember'
+    REMEMBER_COOKIE_DURATION = timedelta(days=int(os.environ.get('REMEMBER_COOKIE_DAYS', 14)))
+    REMEMBER_COOKIE_SECURE = SESSION_COOKIE_SECURE
+    REMEMBER_COOKIE_HTTPONLY = True
+    REMEMBER_COOKIE_SAMESITE = 'Lax'
+
     # =============================================================================
     # Redis Configuration
     # =============================================================================
@@ -250,6 +260,7 @@ class ProductionConfig(Config):
     """Production configuration"""
     DEBUG = False
     SESSION_COOKIE_SECURE = True
+    REMEMBER_COOKIE_SECURE = True
     WTF_CSRF_SSL_STRICT = True
 
 

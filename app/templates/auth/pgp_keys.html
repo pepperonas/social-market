@@ -20,7 +20,8 @@
                 <div class="alert alert-info">
                     <strong>⚠️ Important Security Notice:</strong>
                     <ul class="mb-0 mt-2">
-                        <li>Keys are generated locally and <strong>never stored</strong> on our servers</li>
+                        <li>Keys are generated on the server; the private key is <strong>never written
+                            to the database</strong> and is removed from your session once you download it</li>
                         <li>You must download and save your keys immediately</li>
                         <li>Keep your private key and passphrase absolutely secure</li>
                         <li>Loss of passphrase means permanent loss of access to encrypted data</li>
@@ -121,7 +122,7 @@
                 <ul class="small">
                     <li><strong>RSA-4096:</strong> Military-grade encryption</li>
                     <li><strong>Secure Generation:</strong> Uses system entropy</li>
-                    <li><strong>No Storage:</strong> Keys never saved on server</li>
+                    <li><strong>No Storage:</strong> Private key never saved to the database</li>
                     <li><strong>Passphrase Protected:</strong> Private key encrypted</li>
                     <li><strong>OpenPGP Standard:</strong> Compatible with all PGP tools</li>
                     <li><strong>Rate Limited:</strong> 3 generations/hour</li>

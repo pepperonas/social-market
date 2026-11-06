@@ -197,6 +197,20 @@ green. When mirroring `postgres/*.sql` into `conftest.py`, carry the constraints
 across, not just the column names. A test schema that is more permissive than
 production does not merely miss bugs; it certifies them.
 
+### Sessions and the test harness
+
+- **The login identifier is `"<uuid>:<session_version>"`** (`User.get_id`). Bumping
+  `session_version` (`end_all_sessions()`, done by `set_password`) kills every session
+  *and* remember-me cookie. Rehashing on login uses `_rehash()` so it does not log people out.
+  Forged test sessions must use `user.get_id()`, not `str(user.id)`.
+- **Within one test, requests share `g`** — Flask-Login's cached user would leak from one
+  request (even one client) to the next. `conftest.py` pops `g._login_user` after each
+  request; without it, "the other browser is logged out" cannot fail.
+- **Flask-Limiter reads `RATELIMIT_ENABLED` once, in `init_app`.** Setting it in
+  `app.config` inside a test does nothing — check decorator arguments instead.
+- **`limiter.limit(...)` counts GET too** unless given `methods=['POST']`; a limit on a
+  form page then locks people out for viewing it.
+
 ### Infrastructure
 
 - **Docker Compose does not expand `${VAR}` inside `.env` values.** Write them out.
