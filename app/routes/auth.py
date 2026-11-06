@@ -24,6 +24,13 @@ PENDING_2FA_TIMEOUT_SECONDS = 300
 
 _DUMMY_HASH = None
 
+# One message for every failed login -- unknown user, wrong password, locked
+# account -- so the response never tells which of them it was. The lockout is
+# mentioned in general terms, for everybody, so a locked-out owner is not left
+# guessing.
+GENERIC_LOGIN_FAILURE = ('Invalid username or password. After repeated failed attempts, '
+                         'sign-in is paused for a while.')
+
 
 def burn_password_check(password):
     """
@@ -55,6 +62,29 @@ def _start_authenticated_session(user, remember=False):
     """
     login_user(user, remember=remember)
     current_app.session_interface.regenerate(session)
+
+
+def reauth_failed(message, back_to):
+    """
+    A logged-in user failed to confirm their password or 2FA code.
+
+    These forms (turn off 2FA, change password, delete account) re-check secrets
+    for someone who already holds a session -- which is exactly the position of
+    someone who stole one. Without counting, the form was a password and code
+    guessing machine behind the login, outside the lockout. Failures now count
+    towards the same lockout as the login; once locked, the session ends.
+    """
+    user = current_user._get_current_object()
+    user.record_failed_login(request.remote_addr)
+    _log_auth_event(user.username, user.id, 'reauth_failed', request.remote_addr,
+                    failure_reason=message)
+    if user.is_account_locked():
+        logout_user()
+        session.clear()
+        flash(GENERIC_LOGIN_FAILURE, 'error')
+        return redirect(url_for('auth.login'))
+    flash(message, 'error')
+    return redirect(back_to)
 
 
 def _clear_pending_2fa():
@@ -95,20 +125,23 @@ def login():
         client_ip = request.remote_addr
 
         if user:
-            # The lock is checked only AFTER the password. Checked first, the
-            # message "account is locked" answered "does this username exist?"
-            # for anyone who typed one -- and five wrong guesses lock any account,
-            # so an attacker could produce that answer at will. Now only someone
-            # holding the right password learns that the account is locked.
-            password_ok = user.check_password(password)
-
+            # While locked, the password is not checked at all, and the answer is
+            # the same generic message as for any failure.
+            #
+            # The lock message used to come first and named the lock outright,
+            # which confirmed that the username exists. The first fix moved it
+            # behind the password check and showed it only for a correct
+            # password -- which turned it into a password oracle: attempts made
+            # during the lock are not counted, so an attacker could keep guessing
+            # through the lockout and be told which guess was right. A lock that
+            # still answers "correct" protects nothing.
             if user.is_account_locked():
+                burn_password_check(password)  # same Argon2 cost as a real check
                 _log_auth_event(username, user.id, 'login_failed_locked', client_ip)
-                if password_ok:
-                    flash('Account is temporarily locked due to multiple failed login attempts', 'error')
-                else:
-                    flash('Invalid username or password', 'error')
+                flash(GENERIC_LOGIN_FAILURE, 'error')
                 return render_template('auth/login.html')
+
+            password_ok = user.check_password(password)
 
             # Verify password
             if password_ok:
@@ -164,7 +197,7 @@ def login():
             _log_auth_event(username, None, 'login_failed_user_not_found', client_ip,
                            failure_reason='User not found')
 
-        flash('Invalid username or password', 'error')
+        flash(GENERIC_LOGIN_FAILURE, 'error')
 
     return render_template('auth/login.html')
 
@@ -240,7 +273,7 @@ def verify_2fa():
                            failure_reason='Invalid token')
             if user.is_account_locked():
                 _clear_pending_2fa()
-                flash('Invalid username or password', 'error')
+                flash(GENERIC_LOGIN_FAILURE, 'error')
                 return redirect(url_for('auth.login'))
             flash('Invalid 2FA token', 'error')
 
@@ -548,6 +581,7 @@ def enable_2fa():
 
 @auth_bp.route('/profile/2fa/disable', methods=['POST'])
 @login_required
+@limiter.limit("5 per hour", methods=['POST'])
 def disable_2fa():
     """Disable 2FA"""
     password = request.form.get('password', '')
@@ -556,15 +590,12 @@ def disable_2fa():
         flash('Password is required to disable 2FA', 'error')
         return redirect(url_for('auth.profile'))
 
-    if not current_user.check_password(password):
-        flash('Invalid password', 'error')
-        return redirect(url_for('account.security_settings'))
-
     # Password alone is exactly the single factor that 2FA exists to back up.
     # Someone who has only the password must not be able to remove the second one.
-    if not current_user.verify_totp(request.form.get('token', '').strip()):
-        flash('Enter a current code from your authenticator app to disable 2FA', 'error')
-        return redirect(url_for('account.security_settings'))
+    if not current_user.check_password(password) or \
+            not current_user.verify_totp(request.form.get('token', '').strip()):
+        return reauth_failed(
+            'Password or code incorrect', url_for('account.security_settings'))
 
     current_user.disable_two_factor()
     _log_auth_event(current_user.username, current_user.id, '2fa_disabled',

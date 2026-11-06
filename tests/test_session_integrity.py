@@ -443,22 +443,45 @@ class TestLoginDoesNotRevealAccounts:
     unknown username skipped Argon2 entirely, which a stopwatch can tell apart.
     """
 
-    def test_locked_account_with_wrong_password_looks_like_any_failure(self, client, sample_user):
+    @staticmethod
+    def _flash(html):
+        return re.findall(r'class="alert[^"]*"[^>]*>\s*(.*?)\s*<', html, re.S)
+
+    def _locked_login(self, client, user, password):
         from datetime import timedelta
 
         from app import db
         from app.timeutil import utcnow
 
-        user = _reload(sample_user.id)
-        user.account_locked_until = utcnow() + timedelta(minutes=15)
+        locked = _reload(user.id)
+        locked.account_locked_until = utcnow() + timedelta(minutes=15)
         db.session.commit()
-
-        html = client.post('/auth/login', data={
-            'username': sample_user.username, 'password': 'wrong-password',
+        return client.post('/auth/login', data={
+            'username': user.username, 'password': password,
         }).get_data(as_text=True)
 
-        assert 'locked' not in html.lower()
-        assert 'Invalid username or password' in html
+    def test_locked_account_answers_the_same_for_right_and_wrong_password(self, app, sample_user):
+        """
+        No password oracle during a lock.
+
+        Attempts made while an account is locked are not counted. The first fix
+        for the enumeration finding showed "locked" only for a correct password
+        -- so guessing could continue through the lockout and the right guess was
+        announced. (Caught by an automated security review of that commit.)
+        """
+        right = self._locked_login(app.test_client(), sample_user, PASSWORD)
+        wrong = self._locked_login(app.test_client(), sample_user, 'wrong-password')
+
+        assert self._flash(right) == self._flash(wrong)
+        assert 'locked' not in ' '.join(self._flash(right)).lower().replace('sign-in is paused', '')
+
+    def test_unknown_user_gets_the_same_answer(self, app, sample_user):
+        wrong = self._locked_login(app.test_client(), sample_user, 'wrong-password')
+        unknown = app.test_client().post('/auth/login', data={
+            'username': f'nobody_{uuid.uuid4().hex[:8]}', 'password': 'whatever',
+        }).get_data(as_text=True)
+
+        assert self._flash(unknown) == self._flash(wrong)
 
     def test_unknown_user_still_costs_a_hash_verification(self, client):
         with patch('app.routes.auth.burn_password_check') as burn:
@@ -467,3 +490,39 @@ class TestLoginDoesNotRevealAccounts:
             })
 
         assert burn.called
+
+
+class TestReauthFormsCountTowardsLockout:
+    """
+    Turning off 2FA, changing the password and deleting the account re-check
+    secrets for someone who already holds a session -- the position of whoever
+    stole one. Wrong guesses there were not counted, and disable_2fa had no rate
+    limit, so the forms were a guessing machine behind the login. (Found by an
+    automated security review of the step-2 commit.)
+    """
+
+    @pytest.mark.parametrize('url, data', [
+        ('/auth/profile/2fa/disable', {'password': 'wrong', 'token': '000000'}),
+        ('/account/change-password', {'current_password': 'wrong',
+                                      'new_password': NEW_PASSWORD,
+                                      'confirm_password': NEW_PASSWORD}),
+        ('/account/delete-account', {'password': 'wrong', 'confirmation': 'x'}),
+    ])
+    def test_failures_lock_the_account_and_end_the_session(self, app, client, sample_user,
+                                                           url, data):
+        _login(client, sample_user)
+        for _ in range(app.config['MAX_FAILED_LOGIN_ATTEMPTS']):
+            client.post(url, data=data)
+
+        assert _reload(sample_user.id).is_account_locked()
+        assert not _is_logged_in(client)
+
+    def test_disable_2fa_is_rate_limited(self):
+        source = _code_only('app/routes/auth.py')
+        head = source[:source.index('def disable_2fa(')].rstrip('\n').split('\n')
+        decorators = []
+        while head and head[-1].startswith('@'):
+            decorators.append(head.pop())
+
+        assert any(d.startswith('@limiter.limit(') and "methods=['POST']" in d
+                   for d in decorators)

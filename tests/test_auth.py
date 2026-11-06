@@ -85,7 +85,13 @@ class TestLogin:
                 'password': 'TestPassword123!',
             }, follow_redirects=True)
             assert response.status_code == 200
-            assert b'temporarily locked' in response.data
+            # The correct password must not get through -- and must not be
+            # told apart from a wrong one (see TestLoginDoesNotRevealAccounts).
+            # This test used to assert b'temporarily locked' for the correct
+            # password, i.e. it pinned the password oracle in place.
+            with client.session_transaction() as sess:
+                assert '_user_id' not in sess
+            assert b'temporarily locked' not in response.data
 
     @patch('app.routes.auth._log_auth_event')
     def test_login_lockout_expired(self, mock_log, client, sample_user, app):

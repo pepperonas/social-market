@@ -11,6 +11,7 @@ import uuid
 
 from app import db, limiter
 from app.services.audit_service import log_auth_event, log_security_event
+from app.routes.auth import reauth_failed
 from app.timeutil import utcnow
 
 account_bp = Blueprint('account', __name__)
@@ -38,17 +39,10 @@ def change_password():
         new_password = request.form.get('new_password', '')
         confirm_password = request.form.get('confirm_password', '')
 
-        # Validate current password
+        # Validate current password -- counts towards the lockout (see reauth_failed)
         if not current_user.check_password(current_password):
-            log_auth_event(
-                current_user.username,
-                current_user.id,
-                'password_change_failed',
-                request.remote_addr,
-                failure_reason='Invalid current password'
-            )
-            flash('Current password is incorrect', 'danger')
-            return render_template('account/change_password.html')
+            return reauth_failed('Current password is incorrect',
+                                 url_for('account.change_password'))
 
         # Validate new passwords match
         if new_password != confirm_password:
@@ -348,16 +342,14 @@ def delete_account():
         password = request.form.get('password', '')
         confirmation = request.form.get('confirmation', '')
 
-        # Verify password
-        if not current_user.check_password(password):
-            flash('Incorrect password', 'danger')
-            return render_template('account/delete_account.html')
-
-        # With 2FA on, the password alone must not be enough to destroy the account
-        if current_user.two_factor_enabled and \
-                not current_user.verify_totp(request.form.get('token', '').strip()):
-            flash('Enter a current code from your authenticator app', 'danger')
-            return render_template('account/delete_account.html')
+        # Verify password, and with 2FA on a current code: the password alone
+        # must not be enough to destroy the account. Failures count towards the
+        # lockout (see reauth_failed).
+        if not current_user.check_password(password) or (
+                current_user.two_factor_enabled and
+                not current_user.verify_totp(request.form.get('token', '').strip())):
+            return reauth_failed('Password or code incorrect',
+                                 url_for('account.delete_account'))
 
         # Verify confirmation phrase
         if confirmation != f'DELETE {current_user.username}':
