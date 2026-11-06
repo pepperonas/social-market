@@ -214,3 +214,47 @@ class TestErrorsAreNotLeaked:
 
         assert 'flash(f\'Error creating order: {str(e)}\'' not in source
         assert 'str(exc)' not in source.split('current_app.logger')[0]
+
+
+class TestOrderListsRender:
+    """
+    Found by the live smoke test after the November deploy:
+
+        GET /buyer/orders -> 500
+        TypeError: 'UUID' object is not subscriptable
+
+    The list templates shortened the id with ``order.id[:8]``. ``order.id`` is a
+    ``uuid.UUID``, not a string, so every buyer with at least one order got a 500
+    on "My orders", and every vendor with an order on the dashboard. The detail
+    pages already did it right (``order.id|string|...``).
+
+    Behind it, on the very next line of the buyer list, a second defect that the
+    first one had been hiding: ``url_for('marketplace.vendor_profile',
+    user_id=...)`` -- the route parameter is ``vendor_id``, so the page would have
+    raised BuildError instead. Same pattern as the CLAUDE.md gotcha about field
+    names: two sides of an interface that were never run against each other.
+
+    No test had ever rendered a list *with an order in it* -- an empty list never
+    reaches the loop body. Hence the order placed through HTTP below.
+    """
+
+    def test_buyer_order_list_renders_with_an_order(self, client, sample_user, sellable):
+        product = sellable()
+        _login(client, sample_user)
+        _order(client, product)
+
+        response = client.get('/buyer/orders')
+
+        assert response.status_code == 200
+        assert b'#' in response.data
+
+    def test_vendor_views_render_with_an_order(self, client, sample_user, sample_vendor, sellable):
+        product = sellable()
+        _login(client, sample_user)
+        _order(client, product)
+        client.get('/auth/logout')
+        _login(client, sample_vendor)
+
+        for url in ('/vendor/dashboard', '/vendor/orders'):
+            response = client.get(url)
+            assert response.status_code == 200, url

@@ -29,9 +29,9 @@
                 <tbody>
                     {% for order in orders %}
                     <tr>
-                        <td><a href="{{ url_for('buyer.order_detail', order_id=order.id) }}">#{{ order.id[:8] }}</a></td>
+                        <td><a href="{{ url_for('buyer.order_detail', order_id=order.id) }}">#{{ (order.id|string)[:8] }}</a></td>
                         <td>{{ order.product.title }}</td>
-                        <td><a href="{{ url_for('marketplace.vendor_profile', user_id=order.vendor_id) }}">{{ order.vendor.username }}</a></td>
+                        <td><a href="{{ url_for('marketplace.vendor_profile', vendor_id=order.vendor_id) }}">{{ order.vendor.username }}</a></td>
                         <td>{{ order.quantity }}</td>
                         <td>${{ "%.2f"|format(order.total_price) }}</td>
                         <td><span class="badge bg-{{ order.status_color }}">{{ order.status }}</span></td>
