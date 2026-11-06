@@ -79,12 +79,44 @@ def reauth_failed(message, back_to):
     _log_auth_event(user.username, user.id, 'reauth_failed', request.remote_addr,
                     failure_reason=message)
     if user.is_account_locked():
-        logout_user()
-        session.clear()
-        flash(GENERIC_LOGIN_FAILURE, 'error')
-        return redirect(url_for('auth.login'))
+        return reauth_locked()
     flash(message, 'error')
     return redirect(back_to)
+
+
+def reauth_locked():
+    """
+    End EVERY session of a user whose re-authentication tripped the lockout.
+
+    The first version only logged out the session that made the attempt.
+    Someone guessing with a stolen session can hold several, or a remember-me
+    cookie, and simply continue in the next one. Bumping session_version
+    revokes all of them at once.
+
+    Deliberately not done for a lock caused at the *login form*: anybody can
+    trip that with five wrong guesses at a username, and ending the owner's
+    sessions everywhere would hand them a denial-of-service button. Here the
+    attempts came from inside an authenticated session -- that session is the
+    suspect.
+    """
+    user = current_user._get_current_object()
+    user.end_all_sessions()
+    db.session.commit()
+    logout_user()
+    session.clear()
+    flash(GENERIC_LOGIN_FAILURE, 'error')
+    return redirect(url_for('auth.login'))
+
+
+def reauth_allowed():
+    """
+    False while the account is locked -- check BEFORE verifying any secret.
+
+    record_failed_login() counts, but a check that runs anyway still answers.
+    Without this gate a correct guess made during the lock would succeed,
+    exactly the oracle the login form had to be cured of.
+    """
+    return not current_user.is_account_locked()
 
 
 def _clear_pending_2fa():
@@ -585,6 +617,9 @@ def enable_2fa():
 def disable_2fa():
     """Disable 2FA"""
     password = request.form.get('password', '')
+
+    if not reauth_allowed():
+        return reauth_locked()
 
     if not password:
         flash('Password is required to disable 2FA', 'error')

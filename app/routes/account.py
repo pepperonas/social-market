@@ -11,7 +11,7 @@ import uuid
 
 from app import db, limiter
 from app.services.audit_service import log_auth_event, log_security_event
-from app.routes.auth import reauth_failed
+from app.routes.auth import reauth_allowed, reauth_failed, reauth_locked
 from app.timeutil import utcnow
 
 account_bp = Blueprint('account', __name__)
@@ -38,6 +38,9 @@ def change_password():
         current_password = request.form.get('current_password', '')
         new_password = request.form.get('new_password', '')
         confirm_password = request.form.get('confirm_password', '')
+
+        if not reauth_allowed():
+            return reauth_locked()
 
         # Validate current password -- counts towards the lockout (see reauth_failed)
         if not current_user.check_password(current_password):
@@ -341,6 +344,9 @@ def delete_account():
     if request.method == 'POST':
         password = request.form.get('password', '')
         confirmation = request.form.get('confirmation', '')
+
+        if not reauth_allowed():
+            return reauth_locked()
 
         # Verify password, and with 2FA on a current code: the password alone
         # must not be enough to destroy the account. Failures count towards the

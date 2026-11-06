@@ -526,3 +526,71 @@ class TestReauthFormsCountTowardsLockout:
 
         assert any(d.startswith('@limiter.limit(') and "methods=['POST']" in d
                    for d in decorators)
+
+    def test_lock_ends_parallel_sessions_too(self, app, client, second_client, sample_user):
+        """
+        Someone guessing with a stolen session can hold more than one. The first
+        version ended only the session that tripped the lock. (Automated review
+        of commit 7ad961b.)
+        """
+        _login(client, sample_user)
+        _login(second_client, sample_user)
+        for _ in range(app.config['MAX_FAILED_LOGIN_ATTEMPTS']):
+            client.post('/account/change-password', data={
+                'current_password': 'wrong', 'new_password': NEW_PASSWORD,
+                'confirm_password': NEW_PASSWORD})
+
+        assert not _is_logged_in(second_client)
+
+    @pytest.mark.parametrize('url, data', [
+        ('/auth/profile/2fa/disable', {'password': PASSWORD}),
+        ('/account/change-password', {'current_password': PASSWORD,
+                                      'new_password': NEW_PASSWORD,
+                                      'confirm_password': NEW_PASSWORD}),
+    ])
+    def test_correct_secret_during_lock_achieves_nothing(self, client, twofa_user, url, data):
+        """Counting failures is not enough if a check made during the lock still answers."""
+        from datetime import timedelta
+
+        from app import db
+        from app.timeutil import utcnow
+
+        user = _reload(twofa_user.id)
+        user.two_factor_enabled = False
+        db.session.commit()
+        _login(client, twofa_user)
+        user = _reload(twofa_user.id)
+        user.two_factor_enabled = True
+        user.account_locked_until = utcnow() + timedelta(minutes=15)
+        db.session.commit()
+        old_hash = user.password_hash
+
+        client.post(url, data={**data, 'token': pyotp.TOTP(twofa_user.two_factor_secret).now()})
+
+        user = _reload(twofa_user.id)
+        assert user.two_factor_enabled is True
+        assert user.password_hash == old_hash
+        assert not _is_logged_in(client)
+
+    def test_account_cannot_be_deleted_during_lock(self, client, twofa_user):
+        from datetime import timedelta
+
+        from app import db
+        from app.timeutil import utcnow
+
+        user = _reload(twofa_user.id)
+        user.two_factor_enabled = False
+        db.session.commit()
+        _login(client, twofa_user)
+        user = _reload(twofa_user.id)
+        user.two_factor_enabled = True
+        user.account_locked_until = utcnow() + timedelta(minutes=15)
+        db.session.commit()
+
+        client.post('/account/delete-account', data={
+            'password': PASSWORD,
+            'token': pyotp.TOTP(twofa_user.two_factor_secret).now(),
+            'confirmation': f'DELETE {twofa_user.username}',
+        })
+
+        assert _reload(twofa_user.id).is_active is True
