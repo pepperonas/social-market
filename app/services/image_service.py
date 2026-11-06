@@ -11,7 +11,6 @@ from io import BytesIO
 from flask import current_app
 from werkzeug.utils import secure_filename
 from PIL import Image
-import piexif
 from app.timeutil import utcnow
 
 
@@ -104,65 +103,46 @@ class ImageService:
 
         return True, None
 
-    def strip_exif(self, image_data):
+    # Output format per input format. Everything is re-encoded from pixels,
+    # which is what removes the metadata: EXIF, GPS, XMP, ICC, PNG text chunks.
+    _REENCODE = {'PNG': 'PNG', 'GIF': 'GIF', 'WEBP': 'WEBP'}
+    EXTENSIONS = {'JPEG': 'jpg', 'PNG': 'png', 'GIF': 'gif', 'WEBP': 'webp'}
+
+    def reencode(self, image_data):
         """
-        Strip EXIF metadata from image for privacy
+        Re-encode an image from its pixels only. Returns (bytes, format).
 
-        EXIF data can contain:
-        - GPS coordinates
-        - Camera model/serial
-        - Date/time taken
-        - Thumbnail
-        - Software used
-
-        Args:
-            image_data: Bytes of image file
-
-        Returns:
-            bytes: Cleaned image data
+        Raises ValueError if the image cannot be processed -- the upload must
+        then be refused. The old strip_exif() returned the ORIGINAL bytes on any
+        error ("fail open"), so a file Pillow could not handle was stored with
+        its GPS coordinates intact while the UI said "metadata stripped". Its
+        piexif.remove(image_data) call was dead code besides: that function
+        expects a path and its result was discarded.
         """
         try:
             img = Image.open(BytesIO(image_data))
-
-            # For JPEG/TIFF images with EXIF
-            if img.format in ('JPEG', 'TIFF'):
-                try:
-                    # Remove EXIF data completely
-                    if 'exif' in img.info:
-                        # Create empty EXIF
-                        img.info.pop('exif', None)
-                except Exception:
-                    pass
-
-                # Also try piexif for thorough removal
-                try:
-                    piexif.remove(image_data)
-                except Exception:
-                    pass
-
-            # Save without metadata
+            img.load()
+            fmt = self._REENCODE.get(img.format, 'JPEG')
+            if fmt == 'JPEG' and img.mode not in ('RGB', 'L'):
+                img = img.convert('RGB')
+            # Pixels only: an image built from raw bytes carries none of
+            # img.info. Re-saving the original object is not enough -- for PNG,
+            # Pillow copies an ICC profile from img.info into the output.
+            clean = Image.frombytes(img.mode, img.size, img.tobytes())
+            if img.mode == 'P':
+                clean.putpalette(img.getpalette())
             output = BytesIO()
+            options = {'JPEG': {'quality': 90, 'optimize': True},
+                       'PNG': {'optimize': True}, 'WEBP': {'quality': 90}}.get(fmt, {})
+            clean.save(output, format=fmt, **options)
+            return output.getvalue(), fmt
+        except Exception as exc:
+            current_app.logger.warning('Image re-encoding failed: %s', exc)
+            raise ValueError('The image could not be processed') from exc
 
-            # Handle transparency for PNG
-            if img.format == 'PNG' and img.mode == 'RGBA':
-                img.save(output, format='PNG', optimize=True)
-            elif img.format == 'GIF':
-                img.save(output, format='GIF')
-            elif img.format == 'WEBP':
-                img.save(output, format='WEBP', quality=90)
-            else:
-                # Convert to RGB for JPEG
-                if img.mode in ('RGBA', 'P', 'LA'):
-                    img = img.convert('RGB')
-                img.save(output, format='JPEG', quality=90, optimize=True)
-
-            output.seek(0)
-            return output.read()
-
-        except Exception as e:
-            current_app.logger.error(f'EXIF stripping error: {e}')
-            # Return original if stripping fails
-            return image_data
+    def strip_exif(self, image_data):
+        """Image bytes without metadata (see reencode). Raises ValueError on failure."""
+        return self.reencode(image_data)[0]
 
     def create_thumbnail(self, image_data, size=None):
         """
@@ -231,11 +211,11 @@ class ImageService:
             # Read file data
             image_data = file.read()
 
-            # Strip EXIF metadata
-            cleaned_data = self.strip_exif(image_data)
-
-            # Generate unique filename
-            original_ext = secure_filename(file.filename).rsplit('.', 1)[-1].lower()
+            # Strip metadata by re-encoding; the stored extension follows the
+            # format actually written (a palette PNG used to become a JPEG named
+            # .png).
+            cleaned_data, fmt = self.reencode(image_data)
+            original_ext = self.EXTENSIONS[fmt]
             unique_id = uuid.uuid4().hex[:16]
             timestamp = utcnow().strftime('%Y%m%d')
             filename = f"{timestamp}_{unique_id}.{original_ext}"
@@ -254,6 +234,7 @@ class ImageService:
 
             result = {
                 'success': True,
+                'mime_type': f'image/{fmt.lower()}',
                 'filename': filename,
                 'filepath': f'{subfolder}/{filename}',
                 'file_size': len(cleaned_data),

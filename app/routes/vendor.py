@@ -430,7 +430,9 @@ def upload_product_image(product_id):
     result = image_service.save_image(
         file,
         subfolder=f'products/{product_id}',
-        create_thumbnail=True
+        # No thumbnails: nothing displays them, nothing recorded their path,
+        # and deleting an image left them on disk for good.
+        create_thumbnail=False
     )
 
     if not result['success']:
@@ -449,7 +451,7 @@ def upload_product_image(product_id):
             filename=result['filename'],
             filepath=result['filepath'],
             file_size=result['file_size'],
-            mime_type='image/jpeg',  # After processing
+            mime_type=result['mime_type'],  # the format actually written
             metadata_stripped=True,
             is_primary=is_primary,
             display_order=existing_images
@@ -496,10 +498,6 @@ def delete_product_image(product_id, image_id):
         # Delete file
         image_service = get_image_service()
         image_service.delete_image(image.filepath)
-
-        # Delete thumbnail if exists
-        if hasattr(image, 'thumbnail_path') and image.thumbnail_path:
-            image_service.delete_image(image.thumbnail_path)
 
         # Delete record
         db.session.delete(image)

@@ -221,7 +221,15 @@ class Product(db.Model):
         if not image:
             return None
 
-        return url_for('marketplace.product_image', filename=image.filename)
+        # Uploads are stored as 'products/<product id>/<file>' and must be
+        # served from that subdirectory; the generated covers sit directly in
+        # 'products/' (and record an absolute filepath, hence the fallback).
+        # Using the bare filename sent every uploaded image to a 404.
+        if image.filepath and image.filepath.startswith('products/'):
+            relative = image.filepath[len('products/'):]
+        else:
+            relative = image.filename
+        return url_for('marketplace.product_image', filename=relative)
 
     def is_in_stock(self):
         """Check if product is in stock"""

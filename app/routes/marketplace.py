@@ -68,7 +68,11 @@ def product_image(filename):
 
     from flask import abort, current_app, send_from_directory
 
-    if not re.fullmatch(r'[A-Za-z0-9._-]{1,120}', filename):
+    # A bare file name (generated covers) or exactly one product-id directory
+    # (uploads). Uploads used to be stored under products/<id>/ while only bare
+    # names were accepted here, so no uploaded image was ever served.
+    if not re.fullmatch(r'([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/)?'
+                        r'[A-Za-z0-9._-]{1,120}', filename):
         abort(404)
 
     folder = os.path.join(current_app.config['UPLOAD_FOLDER'], 'products')
