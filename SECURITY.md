@@ -18,6 +18,8 @@ vulnerabilities — read the linked material instead, that is the point:
 | Seed accounts share one well-known password | `app/cli.py`, `LOGIN_CREDENTIALS.md` |
 | A real pepper once leaked through documentation | `docs/PASSWORD_SECURITY.md` (worked example) |
 | IP blocking fails **open** on database errors | `tests/test_services_security.py::TestFailureMode` |
+| IP blocking is **manual only** (admin → Security); nothing blocks automatically -- a class behind one NAT address would lock itself out | `SecurityService.auto_block_check` docstring |
+| Canary tokens and honeypot fields exist in `security_service.py` but are **not wired in** (no tables, no callers) -- reference code, not a protection | `docs/REVIEW-2026-11.md`, P1-24 |
 | Crypto salt for `CryptoService` is fixed | `app/services/crypto_service.py` (must be deterministic to decrypt) |
 | `style-src` allows `unsafe-inline` | Bootstrap from CDN; `script-src` is nonce-gated and does not |
 | Historic security findings are left visible | `docs/BUGFIX-PLAN.md` |

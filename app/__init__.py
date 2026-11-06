@@ -6,7 +6,7 @@ Purpose: Secure marketplace training application
 
 import os
 import logging
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_login import LoginManager
@@ -115,6 +115,17 @@ def create_app(config_name=None):
 
     # Register blueprints
     register_blueprints(app)
+
+    # Manually blocked addresses (admin -> Security). Before review round 3 the
+    # blocking code existed, was tested, and was never called -- and its table
+    # did not exist in PostgreSQL at all.
+    @app.before_request
+    def refuse_blocked_addresses():
+        from app.services.security_service import request_is_blocked
+        blocked, _reason = request_is_blocked(request.remote_addr)
+        if blocked:
+            return ('Access from your network address has been blocked by an administrator.',
+                    403, {'Content-Type': 'text/plain; charset=utf-8'})
 
     # Register error handlers
     register_error_handlers(app)

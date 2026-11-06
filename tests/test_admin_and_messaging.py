@@ -302,3 +302,138 @@ class TestSecurityPanelsShowWhatExists:
         html = response.get_data(as_text=True)
         assert marker in html
         assert who in html
+
+
+# =============================================================================
+# P1-24 -- IP blocking, wired in (manual only)
+# =============================================================================
+
+PUBLIC_IP = '93.184.216.34'  # a public address; TEST-NET ranges count as non-global
+
+
+class TestIpBlocking:
+    """
+    SecurityService.block_ip / is_ip_blocked existed and had tests -- and
+    nothing called them, and their table existed only in the SQLite test schema.
+    Wired in during round 3, manual only (see auto_block_check for why).
+    """
+
+    @staticmethod
+    def _client_from(app, ip):
+        client = app.test_client()
+        client.environ_base['REMOTE_ADDR'] = ip
+        return client
+
+    def test_blocked_address_is_refused(self, app):
+        from app.services.security_service import SecurityService
+
+        SecurityService.block_ip(PUBLIC_IP, 'test', duration_hours=1)
+        try:
+            response = self._client_from(app, PUBLIC_IP).get('/auth/login')
+            assert response.status_code == 403
+            assert self._client_from(app, '93.184.216.35').get('/auth/login').status_code == 200
+        finally:
+            SecurityService.unblock_ip(PUBLIC_IP)
+
+        assert self._client_from(app, PUBLIC_IP).get('/auth/login').status_code == 200
+
+    def test_expired_block_is_not_applied(self, app):
+        """Expiry is compared with a bound UTC 'now', not the DB's NOW() in Europe/Berlin."""
+        from datetime import timedelta
+
+        from sqlalchemy import text
+
+        from app import db
+        from app.timeutil import utcnow
+
+        db.session.execute(text(
+            "INSERT INTO blocked_ips (ip_address, reason, expires_at) VALUES (:ip, 't', :exp)"),
+            {'ip': PUBLIC_IP, 'exp': utcnow() - timedelta(minutes=1)})
+        db.session.commit()
+        try:
+            assert self._client_from(app, PUBLIC_IP).get('/auth/login').status_code == 200
+        finally:
+            db.session.execute(text("DELETE FROM blocked_ips"))
+            db.session.commit()
+
+    def test_lookup_error_fails_open_and_rolls_back(self, app, monkeypatch):
+        """
+        is_ip_blocked swallowed errors without a rollback. In PostgreSQL a failed
+        statement aborts the transaction, so every later query of the request
+        failed -- with the table missing, that would have been every page.
+        SQLite does not abort, so the rollback itself is what is checked.
+        """
+        from sqlalchemy import text
+
+        from app import db
+
+        rollbacks = []
+        real_rollback = db.session.rollback
+        monkeypatch.setattr(db.session, 'rollback',
+                            lambda: (rollbacks.append(1), real_rollback())[1])
+        db.session.execute(text('ALTER TABLE blocked_ips RENAME TO blocked_ips_away'))
+        db.session.commit()
+        try:
+            assert app.test_client().get('/auth/login').status_code == 200, 'fails open'
+            assert rollbacks, 'the failed lookup must be rolled back'
+        finally:
+            db.session.execute(text('ALTER TABLE blocked_ips_away RENAME TO blocked_ips'))
+            db.session.commit()
+
+    def test_admin_blocks_and_unblocks_with_audit(self, app, sample_admin):
+        from app.services.security_service import SecurityService
+
+        client = login(app, sample_admin, ADMIN_PW)
+        with patch('app.services.audit_service.log_admin_action') as audit:
+            client.post('/admin/ip/block', data={'ip_address': PUBLIC_IP, 'reason': 'abuse',
+                                                 'hours': '2'})
+            assert SecurityService.is_ip_blocked(PUBLIC_IP)[0] is True
+            html = client.get('/admin/security').get_data(as_text=True)
+            assert PUBLIC_IP in html
+
+            client.post('/admin/ip/unblock', data={'ip_address': PUBLIC_IP})
+            assert SecurityService.is_ip_blocked(PUBLIC_IP)[0] is False
+
+        assert [c.kwargs['action'] for c in audit.call_args_list] == ['block_ip', 'unblock_ip']
+
+    @pytest.mark.parametrize('ip', ['127.0.0.1', '10.0.0.5', '192.168.178.20', '::1',
+                                    'not-an-ip', ''])
+    def test_admin_cannot_block_non_public_or_invalid(self, app, sample_admin, ip):
+        from app.services.security_service import SecurityService
+
+        client = login(app, sample_admin, ADMIN_PW)
+        client.post('/admin/ip/block', data={'ip_address': ip, 'reason': 'x', 'hours': '1'})
+
+        assert SecurityService.get_blocked_ips() == []
+
+    def test_admin_cannot_block_their_own_address(self, app, sample_admin):
+        from app.services.security_service import SecurityService
+
+        client = self._client_from(app, PUBLIC_IP)
+        client.post('/auth/login', data={'username': sample_admin.username, 'password': ADMIN_PW})
+        client.post('/admin/ip/block', data={'ip_address': PUBLIC_IP, 'reason': 'x', 'hours': '1'})
+
+        assert SecurityService.get_blocked_ips() == []
+
+    def test_non_admin_cannot_block(self, app, sample_user):
+        from app.services.security_service import SecurityService
+
+        login(app, sample_user).post('/admin/ip/block',
+                                     data={'ip_address': PUBLIC_IP, 'reason': 'x', 'hours': '1'})
+
+        assert SecurityService.get_blocked_ips() == []
+
+
+class TestIpBlockCache:
+    def test_unblock_takes_effect_at_once_in_this_process(self, app, monkeypatch):
+        """The suite runs with the cache off; this turns it on to check it is invalidated."""
+        from app.services.security_service import SecurityService
+
+        monkeypatch.setitem(app.config, 'IP_BLOCK_CACHE_SECONDS', 60)
+        client = TestIpBlocking._client_from(app, PUBLIC_IP)
+
+        SecurityService.block_ip(PUBLIC_IP, 'test', duration_hours=1)
+        assert client.get('/auth/login').status_code == 403   # now cached as blocked
+        SecurityService.unblock_ip(PUBLIC_IP)
+
+        assert client.get('/auth/login').status_code == 200

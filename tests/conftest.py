@@ -112,6 +112,19 @@ AUDIT_TABLES_DDL = (
     )
     """,
     """
+    -- Mirrors migrations/add_blocked_ips.sql. Checked on every request since
+    -- round 3; without the table each request ran the fail-open error path.
+    CREATE TABLE IF NOT EXISTS blocked_ips (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ip_address VARCHAR(45) NOT NULL UNIQUE,
+        reason TEXT NOT NULL,
+        blocked_by VARCHAR(100) DEFAULT 'system',
+        expires_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP
+    )
+    """,
+    """
     CREATE TABLE IF NOT EXISTS security_events (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,

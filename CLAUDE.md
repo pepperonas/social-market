@@ -236,6 +236,15 @@ production does not merely miss bugs; it certifies them.
   in Europe/Berlin and reads a naive value as local time. The model columns are naive UTC
   (`app/timeutil.utcnow`); the audit tables are `TIMESTAMPTZ`.
 
+### Raw SQL rows and swallowed errors
+
+- **A caught DB error needs `db.session.rollback()`.** PostgreSQL aborts the transaction after a
+  failed statement; SQLite does not, so the suite cannot see a missing rollback. Test the
+  rollback call itself.
+- **Raw `text()` rows in templates:** psycopg2 returns `datetime`, sqlite3 returns `str`; use the
+  `when` filter, never `.strftime()`. Column names come from the SELECT, not from a model —
+  `alert.created_at` on a row with `timestamp` broke the live admin dashboard.
+
 ### Infrastructure
 
 - **Docker Compose does not expand `${VAR}` inside `.env` values.** Write them out.

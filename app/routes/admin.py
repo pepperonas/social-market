@@ -291,8 +291,67 @@ def security():
         db.session.rollback()
         current_app.logger.warning('Could not load failed logins: %s', exc)
 
+    from app.services.security_service import SecurityService
+    blocked_ips = SecurityService.get_blocked_ips()
+
     return render_template('admin/security.html', stats=stats, health=health,
-                           security_events=security_events, failed_logins=failed_logins)
+                           security_events=security_events, failed_logins=failed_logins,
+                           blocked_ips=blocked_ips, own_ip=request.remote_addr)
+
+
+@admin_bp.route('/ip/block', methods=['POST'])
+@login_required
+@admin_required
+def block_ip():
+    """
+    Block a public IP address for a limited time (manual only -- see
+    SecurityService.auto_block_check for why nothing blocks automatically).
+    """
+    from app.services.audit_service import log_admin_action
+    from app.services.security_service import SecurityService, blockable_reason
+
+    ip_text = request.form.get('ip_address', '').strip()
+    reason = request.form.get('reason', '').strip()[:500]
+    try:
+        hours = int(request.form.get('hours', '24'))
+    except ValueError:
+        hours = -1
+
+    problem = blockable_reason(ip_text, request.remote_addr)
+    if problem is None and not reason:
+        problem = 'Give a reason -- it is shown in the audit log'
+    if problem is None and not 1 <= hours <= 24 * 30:
+        problem = 'Duration must be between 1 hour and 30 days'
+    if problem:
+        flash(problem, 'danger')
+        return redirect(url_for('admin.security'))
+
+    if not SecurityService.block_ip(ip_text, reason, duration_hours=hours,
+                                    blocked_by=current_user.username):
+        flash('Could not block the address (see the application log)', 'danger')
+        return redirect(url_for('admin.security'))
+
+    log_admin_action(admin_user_id=current_user.id, action='block_ip', target_type='ip',
+                     target_id=None, after_state={'ip': ip_text, 'hours': hours}, reason=reason)
+    flash(f'{ip_text} blocked for {hours} h', 'success')
+    return redirect(url_for('admin.security'))
+
+
+@admin_bp.route('/ip/unblock', methods=['POST'])
+@login_required
+@admin_required
+def unblock_ip():
+    from app.services.audit_service import log_admin_action
+    from app.services.security_service import SecurityService
+
+    ip_text = request.form.get('ip_address', '').strip()
+    if SecurityService.unblock_ip(ip_text):
+        log_admin_action(admin_user_id=current_user.id, action='unblock_ip', target_type='ip',
+                         target_id=None, before_state={'ip': ip_text})
+        flash(f'{ip_text} unblocked', 'success')
+    else:
+        flash('Could not unblock the address', 'danger')
+    return redirect(url_for('admin.security'))
 
 
 @admin_bp.route('/audit-logs')

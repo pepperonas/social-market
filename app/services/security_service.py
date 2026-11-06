@@ -7,7 +7,9 @@ Purpose: IP blocking, canary tokens, threat detection
 import hashlib
 import secrets
 import json
-from datetime import timedelta
+import ipaddress
+import time
+from datetime import datetime, timedelta, timezone
 from flask import request, current_app
 from sqlalchemy import text
 from app import db
@@ -46,21 +48,23 @@ class SecurityService:
             db.session.execute(
                 text("""
                     INSERT INTO blocked_ips (ip_address, reason, blocked_by, expires_at, created_at)
-                    VALUES (:ip, :reason, :blocked_by, :expires_at, NOW())
+                    VALUES (:ip, :reason, :blocked_by, :expires_at, :now)
                     ON CONFLICT (ip_address) DO UPDATE SET
                         reason = EXCLUDED.reason,
                         blocked_by = EXCLUDED.blocked_by,
                         expires_at = EXCLUDED.expires_at,
-                        updated_at = NOW()
+                        updated_at = :now
                 """),
                 {
                     'ip': ip_address,
                     'reason': reason,
                     'blocked_by': blocked_by,
-                    'expires_at': expires_at
+                    'expires_at': expires_at,
+                    'now': utcnow(),
                 }
             )
             db.session.commit()
+            _block_cache.clear()
 
             current_app.logger.warning(f'IP blocked: {ip_address} - {reason}')
             return True
@@ -79,9 +83,11 @@ class SecurityService:
                 {'ip': ip_address}
             )
             db.session.commit()
+            _block_cache.clear()
             current_app.logger.info(f'IP unblocked: {ip_address}')
             return True
         except Exception as e:
+            db.session.rollback()
             current_app.logger.error(f'Failed to unblock IP: {e}')
             return False
 
@@ -98,9 +104,9 @@ class SecurityService:
                 text("""
                     SELECT reason, expires_at FROM blocked_ips
                     WHERE ip_address = :ip
-                    AND (expires_at IS NULL OR expires_at > NOW())
+                    AND (expires_at IS NULL OR expires_at > :now)
                 """),
-                {'ip': ip_address}
+                {'ip': ip_address, 'now': utcnow()}
             )
             row = result.fetchone()
 
@@ -109,6 +115,11 @@ class SecurityService:
             return False, None
 
         except Exception as e:
+            # Fails OPEN (documented in SECURITY.md). And it must roll back: in
+            # PostgreSQL a failed statement aborts the whole transaction, so
+            # without this every later query of the request failed too -- with
+            # the table missing, that would have been every page.
+            db.session.rollback()
             current_app.logger.error(f'Error checking blocked IP: {e}')
             return False, None
 
@@ -120,18 +131,29 @@ class SecurityService:
                 text("""
                     SELECT ip_address, reason, blocked_by, expires_at, created_at
                     FROM blocked_ips
-                    WHERE expires_at IS NULL OR expires_at > NOW()
+                    WHERE expires_at IS NULL OR expires_at > :now
                     ORDER BY created_at DESC
-                """)
+                """),
+                {'now': utcnow()}
             )
             return result.fetchall()
         except Exception as e:
+            db.session.rollback()
             current_app.logger.error(f'Error fetching blocked IPs: {e}')
             return []
 
     @staticmethod
     def auto_block_check(ip_address):
         """
+        NOT WIRED IN, on purpose (review round 3). Blocking is manual only.
+
+        This is a training platform. A class sits behind one NAT address; ten
+        people mistyping their passwords in the same hour would lock the whole
+        room out for 24 hours. The per-account lockout and the per-IP rate limit
+        already slow guessing down; an automatic IP block would mostly hurt the
+        people it is meant to protect. jobs.security_scan reports such bursts so
+        an admin can decide.
+
         Check if IP should be automatically blocked based on behavior
 
         Triggers:
@@ -146,9 +168,9 @@ class SecurityService:
                     SELECT COUNT(*) FROM auth_log
                     WHERE ip_address = :ip
                     AND action LIKE 'login_failed%'
-                    AND timestamp > NOW() - INTERVAL '1 hour'
+                    AND timestamp > :since
                 """),
-                {'ip': ip_address}
+                {'ip': ip_address, 'since': datetime.now(timezone.utc) - timedelta(hours=1)}
             )
             failed_logins = result.scalar()
 
@@ -415,6 +437,45 @@ class SecurityService:
 
 
 # Database tables for security features
+# Per-process cache for the per-request block check: one indexed lookup per
+# request is cheap, but there is no reason to repeat it for every image on a
+# page. Cleared on block/unblock in this process; other workers pick a change
+# up within IP_BLOCK_CACHE_SECONDS.
+_block_cache = {}
+
+
+def request_is_blocked(ip_address):
+    """(blocked, reason) for the current request's address, with a short cache."""
+    ttl = current_app.config.get('IP_BLOCK_CACHE_SECONDS', 10)
+    now = time.monotonic()
+    hit = _block_cache.get(ip_address)
+    if hit and hit[0] > now:
+        return hit[1]
+    result = SecurityService.is_ip_blocked(ip_address)
+    if ttl > 0:
+        _block_cache[ip_address] = (now + ttl, result)
+    return result
+
+
+def blockable_reason(ip_text, own_ip):
+    """
+    Why ``ip_text`` must not be blocked by an admin -- or None if it may be.
+
+    Refuses anything that is not a single public address: blocking loopback
+    or a private range would take out the reverse proxy or a whole LAN, and
+    blocking one's own address locks the admin out of the page that undoes it.
+    """
+    try:
+        ip = ipaddress.ip_address(ip_text.strip())
+    except ValueError:
+        return 'Not a valid IP address'
+    if str(ip) == str(own_ip):
+        return 'That is your own address -- you would lock yourself out'
+    if not ip.is_global:
+        return 'Only public addresses can be blocked (not loopback, private or reserved ranges)'
+    return None
+
+
 SECURITY_TABLES_SQL = """
 -- Blocked IPs table
 CREATE TABLE IF NOT EXISTS blocked_ips (

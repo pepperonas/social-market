@@ -92,6 +92,53 @@
     </div>
 </div>
 
+{# Manual IP blocking. The service existed from the start but nothing called it and
+   its table did not exist in PostgreSQL; wired in during review round 3. Nothing is
+   blocked automatically: a class behind one NAT address would lock itself out. #}
+<div class="row mt-4">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Blocked IP Addresses</h5>
+                <small class="text-muted">Your address: <code>{{ own_ip }}</code></small>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('admin.block_ip') }}" class="row g-2 mb-3">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <div class="col-md-3"><input type="text" name="ip_address" class="form-control form-control-sm" placeholder="Public IP address" required></div>
+                    <div class="col-md-5"><input type="text" name="reason" class="form-control form-control-sm" placeholder="Reason (goes to the audit log)" maxlength="500" required></div>
+                    <div class="col-md-2"><input type="number" name="hours" class="form-control form-control-sm" value="24" min="1" max="720" title="Hours"></div>
+                    <div class="col-md-2"><button type="submit" class="btn btn-sm btn-outline-danger w-100">Block</button></div>
+                </form>
+                {% if blocked_ips %}
+                <table class="table table-sm align-middle mb-0">
+                    <thead><tr><th>Address</th><th>Reason</th><th>By</th><th>Until (UTC)</th><th></th></tr></thead>
+                    <tbody>
+                    {% for row in blocked_ips %}
+                        <tr>
+                            <td><code>{{ row.ip_address }}</code></td>
+                            <td><small>{{ row.reason }}</small></td>
+                            <td><small>{{ row.blocked_by }}</small></td>
+                            <td><small>{{ row.expires_at|when if row.expires_at else 'permanent' }}</small></td>
+                            <td>
+                                <form method="POST" action="{{ url_for('admin.unblock_ip') }}">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                    <input type="hidden" name="ip_address" value="{{ row.ip_address }}">
+                                    <button type="submit" class="btn btn-sm btn-outline-secondary">Unblock</button>
+                                </form>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <p class="text-muted mb-0">No addresses are blocked.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="row mt-4">
     <div class="col-md-6">
         <div class="card">

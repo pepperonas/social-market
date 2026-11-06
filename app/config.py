@@ -170,6 +170,8 @@ class Config:
     # An order holds its stock from the moment it is placed (Product.reserve_stock).
     # Unpaid after this long, the expire-unpaid-orders job cancels it.
     ORDER_PAYMENT_TIMEOUT_HOURS = int(os.environ.get('ORDER_PAYMENT_TIMEOUT_HOURS', 48))
+    # How long a worker trusts its answer to "is this IP blocked?" (seconds)
+    IP_BLOCK_CACHE_SECONDS = int(os.environ.get('IP_BLOCK_CACHE_SECONDS', 10))
     MESSAGE_MAX_LENGTH = int(os.environ.get('MESSAGE_MAX_LENGTH', 5000))
     REQUIRE_PGP_ENCRYPTION = os.environ.get('REQUIRE_PGP_ENCRYPTION', 'true').lower() == 'true'
 
@@ -270,6 +272,7 @@ class ProductionConfig(Config):
 class TestingConfig(Config):
     """Testing configuration"""
     TESTING = True
+    IP_BLOCK_CACHE_SECONDS = 0  # a cached answer would leak between tests
     SQLALCHEMY_DATABASE_URI = os.environ.get('TEST_DATABASE_URL', 'sqlite:///:memory:')
     # The base config sets PostgreSQL-only pool options (pool_size, max_overflow,
     # connect_args.sslmode). SQLite's StaticPool rejects them, so reset them here.
