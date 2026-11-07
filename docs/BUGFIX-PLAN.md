@@ -1,10 +1,19 @@
 # Bug-Befund & Fix-Plan
 
-**Stand:** 2026-08-19 · **Basis:** Commit `4feb033` · **Prüfumfang:** ~10.700 Zeilen Python (app/ + tests/)
+**Stand:** 2026-11-07 · **Ursprüngliche Basis (Runde 1):** Commit `4feb033` · **Prüfumfang damals:** ~10.700 Zeilen Python (app/ + tests/)
 
 ---
 
-## ✅ Umsetzungsstand (2026-08-19)
+## Aktueller Stand (2026-11-07)
+
+Runden 1 und 2 sind abgeschlossen. Runde 3: Schritte 1–6 sind implementiert und laut
+Live-Prüfung aus Schritt 6 deployt (bis `c489080`); Schritt 7 dokumentiert Abschluss und
+Coverage. Die Details und offenen Folgeschritte stehen im
+[Abschluss von Runde 3](#dritte-runde-november-2026--abschluss) und im
+[November-Review](REVIEW-2026-11.md). Die folgenden August-Befunde bleiben als historische
+Ausgangslage erhalten; sie beschreiben nicht den heutigen Betriebszustand.
+
+## ✅ Umsetzungsstand nach Runde 2 (2026-08-19)
 
 **Alles unten Beschriebene ist umgesetzt.** Ergebnis nach beiden Runden:
 **443 Tests grün** (vorher 0 lauffähig), Coverage 49 %, **flake8 sauber**
@@ -31,7 +40,7 @@ Bedienen der Anwendung entstand.
 
 **Jeder neue Test wurde mutiert** (Bug wieder eingebaut) und schlug nachweislich an.
 
-⚠️ **Bewusst NICHT geändert:** der Container startet weiterhin ohne `APP_CONFIG`,
+⚠️ **Historischer Stand im August (live seit Schritt 6 überholt):** der Container startet weiterhin ohne `APP_CONFIG`,
 also mit der Basis-Config. `ProductionConfig` schaltet zusätzlich
 `WTF_CSRF_SSL_STRICT=True`, was durchgehendes HTTPS voraussetzt — auf dem
 HTTP-Trainingsaufbau (`:8080`) würde das Formulare brechen. Das ist ein
@@ -39,8 +48,8 @@ Betriebs-Entscheid, kein Codefehler; Umschalten per `APP_CONFIG=production`.
 
 ⚠️ **Offen:** Das alte Redis-Passwort steht weiterhin in der git-Historie
 (Commit `018e8f3`). Die Rotation entwertet es; ein History-Rewrite wurde nicht
-durchgeführt. Ebenso offen: CVE-Stand der auf Ende 2023 gepinnten
-Abhängigkeiten — die CI meldet ihn jetzt, verifiziert ist er noch nicht.
+durchgeführt. Der damals offene CVE-Stand wurde in Runde 2 geprüft und die Abhängigkeiten aktualisiert;
+weitere im November gefundene Advisories wurden in Runde 3, Schritt 1 behoben.
 
 ---
 
@@ -303,3 +312,83 @@ Ownership-Checks sind durchgängig vorhanden, inklusive der verschachtelten Rout
 `product/<id>/delete-image/<id>`. Upload-Validierung (`secure_filename`, Whitelist, PIL-Verify,
 MIME-, Größen- und Dimensionsprüfung) ist solide. `.env`/`.env.bak` sind korrekt **nicht**
 getrackt. Rollen-Decorators sind korrekt.
+
+
+---
+
+## Dritte Runde (November 2026) — Abschluss
+
+Die vollständigen Befunde, Entscheidungen und Mutationsnachweise stehen in
+[`REVIEW-2026-11.md`](REVIEW-2026-11.md). Diese Runde prüfte vor allem das Zusammenspiel:
+443 grüne Tests hatten nicht gezeigt, dass keine Bestellung über die Oberfläche bezahlt
+werden konnte und kein Hintergrundjob lief.
+
+| Schritt | Ergebnis | Implementierungs-Commits |
+|---|---|---|
+| 1 | Abhängigkeiten aktualisiert, 46 gemeldete CVEs behoben; Deprecations entfernt | `154e644` |
+| 2 | Versionierte Sessions und Remember-me, Reauth-Sperren, 2FA-Härtung, Profilformular repariert | `f7b084a`, `7ad961b`, `19af682`, `680c625` |
+| 3 | HTTP-Bestellablauf inkl. simulierter Zahlung, atomare Zustandswechsel/Checkout, Lagerreservierung, Storno/Erstattung und Streitentscheidung | `6cf9ea8` |
+| 4 | Jobs als CLI mit gemeinsamer Registry; systemd-Timer live, Celery-Anbindung für Docker | `8f972be` |
+| 5 | Admin-Audit, echte PGP-Payload-Prüfung, CSP-Reports, Audit-Abfragen und manuelle IP-Sperren | `fa1d83a`, `d951a19`, `b430d2d` |
+| 6 | IDs/Fehlertexte/Logout/Header gehärtet, Bildauslieferung und Metadatenbereinigung repariert, Produktionskonfiguration und Deploy-Positivliste | `e9696f5`, `1526b00`, `c489080` |
+| 7 | README, CLAUDE und beide Audit-Dokumente abgeglichen; Tests und Coverage neu gemessen | dieser Doku-Abschluss |
+
+### Live-Nachweise aus Schritt 6
+
+Übernommener Prüfstand des letzten Deploys, hier nicht erneut auf dem VPS ausgeführt:
+`APP_CONFIG=production`; HTTPS-POST ohne Referer → 400, mit Referer → 302;
+`Referrer-Policy: same-origin`. Seiten → 200, `?category=abc` → 200, ungültige
+Produkt-ID → 404. Logout: GET → 405, POST meldet ab. Login ohne beworbenes
+Admin-Standardpasswort; Cover und Jobs funktionieren, keine neuen 500er gemeldet.
+Der Deploy entfernte `tests/`, `docs/`, `LOGIN_CREDENTIALS.md` und eine lokale
+Entwicklungs-`.env.bak` vom Server.
+
+### Verbleibende Arbeit und Entscheidungen
+
+- **TOTP-Geheimnisse verschlüsseln:** `two_factor_secret` liegt weiterhin im Klartext.
+  Eigener Schlüssel mit Rotationskonzept und Datenmigration nötig; `SECRET_KEY` als Schlüssel
+  würde bei Rotation alle bestehenden 2FA-Einrichtungen unbrauchbar machen. Eigener Folgeschritt.
+- **Admin-Passwort in Live-`.env`:** `ADMIN_PASSWORD` ist laut letztem Betriebsstand noch
+  zusätzlich vorhanden. Entfernung steht aus; die Initialisierung braucht keinen festen
+  Standardwert mehr. In diesem Doku-Abschluss wurde keine Live-Konfiguration verändert.
+- **VPS-Sicherungen in `/root`:** sechs Sicherungen (`socialmarket-bak-*`,
+  `socialmarket-db-*.dump`, `socialmarket.env.bak-*`) warten laut letztem Stand auf Abnahme
+  und anschließende Bereinigung. Hier weder gelöscht noch erneut inventarisiert.
+- **Canary-Tokens/Honeypots:** bewusst unverdrahtetes Referenzmaterial, keine aktive Schutzmaßnahme.
+- **Historie:** das rotierte Redis-Passwort bleibt im öffentlichen Git-Verlauf; kein History-Rewrite.
+
+### Messung zum Doku-Abschluss (2026-11-07)
+
+Auf Implementierungsstand `c489080`, lokal mit Python 3.14.7 und SQLite in-memory:
+
+```bash
+venv/bin/python -m pytest tests/ --cov=app --cov-report=term \
+  --cov-report=json:/tmp/social-market-coverage.json -q
+```
+
+**605 Tests bestanden**, 69,85 s, keine Warnungen im Testbericht.
+Zeilen-Coverage: **67,41 % gesamt** (3.291 / 4.882 ausführbare Zeilen; nach Runde 2: 49 %).
+Für `app/routes/`: **62,37 %** (1.293 / 2.073), gewichtet nach ausführbaren Zeilen,
+nicht als Mittelwert der Dateiprozente. Keine Branch-Coverage gemessen.
+
+| Routenmodul | Zeilen-Coverage |
+|---|---:|
+| `auth.py` | 72,97 % |
+| `marketplace.py` | 71,43 % |
+| `buyer.py` | 66,50 % |
+| `cart.py` | 66,10 % |
+| `vendor.py` | 63,41 % |
+| `admin.py` | 61,24 % |
+| `messages.py` | 46,35 % |
+| `account.py` | 45,21 % |
+| `notifications.py` | 42,65 % |
+
+**Das Routenziel ≥ 70 % ist noch nicht erreicht.** Dafür fehlen bei unverändertem Umfang
+mindestens 159 zusätzlich ausgeführte Routen-Zeilen. Als eigener Folgeschritt sind sinnvolle
+HTTP-Tests vor allem für Kontoeinstellungen, Nachrichten und Benachrichtigungen nötig;
+keine bloßen Aufrufe zur Erhöhung der Zahl. Auch `pgp_service.py` liegt erst bei 25 %.
+`tasks.py` ist jetzt zu 100 % gedeckt; das ersetzt keinen echten Docker-Worker-Test.
+
+Die Suite spiegelt PostgreSQL auf SQLite und prüft keinen echten parallelen Ablauf gegen
+PostgreSQL. Die Live-Nachweise aus Schritt 6 und die damaligen Mutationsproben werden hier
+als bestehende Nachweise übernommen, nicht als im Doku-Abschluss erneut ausgeführt dargestellt.

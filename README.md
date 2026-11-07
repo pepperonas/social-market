@@ -8,8 +8,8 @@
 
 <!-- Build & quality -->
 [![CI](https://github.com/pepperonas/social-market/actions/workflows/ci.yml/badge.svg)](https://github.com/pepperonas/social-market/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-443%20passing-brightgreen)](tests/)
-[![Coverage](https://img.shields.io/badge/coverage-49%25-yellow)](tests/)
+[![Tests](https://img.shields.io/badge/tests-605%20passing-brightgreen)](tests/)
+[![Coverage](https://img.shields.io/badge/coverage-67%25-yellow)](tests/)
 [![Lint](https://img.shields.io/badge/flake8-0%20issues-brightgreen)](.flake8)
 [![Bandit](https://img.shields.io/badge/bandit-clean-brightgreen)](.github/workflows/ci.yml)
 [![pip-audit](https://img.shields.io/badge/pip--audit-enforced-brightgreen)](.github/workflows/ci.yml)
@@ -28,12 +28,12 @@
 
 <!-- Stack -->
 [![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![Flask](https://img.shields.io/badge/Flask-3.0-000000?logo=flask&logoColor=white)](https://flask.palletsprojects.com/)
+[![Flask](https://img.shields.io/badge/Flask-3.1-000000?logo=flask&logoColor=white)](https://flask.palletsprojects.com/)
 [![SQLAlchemy](https://img.shields.io/badge/SQLAlchemy-2.0-D71F00?logo=sqlalchemy&logoColor=white)](https://www.sqlalchemy.org/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![Redis](https://img.shields.io/badge/Redis-7-DC382D?logo=redis&logoColor=white)](https://redis.io/)
-[![Celery](https://img.shields.io/badge/Celery-5.3-37814A?logo=celery&logoColor=white)](https://docs.celeryq.dev/)
-[![Gunicorn](https://img.shields.io/badge/Gunicorn-21-499848?logo=gunicorn&logoColor=white)](https://gunicorn.org/)
+[![Celery](https://img.shields.io/badge/Celery-5.6-37814A?logo=celery&logoColor=white)](https://docs.celeryq.dev/)
+[![Gunicorn](https://img.shields.io/badge/Gunicorn-26-499848?logo=gunicorn&logoColor=white)](https://gunicorn.org/)
 [![Nginx](https://img.shields.io/badge/Nginx-reverse%20proxy-009639?logo=nginx&logoColor=white)](nginx/)
 [![Docker](https://img.shields.io/badge/Docker-compose-2496ED?logo=docker&logoColor=white)](https://docs.docker.com/compose/)
 [![Bootstrap](https://img.shields.io/badge/Bootstrap-5-7952B3?logo=bootstrap&logoColor=white)](https://getbootstrap.com/)
@@ -120,11 +120,9 @@ into and click through while reading the code.
 
 - The data is **disposable and fictional**. No real transactions, no real personal data,
   no real payments. It is reset whenever it needs to be.
-- Every account above is **public on purpose** — being able to walk the whole role model,
-  admin included, *is* the teaching value. There is nothing behind them worth stealing.
-- Account lockout is live: five wrong passwords lock an account for 15 minutes. If the demo
-  admin is locked when you arrive, someone was guessing — wait it out, that is the control
-  doing its job.
+- Buyer and vendor accounts above are **public on purpose** so you can explore their roles.
+  Admin access is private; explore that role in your own local instance.
+- Account lockout is live: five wrong passwords lock an account for 15 minutes.
 - It is `noindex, nofollow` and is **not** a hardened production system. The README section
   below explains exactly what it is not.
 - Please do not run automated scanners or load against it. If you want to attack something,
@@ -193,7 +191,7 @@ interesting to study.
 
 <img src="docs/screenshots/08-admin-dashboard.png" alt="Admin dashboard with user, product and order statistics" width="100%">
 
-Reachable in the demo on purpose, so the whole role model can be explored.
+Explore the admin dashboard in your local instance; the live admin credentials are private.
 `tests/test_authorization_matrix.py` walks every role against every protected
 route to prove the separation holds.
 
@@ -241,15 +239,33 @@ involved to cheat. Every one of those is a place where defence is *interesting*.
 | | |
 |---|---|
 | 📖 **Read the controls** | Argon2id + pepper, nonce-based CSP, TOTP with replay protection, encrypted shipping data, an escrow state machine, audit logging via stored procedures |
-| 🧪 **Read the tests** |  of them. They are written as *arguments*, not assertions — each says why a control matters and what breaks without it |
+| 🧪 **Read the tests** | 605 of them. They are written as *arguments*, not assertions — each says why a control matters and what breaks without it |
 | 🔍 **Read the audit** | [`docs/BUGFIX-PLAN.md`](docs/BUGFIX-PLAN.md) is a real security review of this codebase, with the real findings, in the order they were found |
 | 🛠 **Break it on purpose** | Revert a fix and watch which test screams. Every fix in the audit has a test that provably catches its regression |
 | 📉 **Study the failures** | The most valuable parts of this repo are the places where it *was wrong* — documented rather than quietly rewritten |
 
+### Review round 3 (November 2026)
+
+Session versioning now invalidates old sessions and remember-me cookies. The order flow is
+reachable over HTTP from checkout through simulated payment, delivery and escrow release;
+background jobs run through systemd timers on the live host. Uploaded images are served from
+their actual paths and rebuilt from pixels to strip metadata, rejecting the upload on failure.
+Production configuration is active, and deployment uses an allow list.
+
+Measured on 2026-11-07: **605 tests pass**, statement coverage **67.41% overall** and
+**62.37% for `app/routes/`** (SQLite suite; no branch coverage). The planned 70% route target
+remains open; see the [coverage breakdown](docs/REVIEW-2026-11.md#messung-zum-doku-abschluss-2026-11-07).
+
+The detailed findings, mutation checks and remaining work are recorded in
+[`docs/REVIEW-2026-11.md`](docs/REVIEW-2026-11.md) and the
+[round 3 summary](docs/BUGFIX-PLAN.md#dritte-runde-november-2026--abschluss).
+TOTP secrets remain plaintext in the database; encryption with a separate key and a data
+migration is a follow-up. Canary tokens and honeypots remain unwired reference code.
+
 ### 🎓 Start here
 
-1. **[`docs/BUGFIX-PLAN.md`](docs/BUGFIX-PLAN.md)** — the security review. 13 findings, from an
-   authentication bypass to a test suite that had never once executed.
+1. **[`docs/BUGFIX-PLAN.md`](docs/BUGFIX-PLAN.md)** — three rounds of security review, from an
+   authentication bypass and a broken test harness to the complete order lifecycle and live deployment.
 2. **[`docs/PASSWORD_SECURITY.md`](docs/PASSWORD_SECURITY.md)** — includes a worked example of a
    *real* secret that leaked through documentation for 19 commits.
 3. **[`tests/test_authorization_matrix.py`](tests/test_authorization_matrix.py)** — every role
@@ -261,7 +277,7 @@ involved to cheat. Every one of those is a place where defence is *interesting*.
 
 Not hypotheticals. Each one happened *here*, and the fix is in the history:
 
-- **A test suite that cannot run is worse than no test suite.** All 443 tests errored on setup
+- **A test suite that cannot run is worse than no test suite.** All 72 original tests errored on setup
   for months while CI reported the failure into a void. Four stacked defects, each hidden by
   the one before it.
 - **Secrets leak through documentation.** The live password pepper sat in a Markdown file whose
@@ -327,7 +343,7 @@ This is a **defensive** teaching artifact. To be unambiguous:
 - ❌ **Not an offensive tool.** There is no exploit code here, and contributions adding any
   will be declined.
 
-Any public instance of this project is a **read-only teaching demo** with disposable data.
+The public instance is an **interactive teaching demo** with disposable data and simulated payments.
 Treat every credential in this repository as public knowledge, because it is.
 
 **Legal context:** authorised security education material, published for defensive
@@ -358,7 +374,7 @@ This project implements a fully-featured, security-hardened marketplace platform
 - Python 3.11 + Flask (lightweight, security-focused)
 - PostgreSQL 15 with pgcrypto extension
 - Redis for session management
-- Celery for async task processing
+- Background jobs: systemd timers live; Celery worker + beat under Docker Compose
 
 ### Security & Crypto
 - **Argon2id** for password hashing (Winner of Password Hashing Competition)
@@ -446,7 +462,7 @@ Internet (Tor)
      ↓
   ├─→ PostgreSQL (pgcrypto, RLS, audit logs)
   ├─→ Redis (sessions, cache, rate limit counters)
-  └─→ Celery (escrow processing, monitoring tasks)
+  └─→ Background jobs (systemd timers live; Celery + beat in Docker Compose)
 ```
 
 ## Security Features
@@ -466,7 +482,8 @@ Internet (Tor)
   - No server-side key storage
 - **Security Headers:** CSP (nonce-based, with violation reporting), HSTS, X-Frame-Options, X-Request-ID
 - **Rate Limiting:** Multi-tier (general, login, registration, PGP: 3/hour)
-- **CSRF Protection:** Token-based for all state-changing operations
+- **CSRF Protection:** Tokens for state-changing operations; live `APP_CONFIG=production` also
+  checks the same-origin HTTPS Referer (`Referrer-Policy: same-origin`). Logout requires POST.
 - **Input Validation:** SQLAlchemy ORM, Werkzeug sanitization
 - **Session Security:** HTTPOnly, Secure, SameSite cookies, session invalidation on password change
 - **Open Redirect Prevention:** URL validation on login redirects
@@ -519,7 +536,9 @@ Internet (Tor)
 
 ### Escrow System
 - Multi-signature wallet simulation (educational mock)
-- Order states: pending → paid → shipped → completed → released
+- Order states: pending → paid → shipped → delivered → completed; escrow is released on completion
+- Buyer payment confirmation is a simulation; no real funds move
+- Atomic state changes, stock reservation at checkout, refunds on cancellation and admin dispute resolution
 - Dispute handling
 - Auto-release mechanism
 - Commission calculation (3%)
@@ -533,12 +552,13 @@ Internet (Tor)
   - Admin ↔ All users (support/moderation)
   - Vendor ↔ Buyers (customer service)
   - Users ↔ Admin (support requests)
-- **Zero-knowledge architecture:** Messages stored encrypted, server cannot decrypt
+- **Encrypted storage:** Messages are stored as PGP ciphertext. The optional decryption endpoint
+  receives the private key and passphrase to decrypt server-side for that request.
 - **Message threading:** Organized conversations per participant pair
 - **Auto-deletion:** Messages expire after 30 days (OPSEC)
 - **Soft delete:** Per-user deletion, permanent only when both delete
 - **Rate limiting:** 10 new threads/hour, 20 replies/hour
-- **AJAX decryption:** User provides private key to decrypt in browser
+- **AJAX decryption:** User submits their private key and passphrase to the server over HTTPS
 - See `docs/MESSAGING.md` for complete documentation
 
 ### Admin Dashboard
@@ -647,7 +667,7 @@ docker-compose exec app pytest tests/ -v --cov=app --cov-report=term-missing
 docker-compose exec app pytest tests/test_auth.py -v
 
 # Run locally (uses SQLite in-memory)
-cd secure-marketplace && pytest tests/ -v
+pytest tests/ -v
 ```
 
 ### Security Scanning
@@ -661,13 +681,14 @@ pip-audit -r app/requirements.txt
 
 ### CI/CD Pipeline
 
-The project includes a GitHub Actions CI/CD pipeline (`.github/workflows/ci.yml`) with three jobs:
+The project includes a GitHub Actions CI/CD pipeline (`.github/workflows/ci.yml`) with four required jobs:
 
 | Job | Tools | Purpose |
 |-----|-------|---------|
 | **Lint** | flake8, bandit | Code quality + security static analysis |
-| **Test** | pytest (PostgreSQL + Redis) | Full test suite with coverage |
-| **Security** | pip-audit | Dependency vulnerability scanning |
+| **Test** | pytest + pytest-cov | SQLite in-memory suite with coverage; CI also provides PostgreSQL + Redis services |
+| **Security** | pip-audit | Dependency vulnerability scanning; findings fail CI |
+| **Secret Scan** | gitleaks | Full git history |
 
 ### Access PostgreSQL
 ```bash

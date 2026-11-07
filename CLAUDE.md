@@ -65,8 +65,11 @@ nginx (TLS) → gunicorn → Flask
 `config.py` exports a `config` **dict**; there is no module attribute per name.
 `create_app` looks the name up in that dict, and falls back to the `APP_CONFIG`
 environment variable when called without arguments (gunicorn calls the factory
-bare). Opt-in on purpose: `ProductionConfig` also switches on
-`WTF_CSRF_SSL_STRICT`, which needs HTTPS end to end.
+bare). The live service uses `APP_CONFIG=production`; local HTTP Docker training
+keeps the base config. `ProductionConfig` enables `WTF_CSRF_SSL_STRICT` and refuses
+the development fallback values for `SECRET_KEY`, `PASSWORD_PEPPER` and
+`DB_ENCRYPTION_KEY`. Strict HTTPS CSRF needs a same-origin Referer:
+`Referrer-Policy` must stay `same-origin`; `no-referrer` would break every form.
 
 ### Blueprints
 
@@ -96,7 +99,7 @@ Security logic lives in `app/services/`, never inline in a route:
 | `cover_service.py` | Deterministic generated product covers |
 | `crypto_service.py` | Fernet application-level encryption |
 | `pgp_service.py` | RSA-4096 keypairs, encrypt/decrypt |
-| `image_service.py` | Upload validation, EXIF stripping, thumbnails |
+| `image_service.py` | Upload validation, metadata removal by rebuilding pixels (fail closed), thumbnails |
 | `audit_service.py` | PostgreSQL stored procedures |
 | `security_service.py` | IP blocking, canary tokens, honeypots |
 | `escrow_service.py` | Escrow lifecycle |
@@ -123,6 +126,11 @@ Audit tables (`auth_log`, `audit_log`, `security_events`, `message_audit`,
   Static media is `@limiter.exempt` — see gotchas.
 
 ### Tests
+
+Measured 2026-11-07 on `c489080`: 605 passing tests; statement coverage 67.41%
+overall, 62.37% for `app/routes/`. The route target of ≥70% remains open; see
+`docs/REVIEW-2026-11.md` for the breakdown and follow-ups. Coverage is measured
+without branch tracking; do not treat it as proof of PostgreSQL concurrency.
 
 `tests/` runs on SQLite in-memory. `conftest.py` provides:
 
@@ -207,7 +215,9 @@ production does not merely miss bugs; it certifies them.
   request (even one client) to the next. `conftest.py` pops `g._login_user` after each
   request; without it, "the other browser is logged out" cannot fail.
 - **Flask-Limiter reads `RATELIMIT_ENABLED` once, in `init_app`.** Setting it in
-  `app.config` inside a test does nothing — check decorator arguments instead.
+  `app.config` inside a test does nothing. The media regression test uses a separate
+  process and an app with the limiter enabled before initialisation; a control route
+  must actually return 429 before media exemptions can be trusted.
 - **`limiter.limit(...)` counts GET too** unless given `methods=['POST']`; a limit on a
   form page then locks people out for viewing it.
 
@@ -244,6 +254,20 @@ production does not merely miss bugs; it certifies them.
 - **Raw `text()` rows in templates:** psycopg2 returns `datetime`, sqlite3 returns `str`; use the
   `when` filter, never `.strftime()`. Column names come from the SELECT, not from a model —
   `alert.created_at` on a row with `timestamp` broke the live admin dashboard.
+
+### Production and deployment
+
+- Deploy with `deploy/deploy.sh` (dry run) or `deploy/deploy.sh --go`; apply SQL
+  migrations separately first. The allow list removes excluded server files;
+  protect rules preserve the server `.env`, venv, uploads and bytecode caches.
+- Admin credentials are private. `flask init-admin` uses `ADMIN_PASSWORD` if set,
+  otherwise generates and prints a passphrase once; there is no built-in default.
+- `two_factor_secret` is still plaintext in the database. Encryption requires a
+  separate key and a data migration; do not couple it to `SECRET_KEY` rotation.
+- Manual IP blocks are wired in; canary tokens and honeypots are reference code
+  without callers. Do not describe them as active protection.
+- See `docs/REVIEW-2026-11.md` for coverage and open follow-ups. SQLite tests do
+  not prove PostgreSQL timezone or concurrent transaction behaviour.
 
 ### Infrastructure
 
