@@ -256,6 +256,9 @@ Measured on 2026-11-07: **627 tests pass**, statement coverage **71.35% overall*
 **71.02% for `app/routes/`** (SQLite suite; no branch coverage). The 70% route target
 is reached and enforced in CI; see the [coverage breakdown](docs/REVIEW-2026-11.md#messung-zum-abschluss-von-schritt-7-2026-11-07).
 
+Implementation commit `2ec9235` is live as of 2026-11-07; authenticated notification, account
+and inbox pages passed HTTPS checks. See the [deployment verification](docs/REVIEW-2026-11.md#live-deploy-von-schritt-7-2026-11-07).
+
 The detailed findings, mutation checks and remaining work are recorded in
 [`docs/REVIEW-2026-11.md`](docs/REVIEW-2026-11.md) and the
 [round 3 summary](docs/BUGFIX-PLAN.md#dritte-runde-november-2026--abschluss).

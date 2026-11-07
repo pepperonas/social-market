@@ -6,9 +6,8 @@
 
 ## Aktueller Stand (2026-11-07)
 
-Runden 1 und 2 sind abgeschlossen. Runde 3: Schritte 1–6 sind implementiert und laut
-Live-Prüfung aus Schritt 6 deployt (bis `c489080`); Schritt 7 dokumentiert Abschluss und
-Coverage einschließlich erreichtem Routenziel. Die Details und offenen Folgeschritte stehen im
+Runden 1 und 2 sind abgeschlossen. Runde 3: Schritte 1–7 sind implementiert und live
+deployt (Schritt 7: `2ec9235`, 2026-11-07); das Routenziel ist erreicht. Die Details und offenen Folgeschritte stehen im
 [Abschluss von Runde 3](#dritte-runde-november-2026--abschluss) und im
 [November-Review](REVIEW-2026-11.md). Die folgenden August-Befunde bleiben als historische
 Ausgangslage erhalten; sie beschreiben nicht den heutigen Betriebszustand.
@@ -390,7 +389,8 @@ nicht als Mittelwert der Dateiprozente. Keine Branch-Coverage gemessen.
 **Das Routenziel ≥ 70 % ist erreicht und wird jetzt im CI-Test-Job erzwungen.** Die Messung
 bleibt eine Aussage über ausgeführte Zeilen: SQLite ersetzt keinen echten parallelen Ablauf
 gegen PostgreSQL und keinen Docker-Worker-Test. Die Live-Nachweise aus Schritt 6 sind
-übernommene Nachweise; die Korrekturen aus Schritt 7 sind mit diesem Commit noch nicht deployt.
+übernommene Nachweise; Schritt 7 (`2ec9235`) wurde anschließend am 2026-11-07 live deployt
+(siehe Live-Nachweise unten).
 
 
 ### Verhaltenstests und dabei gefundene Fehler
@@ -426,3 +426,32 @@ inaktive Nutzer im Verzeichnis, fremde Produkte im Export, falscher Passwort-Sco
 umgangene Löschbestätigung, fehlende Historien-Eigentümerfilter, fehlende Fehler-Rollbacks sowie
 Datetime-Annahmen in Sicherheits- und Alarmtemplate. Parameterisierte Fälle wurden jeweils
 mitgeprüft. Die unveränderte Implementierung ist anschließend wieder grün; flake8 und bandit sauber.
+
+
+### Live-Deploy von Schritt 7 (2026-11-07)
+
+Implementierungsstand **`2ec9235`** mit `deploy/deploy.sh` zunächst als Trockenlauf geprüft,
+danach mit `--go` nach `/opt/socialmarket` ausgerollt. Keine neue Datenmigration nötig.
+Dienst und beide Job-Timer sind aktiv, `APP_CONFIG=production` wurde an der laufenden
+Gunicorn-Umgebung bestätigt. SHA-256 der sechs betroffenen Laufzeitdateien stimmt mit dem
+Repository überein (Nachrichtenmodell, Konto-/Nachrichten-/Benachrichtigungsrouten und
+Sicherheits-/Alarmtemplate).
+
+Live über HTTPS mit einem dokumentierten Käufer-Demokonto geprüft:
+
+- Login mit CSRF-Token und Referer derselben Herkunft → 302 zum Storefront;
+  `Referrer-Policy: same-origin` bestätigt.
+- Storefront, `/notifications/`, `/notifications/unread`, beide Benachrichtigungs-APIs,
+  `/account/security`, `/account/sessions`, `/account/alerts` und `/messages/` → 200.
+- Logout per GET → 405.
+- Das geprüfte Demokonto hatte keinen bestehenden Thread. Das Öffnen eines gefüllten
+  Threads wurde hier nicht live geprüft; dafür besteht der lokale HTTP-Regressionstest.
+- Seit Beginn des Deploys keine 5xx im Gunicorn-Zugriffslog (27 Requests zum Prüfzeitpunkt).
+  Nach dem abschließenden Neustart keine Tracebacks oder Dateilogging-Warnungen im Journal.
+- `tests/`, `docs/`, `LOGIN_CREDENTIALS.md` und `.env.bak` fehlen weiterhin im Deployment.
+
+**Betriebsfund:** `/var/log/socialmarket/app.log` gehörte `root:root` (0644), deshalb konnte
+der Dienst nicht hineinschreiben und fiel auf stderr/Journal zurück. Eigentümer auf
+`socialmarket:socialmarket`, Modus auf 0640 korrigiert und den Dienst neu gestartet.
+Letzter Neustart: **2026-11-07 02:13:47 CET**. Die Hinweise dazu stehen jetzt in
+[`DEPLOY.md`](../DEPLOY.md). Keine Änderung an `.env`, Schlüsseln oder VPS-Sicherungen.

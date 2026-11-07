@@ -41,6 +41,15 @@ The service runs with `APP_CONFIG=production` (since November 2026): CSRF referr
 and it refuses to start if `SECRET_KEY`, `PASSWORD_PEPPER` or `DB_ENCRYPTION_KEY` fall back to
 the development values in `config.py`.
 
+## Latest verified deployment
+
+On **2026-11-07**, implementation commit **`2ec9235`** was deployed with the script above;
+no database migration was needed. Last restart: 02:13:47 CET. The web service and both job
+timers are active, and `APP_CONFIG=production` remains set. Login and authenticated
+notification, account and inbox pages passed HTTPS checks; the affected runtime files match
+the repository by SHA-256. See the [step 7 live checks](docs/REVIEW-2026-11.md#live-deploy-von-schritt-7-2026-11-07)
+for the scope and limits of verification.
+
 ## Background jobs
 
 The unit files are versioned in [`deploy/systemd/`](deploy/systemd/) (the web service too).
@@ -67,6 +76,13 @@ ssh root@<host> 'systemctl list-timers "socialmarket-*"; journalctl -u socialmar
 schedule. Until November 2026 no job ran here at all (see `docs/REVIEW-2026-11.md`, K2).
 
 ## Gotchas
+
+- **The application log must be writable by the service user.** During the step 7 deploy,
+  `/var/log/socialmarket/app.log` was owned by `root:root` (0644), so Flask fell back to
+  stderr/journald. Fixed with `chown socialmarket:socialmarket /var/log/socialmarket/app.log`
+  and `chmod 640 /var/log/socialmarket/app.log`, then a restart; no warning remained.
+  Run maintenance CLI commands as the service user so a newly created log file has the
+  right owner. Keep `/var/log/socialmarket` in the unit's `ReadWritePaths`.
 
 - **nginx 1.24 does not accept `http2 on;`** — that directive needs 1.25+. Use
   `listen 443 ssl http2;`.
