@@ -193,7 +193,7 @@
                             <tbody>
                                 {% for login in recent_logins %}
                                 <tr>
-                                    <td>{{ login.timestamp.strftime('%Y-%m-%d %H:%M') }}</td>
+                                    <td>{{ login.timestamp|when }}</td>
                                     <td>
                                         {% if 'success' in login.action %}
                                         <span class="badge bg-success">{{ login.action }}</span>

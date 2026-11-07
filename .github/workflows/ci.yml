@@ -98,6 +98,9 @@ jobs:
         run: |
           pytest tests/ -v --tb=short --cov=app --cov-report=xml --cov-report=term-missing
 
+      - name: Enforce route coverage target
+        run: python -m coverage report --include='app/routes/*' --precision=2 --fail-under=70
+
       - name: Upload coverage report
         if: always()
         uses: actions/upload-artifact@v7

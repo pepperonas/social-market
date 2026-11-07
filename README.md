@@ -8,8 +8,8 @@
 
 <!-- Build & quality -->
 [![CI](https://github.com/pepperonas/social-market/actions/workflows/ci.yml/badge.svg)](https://github.com/pepperonas/social-market/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-605%20passing-brightgreen)](tests/)
-[![Coverage](https://img.shields.io/badge/coverage-67%25-yellow)](tests/)
+[![Tests](https://img.shields.io/badge/tests-627%20passing-brightgreen)](tests/)
+[![Coverage](https://img.shields.io/badge/coverage-71%25-yellow)](tests/)
 [![Lint](https://img.shields.io/badge/flake8-0%20issues-brightgreen)](.flake8)
 [![Bandit](https://img.shields.io/badge/bandit-clean-brightgreen)](.github/workflows/ci.yml)
 [![pip-audit](https://img.shields.io/badge/pip--audit-enforced-brightgreen)](.github/workflows/ci.yml)
@@ -239,7 +239,7 @@ involved to cheat. Every one of those is a place where defence is *interesting*.
 | | |
 |---|---|
 | 📖 **Read the controls** | Argon2id + pepper, nonce-based CSP, TOTP with replay protection, encrypted shipping data, an escrow state machine, audit logging via stored procedures |
-| 🧪 **Read the tests** | 605 of them. They are written as *arguments*, not assertions — each says why a control matters and what breaks without it |
+| 🧪 **Read the tests** | 627 of them. They are written as *arguments*, not assertions — each says why a control matters and what breaks without it |
 | 🔍 **Read the audit** | [`docs/BUGFIX-PLAN.md`](docs/BUGFIX-PLAN.md) is a real security review of this codebase, with the real findings, in the order they were found |
 | 🛠 **Break it on purpose** | Revert a fix and watch which test screams. Every fix in the audit has a test that provably catches its regression |
 | 📉 **Study the failures** | The most valuable parts of this repo are the places where it *was wrong* — documented rather than quietly rewritten |
@@ -252,9 +252,9 @@ background jobs run through systemd timers on the live host. Uploaded images are
 their actual paths and rebuilt from pixels to strip metadata, rejecting the upload on failure.
 Production configuration is active, and deployment uses an allow list.
 
-Measured on 2026-11-07: **605 tests pass**, statement coverage **67.41% overall** and
-**62.37% for `app/routes/`** (SQLite suite; no branch coverage). The planned 70% route target
-remains open; see the [coverage breakdown](docs/REVIEW-2026-11.md#messung-zum-doku-abschluss-2026-11-07).
+Measured on 2026-11-07: **627 tests pass**, statement coverage **71.35% overall** and
+**71.02% for `app/routes/`** (SQLite suite; no branch coverage). The 70% route target
+is reached and enforced in CI; see the [coverage breakdown](docs/REVIEW-2026-11.md#messung-zum-abschluss-von-schritt-7-2026-11-07).
 
 The detailed findings, mutation checks and remaining work are recorded in
 [`docs/REVIEW-2026-11.md`](docs/REVIEW-2026-11.md) and the

@@ -23,6 +23,7 @@ message or docstring that says "fixed bug" throws away the teaching value.
 pytest tests/ -v
 pytest tests/test_auth.py -v
 pytest tests/ --cov=app --cov-report=term-missing
+python -m coverage report --include='app/routes/*' --precision=2 --fail-under=70
 
 # Lint (settings live in .flake8 so CI and local cannot drift)
 flake8 app/ tests/
@@ -127,8 +128,8 @@ Audit tables (`auth_log`, `audit_log`, `security_events`, `message_audit`,
 
 ### Tests
 
-Measured 2026-11-07 on `c489080`: 605 passing tests; statement coverage 67.41%
-overall, 62.37% for `app/routes/`. The route target of ≥70% remains open; see
+Measured 2026-11-07 after step 7: 627 passing tests; statement coverage 71.35%
+overall, 71.02% for `app/routes/`. CI enforces the route target of ≥70%; see
 `docs/REVIEW-2026-11.md` for the breakdown and follow-ups. Coverage is measured
 without branch tracking; do not treat it as proof of PostgreSQL concurrency.
 

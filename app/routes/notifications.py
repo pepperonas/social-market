@@ -4,6 +4,8 @@ Notifications Routes
 Purpose: User notification management
 """
 
+from types import SimpleNamespace
+
 from flask import Blueprint, render_template, redirect, url_for, flash, jsonify, request
 from flask_login import login_required, current_user
 
@@ -31,7 +33,8 @@ def index():
 
     return render_template('notifications/index.html',
                          notifications=notifications,
-                         unread_count=unread_count)
+                         unread_count=unread_count,
+                         filter=None)
 
 
 @notifications_bp.route('/unread')
@@ -42,7 +45,8 @@ def unread():
     unread_count = len(notifications)
 
     return render_template('notifications/index.html',
-                         notifications={'items': notifications, 'pages': 1, 'page': 1},
+                         # A dict's .items resolves to its method in Jinja, not the list.
+                         notifications=SimpleNamespace(items=notifications, pages=1, page=1),
                          unread_count=unread_count,
                          filter='unread')
 

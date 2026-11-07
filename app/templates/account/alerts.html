@@ -28,7 +28,7 @@
                             <tbody>
                                 {% for alert in alerts %}
                                 <tr>
-                                    <td>{{ alert.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                                    <td>{{ alert.timestamp|when }}</td>
                                     <td>
                                         <span class="badge bg-danger">{{ alert.action }}</span>
                                     </td>

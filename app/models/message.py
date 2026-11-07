@@ -106,10 +106,12 @@ class MessageThread(db.Model):
         Args:
             user_id: User ID
         """
+        # The dynamic relationship has a default ORDER BY; SQLAlchemy refuses
+        # bulk UPDATE with ordering, so opening a populated thread used to fail.
         self.messages.filter_by(
             recipient_id=user_id,
             is_read=False
-        ).update({'is_read': True, 'read_at': utcnow()})
+        ).order_by(None).update({'is_read': True, 'read_at': utcnow()})
         db.session.commit()
 
     def is_participant(self, user_id):

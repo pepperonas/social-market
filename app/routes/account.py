@@ -118,10 +118,11 @@ def security_settings():
                 ORDER BY timestamp DESC
                 LIMIT 10
             """),
-            {'user_id': current_user.id}
+            {'user_id': str(current_user.id)}
         )
         recent_logins = result.fetchall()
     except Exception as e:
+        db.session.rollback()
         current_app.logger.error(f'Failed to fetch login history: {e}')
 
     # Calculate password age
@@ -153,10 +154,11 @@ def active_sessions():
                 ORDER BY timestamp DESC
                 LIMIT 20
             """),
-            {'user_id': current_user.id}
+            {'user_id': str(current_user.id)}
         )
         sessions_data = result.fetchall()
     except Exception as e:
+        db.session.rollback()
         current_app.logger.error(f'Failed to fetch sessions: {e}')
 
     return render_template('account/sessions.html', sessions=sessions_data)
@@ -208,10 +210,11 @@ def login_alerts():
                 ORDER BY timestamp DESC
                 LIMIT 50
             """),
-            {'user_id': current_user.id}
+            {'user_id': str(current_user.id)}
         )
         alerts = result.fetchall()
     except Exception as e:
+        db.session.rollback()
         current_app.logger.error(f'Failed to fetch alerts: {e}')
 
     return render_template('account/alerts.html', alerts=alerts)

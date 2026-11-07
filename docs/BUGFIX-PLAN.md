@@ -8,7 +8,7 @@
 
 Runden 1 und 2 sind abgeschlossen. Runde 3: Schritte 1–6 sind implementiert und laut
 Live-Prüfung aus Schritt 6 deployt (bis `c489080`); Schritt 7 dokumentiert Abschluss und
-Coverage. Die Details und offenen Folgeschritte stehen im
+Coverage einschließlich erreichtem Routenziel. Die Details und offenen Folgeschritte stehen im
 [Abschluss von Runde 3](#dritte-runde-november-2026--abschluss) und im
 [November-Review](REVIEW-2026-11.md). Die folgenden August-Befunde bleiben als historische
 Ausgangslage erhalten; sie beschreiben nicht den heutigen Betriebszustand.
@@ -331,7 +331,7 @@ werden konnte und kein Hintergrundjob lief.
 | 4 | Jobs als CLI mit gemeinsamer Registry; systemd-Timer live, Celery-Anbindung für Docker | `8f972be` |
 | 5 | Admin-Audit, echte PGP-Payload-Prüfung, CSP-Reports, Audit-Abfragen und manuelle IP-Sperren | `fa1d83a`, `d951a19`, `b430d2d` |
 | 6 | IDs/Fehlertexte/Logout/Header gehärtet, Bildauslieferung und Metadatenbereinigung repariert, Produktionskonfiguration und Deploy-Positivliste | `e9696f5`, `1526b00`, `c489080` |
-| 7 | README, CLAUDE und beide Audit-Dokumente abgeglichen; Tests und Coverage neu gemessen | dieser Doku-Abschluss |
+| 7 | Doku abgeglichen, 22 HTTP-Tests und Fehlerkorrekturen; Routen 71,02 %, CI-Schwelle 70 % | dieser Doku-Abschluss |
 
 ### Live-Nachweise aus Schritt 6
 
@@ -357,38 +357,72 @@ Entwicklungs-`.env.bak` vom Server.
 - **Canary-Tokens/Honeypots:** bewusst unverdrahtetes Referenzmaterial, keine aktive Schutzmaßnahme.
 - **Historie:** das rotierte Redis-Passwort bleibt im öffentlichen Git-Verlauf; kein History-Rewrite.
 
-### Messung zum Doku-Abschluss (2026-11-07)
 
-Auf Implementierungsstand `c489080`, lokal mit Python 3.14.7 und SQLite in-memory:
+### Messung zum Abschluss von Schritt 7 (2026-11-07)
+
+Auf dem Arbeitsstand nach `892fa71`, einschließlich der unten beschriebenen Fehlerkorrekturen,
+lokal mit Python 3.14.7 und SQLite in-memory:
 
 ```bash
 venv/bin/python -m pytest tests/ --cov=app --cov-report=term \
-  --cov-report=json:/tmp/social-market-coverage.json -q
+  --cov-report=json:/tmp/social-market-step7-final.json -q
+venv/bin/python -m coverage report --include='app/routes/*' --precision=2 --fail-under=70
 ```
 
-**605 Tests bestanden**, 69,85 s, keine Warnungen im Testbericht.
-Zeilen-Coverage: **67,41 % gesamt** (3.291 / 4.882 ausführbare Zeilen; nach Runde 2: 49 %).
-Für `app/routes/`: **62,37 %** (1.293 / 2.073), gewichtet nach ausführbaren Zeilen,
+**627 Tests bestanden**, 80,99 s, keine Warnungen im Testbericht.
+Zeilen-Coverage: **71,35 % gesamt** (3,486 / 4,886 ausführbare Zeilen;
+nach Runde 2: 49 %, vor den neuen Verhaltenstests: 67,41 %).
+Für `app/routes/`: **71,02 %** (1,475 / 2,077), gewichtet nach ausführbaren Zeilen,
 nicht als Mittelwert der Dateiprozente. Keine Branch-Coverage gemessen.
 
 | Routenmodul | Zeilen-Coverage |
 |---|---:|
+| `account.py` | 87,96 % |
+| `admin.py` | 61,24 % |
 | `auth.py` | 72,97 % |
-| `marketplace.py` | 71,43 % |
 | `buyer.py` | 66,50 % |
 | `cart.py` | 66,10 % |
+| `marketplace.py` | 71,43 % |
+| `messages.py` | 78,65 % |
+| `notifications.py` | 95,65 % |
 | `vendor.py` | 63,41 % |
-| `admin.py` | 61,24 % |
-| `messages.py` | 46,35 % |
-| `account.py` | 45,21 % |
-| `notifications.py` | 42,65 % |
 
-**Das Routenziel ≥ 70 % ist noch nicht erreicht.** Dafür fehlen bei unverändertem Umfang
-mindestens 159 zusätzlich ausgeführte Routen-Zeilen. Als eigener Folgeschritt sind sinnvolle
-HTTP-Tests vor allem für Kontoeinstellungen, Nachrichten und Benachrichtigungen nötig;
-keine bloßen Aufrufe zur Erhöhung der Zahl. Auch `pgp_service.py` liegt erst bei 25 %.
-`tasks.py` ist jetzt zu 100 % gedeckt; das ersetzt keinen echten Docker-Worker-Test.
+**Das Routenziel ≥ 70 % ist erreicht und wird jetzt im CI-Test-Job erzwungen.** Die Messung
+bleibt eine Aussage über ausgeführte Zeilen: SQLite ersetzt keinen echten parallelen Ablauf
+gegen PostgreSQL und keinen Docker-Worker-Test. Die Live-Nachweise aus Schritt 6 sind
+übernommene Nachweise; die Korrekturen aus Schritt 7 sind mit diesem Commit noch nicht deployt.
 
-Die Suite spiegelt PostgreSQL auf SQLite und prüft keinen echten parallelen Ablauf gegen
-PostgreSQL. Die Live-Nachweise aus Schritt 6 und die damaligen Mutationsproben werden hier
-als bestehende Nachweise übernommen, nicht als im Doku-Abschluss erneut ausgeführt dargestellt.
+
+### Verhaltenstests und dabei gefundene Fehler
+
+22 neue HTTP-Tests in [`tests/test_route_workflows.py`](../tests/test_route_workflows.py)
+prüfen Benachrichtigungslisten/APIs, Eigentümergrenzen, Gelesen-Status und Löschung;
+Nachrichtenlesen, Antwortverschlüsselung und Benachrichtigung, Empfängerprüfung beim Entschlüsseln,
+beidseitige Löschung, Antwortvalidierung und Admin-Verzeichnis; außerdem Datenexport,
+Passwort-Feedback, bestätigte Kontoanonymisierung sowie eigene Sitzungs-/Alarmhistorie.
+GPG ist in diesen Workflowtests nur an der Service-Grenze ersetzt; die bisherigen echten
+PGP-Paketprüfungen bleiben bestehen.
+
+Dabei wurden weitere Fehler sichtbar und behoben:
+
+- Die Benachrichtigungsübersicht übergab kein `filter` (Fehler unter `StrictUndefined`).
+  Der Ungelesen-Tab übergab ein Dictionary; Jinja löste `.items` als Methode auf und
+  konnte die Liste nicht rendern. Jetzt expliziter Filter und ein Objekt mit `items`-Liste.
+- Öffnen eines Nachrichten-Threads scheiterte beim Markieren als gelesen:
+  die dynamische Beziehung sortiert standardmäßig, SQLAlchemy lehnt das Bulk-UPDATE mit
+  ORDER BY ab. `order_by(None)` entfernt die Sortierung für das UPDATE.
+- Drei Konto-Historien banden UUID-Objekte in Roh-SQL, was SQLite nicht unterstützt.
+  Fehler wurden geschluckt und die Seiten sahen leer aus. Jetzt String-Bindung und Rollback
+  vor dem Rendern bei einem Abfragefehler; die neuen Tests prüfen sichtbare eigene Ereignisse
+  und den Ausschluss fremder Ereignisse statt bloßer HTTP-200-Antworten.
+- Die nun tatsächlich gefüllte Sicherheits-/Alarmhistorie rief `.strftime()` auf
+  SQL-Zeichenketten auf. Beide Templates nutzen den vorhandenen `when`-Filter.
+
+**20 Mutationsproben erkannt:** fehlender Übersichtsfilter, Dictionary-`items`-Kollision,
+gelesene API-Einträge, entfernte Benachrichtigungs-Eigentümerprüfungen (Lesen und Löschen),
+wirkungsloses Sammellesen, UPDATE mit ORDER BY, entfernte Thread-Zugriffssperre,
+verlorene Entschlüsselungs-Passphrase, falsche gespeicherte Antwortbytes, umgangene Leer-/Längenprüfung,
+inaktive Nutzer im Verzeichnis, fremde Produkte im Export, falscher Passwort-Score,
+umgangene Löschbestätigung, fehlende Historien-Eigentümerfilter, fehlende Fehler-Rollbacks sowie
+Datetime-Annahmen in Sicherheits- und Alarmtemplate. Parameterisierte Fälle wurden jeweils
+mitgeprüft. Die unveränderte Implementierung ist anschließend wieder grün; flake8 und bandit sauber.
