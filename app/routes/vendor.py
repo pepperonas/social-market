@@ -171,14 +171,16 @@ def add_product():
                 is_digital=is_digital,
                 tags=tags if tags else None,
                 is_active=True,
-                is_approved=True,  # Auto-approve for training environment
+                # Waits for an admin (plan 2026-11, B1). This line used to say
+                # is_approved=True, "auto-approve for training environment".
+                is_approved=False,
                 created_at=utcnow()
             )
 
             db.session.add(product)
             db.session.commit()
 
-            flash(f'Product "{title}" created successfully!', 'success')
+            flash(f'Product "{title}" submitted -- it goes live once an admin has approved it.', 'success')
             return redirect(url_for('vendor.products'))
 
         except ValueError as e:
@@ -334,6 +336,7 @@ def edit_product(product_id):
             # left behind on the object.
             price = Product.parse_price(request.form.get('price', ''))
             quantity = Product.parse_stock(request.form.get('quantity', '0'))
+            before = {f: getattr(product, f) for f in Product.REVIEWED_FIELDS}
 
             product.title = request.form.get('title', '').strip()
             product.description = request.form.get('description', '').strip()
@@ -353,8 +356,21 @@ def edit_product(product_id):
                 flash('Description must be at least 10 characters', 'danger')
                 return redirect(url_for('vendor.edit_product', product_id=product_id))
 
+            # B1: what the admin approved is the content. A content change, or
+            # any edit of a rejected listing, goes back to the queue. A content
+            # change resubmits even when this request read `pending`: an admin
+            # may have approved in between, and the UPDATE has to say so.
+            content_changed = any(str(getattr(product, f) or '') != str(before[f] or '')
+                                  for f in Product.REVIEWED_FIELDS)
+            resubmitted = content_changed or product.moderation_state == 'rejected'
+            if resubmitted:
+                product.submit_for_review()
+
             db.session.commit()
-            flash(f'Product "{product.title}" updated successfully!', 'success')
+            if resubmitted:
+                flash(f'Product "{product.title}" updated and sent back to review.', 'info')
+            else:
+                flash(f'Product "{product.title}" updated successfully!', 'success')
             return redirect(url_for('vendor.products'))
 
         except ValueError as e:
@@ -458,9 +474,11 @@ def upload_product_image(product_id):
         )
 
         db.session.add(image)
+        # B1: an approved listing with a new picture is not what the admin approved.
+        product.submit_for_review()
         db.session.commit()
 
-        flash('Image uploaded successfully (metadata stripped for privacy)', 'success')
+        flash('Image uploaded (metadata stripped); the product goes back to review.', 'success')
 
     except Exception:
         db.session.rollback()
@@ -499,11 +517,13 @@ def delete_product_image(product_id, image_id):
         image_service = get_image_service()
         image_service.delete_image(image.filepath)
 
-        # Delete record
+        # Delete record. Removing a picture changes what buyers see first, so
+        # it goes back to review like any other content change (B1).
         db.session.delete(image)
+        product.submit_for_review()
         db.session.commit()
 
-        flash('Image deleted', 'success')
+        flash('Image deleted; the product goes back to review.', 'success')
 
     except Exception:
         db.session.rollback()

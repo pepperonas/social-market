@@ -323,16 +323,16 @@ def leave_review(order_id):
                 rating=rating,
                 title=title if title else None,
                 review_text=review_text if review_text else None,
-                is_approved=True  # Auto-approve in training environment
+                # Waits for an admin (plan 2026-11, B2); was auto-approved.
+                # The product rating only counts approved reviews, so it is
+                # recalculated when the admin decides, not here.
+                is_approved=False
             )
 
             db.session.add(review)
             db.session.commit()
 
-            # Update product rating
-            order.product.update_rating()
-
-            flash('Thank you for your review!', 'success')
+            flash('Thank you! Your review appears once an admin has approved it.', 'success')
             return redirect(url_for('buyer.order_detail', order_id=order_id))
 
         except Exception:

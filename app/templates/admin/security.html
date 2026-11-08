@@ -110,6 +110,36 @@
                     <div class="col-md-2"><input type="number" name="hours" class="form-control form-control-sm" value="24" min="1" max="720" title="Hours"></div>
                     <div class="col-md-2"><button type="submit" class="btn btn-sm btn-outline-danger w-100">Block</button></div>
                 </form>
+                {# B7: what the hourly security scan flagged. Offered, never applied -- an admin decides. #}
+                <div id="block-suggestions" class="mb-3">
+                    <h6 class="mb-2">Suggested by the security scan <small class="text-muted">(last 24 h, never blocked automatically)</small></h6>
+                    {% if block_suggestions %}
+                    <table class="table table-sm align-middle mb-0">
+                        <thead><tr><th>Address</th><th>Findings</th><th>Last seen (UTC)</th><th></th></tr></thead>
+                        <tbody>
+                        {% for s in block_suggestions %}
+                            <tr>
+                                <td><code>{{ s.ip }}</code></td>
+                                <td><small>{{ s.findings }} &times; failed-login burst</small></td>
+                                <td><small>{{ s.last_seen|when }}</small></td>
+                                <td>
+                                    <form method="POST" action="{{ url_for('admin.block_ip') }}" class="d-flex gap-1">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                        <input type="hidden" name="ip_address" value="{{ s.ip }}">
+                                        <input type="hidden" name="reason" value="security-scan: {{ s.findings }} failed-login burst(s) in 24 h">
+                                        <input type="number" name="hours" class="form-control form-control-sm" value="24" min="1" max="720" title="Hours" style="max-width: 5rem;">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger">Block</button>
+                                    </form>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                    {% else %}
+                    <p class="text-muted small mb-0">No suggestions.</p>
+                    {% endif %}
+                </div>
+                <div id="blocked-list">
                 {% if blocked_ips %}
                 <table class="table table-sm align-middle mb-0">
                     <thead><tr><th>Address</th><th>Reason</th><th>By</th><th>Until (UTC)</th><th></th></tr></thead>
@@ -134,6 +164,7 @@
                 {% else %}
                 <p class="text-muted mb-0">No addresses are blocked.</p>
                 {% endif %}
+                </div>
             </div>
         </div>
     </div>

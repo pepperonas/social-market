@@ -4,7 +4,9 @@ Admin Routes - Placeholder
 Purpose: Admin dashboard and moderation
 """
 
-from flask import Blueprint, render_template, redirect, url_for, flash, request, current_app
+import hmac
+
+from flask import Blueprint, render_template, redirect, url_for, flash, request, current_app, abort
 from flask_login import login_required, current_user
 from functools import wraps
 from datetime import datetime, timedelta, timezone
@@ -100,6 +102,7 @@ def dashboard():
     # `disputed` stayed there with its escrow frozen for good.
     open_disputes = Order.query.filter_by(status='disputed') \
         .order_by(Order.dispute_opened_at.asc()).all()
+    pending_products, pending_reviews = _pending_moderation()
 
     return render_template(
         'admin/dashboard.html',
@@ -107,6 +110,7 @@ def dashboard():
         recent_users=recent_users,
         security_alerts=security_alerts,
         open_disputes=open_disputes,
+        pending_moderation=len(pending_products) + len(pending_reviews),
     )
 
 
@@ -137,8 +141,11 @@ def resolve_dispute(order_id):
         flash('This order is not in dispute (any more)', 'warning')
         return redirect(url_for('admin.dashboard'))
 
+    # B5: only a refund can put goods back on the shelf; the admin decides.
+    restock = decision == 'refund' and request.form.get('restock') == 'on'
+
     try:
-        order.transition_to(target)
+        order.transition_to(target, restock=restock)
         if notes:
             order.admin_notes = notes
         db.session.commit()
@@ -153,13 +160,137 @@ def resolve_dispute(order_id):
         target_type='order',
         target_id=order.id,
         before_state={'status': 'disputed'},
-        after_state={'status': target.value},
+        after_state={'status': target.value, 'restock': restock},
         reason=notes or None,
     )
 
     flash(f'Dispute resolved: {"refunded to buyer" if decision == "refund" else "released to vendor"}',
           'success')
     return redirect(url_for('admin.dashboard'))
+
+
+def _pending_moderation():
+    """What waits for a decision: products and reviews, oldest first (plan 2026-11, B1/B2)."""
+    from app.models.product import Product, ProductReview
+    products = Product.query.filter(
+        Product.is_approved == False, Product.rejection_reason.is_(None)  # noqa: E712
+    ).order_by(Product.created_at.asc()).all()
+    reviews = ProductReview.query.filter(
+        ProductReview.is_approved == False, ProductReview.is_flagged == False  # noqa: E712
+    ).order_by(ProductReview.created_at.asc()).all()
+    return products, reviews
+
+
+@admin_bp.route('/moderation')
+@login_required
+@admin_required
+def moderation():
+    """
+    The approval queue. Before plan 2026-11 (B1/B2) there was none: the vendor
+    form set products.is_approved=True and the review form did the same for
+    reviews, so the "admin approval" the columns stood for never happened.
+    """
+    products, reviews = _pending_moderation()
+    return render_template('admin/moderation.html', products=products, reviews=reviews)
+
+
+def _notify(user_id, title, message, action_url):
+    """Tell the author what was decided. Notification.create commits, so call after the decision is committed."""
+    from app.models.notification import Notification, NotificationType
+    try:
+        Notification.create(user_id=user_id, notification_type=NotificationType.SYSTEM,
+                            title=title, message=message, action_url=action_url,
+                            action_text='View')
+    except Exception as exc:
+        db.session.rollback()
+        current_app.logger.error('Could not send moderation notification: %s', exc)
+
+
+@admin_bp.route('/product/<uuid:product_id>/moderate', methods=['POST'])
+@login_required
+@admin_required
+def moderate_product(product_id):
+    """Approve or reject a product listing. A rejection needs a reason; both are audited."""
+    from app.models.product import Product
+    from app.services.audit_service import log_admin_action
+
+    # Lock the row: a vendor edit that arrives now waits until this decision is
+    # committed, and then sends the product back to review (submit_for_review).
+    product = db.session.query(Product).filter(Product.id == product_id) \
+        .populate_existing().with_for_update().one_or_none()
+    if product is None:
+        abort(404)
+    decision = request.form.get('decision', '')
+    reason = request.form.get('reason', '').strip()
+    before = product.moderation_state
+
+    try:
+        # The decision is about what the admin SAW: the form carries the
+        # fingerprint of the content it rendered. Found by the security review
+        # of the first version, which approved whatever the row held at click time.
+        if before != 'pending':
+            raise ValueError('This product is not waiting for a decision (any more)')
+        if not hmac.compare_digest(request.form.get('fingerprint', ''), product.content_fingerprint()):
+            raise ValueError('The product changed since you opened the queue -- review it again')
+        if decision == 'approve':
+            product.approve(current_user)
+        elif decision == 'reject':
+            product.reject(current_user, reason)
+        else:
+            raise ValueError('Choose approve or reject')
+        db.session.commit()
+    except ValueError as exc:
+        db.session.rollback()
+        flash(str(exc), 'danger')
+        return redirect(url_for('admin.moderation'))
+
+    log_admin_action(admin_user_id=current_user.id, action=f'product_{decision}',
+                     target_type='product', target_id=product.id,
+                     before_state={'moderation': before},
+                     after_state={'moderation': product.moderation_state},
+                     reason=reason or None)
+    if decision == 'approve':
+        _notify(product.vendor_id, 'Product approved',
+                f'"{product.title}" is now live.',
+                url_for('marketplace.product_detail', product_id=product.id))
+    else:
+        _notify(product.vendor_id, 'Product rejected',
+                f'"{product.title}" was rejected: {product.rejection_reason}',
+                url_for('vendor.edit_product', product_id=product.id))
+    flash(f'Product {"approved" if decision == "approve" else "rejected"}', 'success')
+    return redirect(url_for('admin.moderation'))
+
+
+@admin_bp.route('/review/<uuid:review_id>/moderate', methods=['POST'])
+@login_required
+@admin_required
+def moderate_review(review_id):
+    """Publish or reject a review. Only published reviews count towards the product rating."""
+    from app.models.product import ProductReview
+    from app.services.audit_service import log_admin_action
+
+    review = db.get_or_404(ProductReview, review_id)
+    decision = request.form.get('decision', '')
+    reason = request.form.get('reason', '').strip()[:2000]
+    before = review.moderation_state
+
+    if decision == 'approve':
+        review.approve()
+    elif decision == 'reject':
+        review.reject()
+    else:
+        flash('Choose approve or reject', 'danger')
+        return redirect(url_for('admin.moderation'))
+    review.product.update_rating()
+    db.session.commit()
+
+    log_admin_action(admin_user_id=current_user.id, action=f'review_{decision}',
+                     target_type='review', target_id=review.id,
+                     before_state={'moderation': before},
+                     after_state={'moderation': review.moderation_state},
+                     reason=reason or None)
+    flash(f'Review {"published" if decision == "approve" else "rejected"}', 'success')
+    return redirect(url_for('admin.moderation'))
 
 
 @admin_bp.route('/users')
@@ -292,12 +423,13 @@ def security():
         db.session.rollback()
         current_app.logger.warning('Could not load failed logins: %s', exc)
 
-    from app.services.security_service import SecurityService
+    from app.services.security_service import SecurityService, block_suggestions
     blocked_ips = SecurityService.get_blocked_ips()
 
     return render_template('admin/security.html', stats=stats, health=health,
                            security_events=security_events, failed_logins=failed_logins,
-                           blocked_ips=blocked_ips, own_ip=request.remote_addr)
+                           blocked_ips=blocked_ips, own_ip=request.remote_addr,
+                           block_suggestions=block_suggestions(request.remote_addr))
 
 
 @admin_bp.route('/ip/block', methods=['POST'])

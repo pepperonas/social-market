@@ -44,6 +44,12 @@
     </div>
 </div>
 
+{# B1/B2: products and reviews wait here for a person, not for the vendor's own form. #}
+<div class="alert alert-{{ 'warning' if pending_moderation else 'secondary' }} d-flex justify-content-between align-items-center">
+    <span><strong>{{ pending_moderation }}</strong> product(s) and review(s) awaiting moderation</span>
+    <a href="{{ url_for('admin.moderation') }}" class="btn btn-sm btn-outline-dark">Open queue</a>
+</div>
+
 {# Open disputes -- before round 3 nothing could resolve one; the escrow stayed frozen. #}
 <div class="row mb-4">
     <div class="col-md-12">
@@ -71,6 +77,11 @@
                                     <form method="POST" action="{{ url_for('admin.resolve_dispute', order_id=order.id) }}" class="d-flex gap-1 flex-wrap">
                                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                                         <input type="text" name="notes" class="form-control form-control-sm" placeholder="Notes" maxlength="2000" style="max-width: 12rem;">
+                                        {# B5: a refund asks whether the units go back. Pre-checked only when the order was never shipped. #}
+                                        <div class="form-check form-check-inline small mb-0">
+                                            <input class="form-check-input" type="checkbox" name="restock" id="restock-{{ order.id }}"{% if not order.shipped_at %} checked{% endif %}>
+                                            <label class="form-check-label" for="restock-{{ order.id }}">On refund: return {{ order.quantity }} to stock{% if order.shipped_at %} (was shipped){% endif %}</label>
+                                        </div>
                                         <button type="submit" name="decision" value="refund" class="btn btn-sm btn-outline-danger">Refund buyer</button>
                                         <button type="submit" name="decision" value="release" class="btn btn-sm btn-outline-success">Release to vendor</button>
                                     </form>

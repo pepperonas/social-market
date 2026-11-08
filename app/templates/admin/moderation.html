@@ -1,0 +1,92 @@
+{# EDUCATIONAL SECURITY TRAINING ENVIRONMENT
+   Moderation queue (plan 2026-11, B1/B2). Before it existed, vendors approved
+   their own listings and buyers their own reviews -- the is_approved columns
+   claimed an admin check that never ran. #}
+{% extends "base.html" %}
+
+{% block title %}Moderation{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-12 d-flex justify-content-between align-items-center">
+        <h2>Moderation</h2>
+        <a href="{{ url_for('admin.dashboard') }}" class="btn btn-sm btn-outline-secondary">Back to dashboard</a>
+    </div>
+</div>
+
+<div class="card mb-4" id="pending-products">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">Products awaiting approval</h5>
+        <span class="badge bg-{{ 'warning' if products else 'secondary' }}">{{ products|length }}</span>
+    </div>
+    <div class="card-body">
+        {% if products %}
+        <div class="table-responsive">
+            <table class="table table-sm align-middle">
+                <thead><tr><th>Product</th><th>Vendor</th><th>Price</th><th>Submitted</th><th>Decision</th></tr></thead>
+                <tbody>
+                {% for product in products %}
+                    <tr>
+                        <td><a href="{{ url_for('marketplace.product_detail', product_id=product.id) }}">{{ product.title }}</a>
+                            <br><small class="text-muted">{{ product.description|truncate(160) }}</small></td>
+                        <td><small>{{ product.vendor.username if product.vendor else '?' }}</small></td>
+                        <td>${{ "%.2f"|format(product.price) }}</td>
+                        <td><small>{{ product.updated_at|when if product.updated_at else product.created_at|when }}</small></td>
+                        <td>
+                            <form method="POST" action="{{ url_for('admin.moderate_product', product_id=product.id) }}" class="d-flex gap-1 flex-wrap">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                {# What this page showed. A decision on changed content is refused. #}
+                                <input type="hidden" name="fingerprint" value="{{ product.content_fingerprint() }}">
+                                <input type="text" name="reason" class="form-control form-control-sm" placeholder="Reason (required to reject)" maxlength="2000" style="max-width: 14rem;">
+                                <button type="submit" name="decision" value="approve" class="btn btn-sm btn-outline-success">Approve</button>
+                                <button type="submit" name="decision" value="reject" class="btn btn-sm btn-outline-danger">Reject</button>
+                            </form>
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="text-muted mb-0">No products waiting.</p>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card" id="pending-reviews">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">Reviews awaiting approval</h5>
+        <span class="badge bg-{{ 'warning' if reviews else 'secondary' }}">{{ reviews|length }}</span>
+    </div>
+    <div class="card-body">
+        {% if reviews %}
+        <div class="table-responsive">
+            <table class="table table-sm align-middle">
+                <thead><tr><th>Review</th><th>Product</th><th>Rating</th><th>Buyer</th><th>Decision</th></tr></thead>
+                <tbody>
+                {% for review in reviews %}
+                    <tr>
+                        <td>{% if review.title %}<strong>{{ review.title }}</strong><br>{% endif %}
+                            <small>{{ review.review_text or '' }}</small></td>
+                        <td><small>{{ review.product.title if review.product else '?' }}</small></td>
+                        <td>{{ review.rating }}/5</td>
+                        <td><small>{{ review.buyer.username if review.buyer else '?' }}</small></td>
+                        <td>
+                            <form method="POST" action="{{ url_for('admin.moderate_review', review_id=review.id) }}" class="d-flex gap-1 flex-wrap">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                <input type="text" name="reason" class="form-control form-control-sm" placeholder="Reason (audit log)" maxlength="2000" style="max-width: 14rem;">
+                                <button type="submit" name="decision" value="approve" class="btn btn-sm btn-outline-success">Publish</button>
+                                <button type="submit" name="decision" value="reject" class="btn btn-sm btn-outline-danger">Reject</button>
+                            </form>
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="text-muted mb-0">No reviews waiting.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

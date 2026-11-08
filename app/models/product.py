@@ -64,7 +64,13 @@ class Product(db.Model):
 
     # Status
     is_active = db.Column(db.Boolean, default=True)
-    is_approved = db.Column(db.Boolean, default=False)  # Admin approval required
+    is_approved = db.Column(db.Boolean, default=False)  # set only by an admin, see approve()
+    # Moderation trail (plan 2026-11, B1). Until then vendor.py wrote
+    # is_approved=True itself, "auto-approve for training environment": the
+    # column promised an admin check that did not exist.
+    rejection_reason = db.Column(db.Text, nullable=True)
+    moderated_at = db.Column(db.DateTime, nullable=True)
+    moderated_by = db.Column(UUID(as_uuid=True), db.ForeignKey('users.id'), nullable=True)
 
     # Search and discovery
     tags = db.Column(db.Text, nullable=True)  # Comma-separated tags
@@ -259,6 +265,69 @@ class Product(db.Model):
         return True, None
 
     # =============================================================================
+    # Moderation (plan 2026-11, B1). None of these commit -- the route does.
+    # =============================================================================
+
+    # Fields whose change sends an approved product back to the queue. Price
+    # and stock are the vendor's business; what the listing SAYS is what the
+    # admin approved. Otherwise "approved" covers whatever the vendor edits in
+    # afterwards -- approve a lamp, then rename it.
+    REVIEWED_FIELDS = ('title', 'description', 'category_id', 'tags')
+
+    @property
+    def moderation_state(self):
+        """'approved', 'rejected' or 'pending'."""
+        if self.is_approved:
+            return 'approved'
+        return 'rejected' if self.rejection_reason else 'pending'
+
+    def approve(self, admin):
+        self.is_approved = True
+        self.rejection_reason = None
+        self.moderated_at = utcnow()
+        self.moderated_by = admin.id
+
+    def reject(self, admin, reason):
+        reason = (reason or '').strip()
+        if not reason:
+            raise ValueError('A rejection needs a reason -- the vendor has to know what to fix')
+        self.is_approved = False
+        self.rejection_reason = reason[:2000]
+        self.moderated_at = utcnow()
+        self.moderated_by = admin.id
+
+    def submit_for_review(self):
+        """
+        Back to the queue: changed content, changed images, or a rejected one edited.
+
+        flag_modified forces is_approved into the UPDATE. SQLAlchemy writes
+        changed columns only: a vendor who loaded the product while it was
+        pending, then saved after an admin had approved it, set False on an
+        object that already held False -- no change, no column in the UPDATE,
+        and the approval survived content the admin never saw.
+        """
+        from sqlalchemy.orm.attributes import flag_modified
+        self.is_approved = False
+        self.rejection_reason = None
+        self.moderated_at = None
+        self.moderated_by = None
+        flag_modified(self, 'is_approved')
+
+    def content_fingerprint(self):
+        """
+        Hash of what an admin judges: the reviewed fields and the images.
+
+        The moderation form carries the fingerprint of what it showed; a
+        decision on a product whose fingerprint has moved is refused. Without
+        it, an edit between opening the queue and clicking "approve" was
+        approved unseen.
+        """
+        import hashlib
+        parts = [str(getattr(self, f) or '') for f in self.REVIEWED_FIELDS]
+        parts += sorted(str(image.filepath) for image in self.images)
+        return hashlib.sha256('\x1f'.join(parts).encode()).hexdigest()
+
+    # =============================================================================
     # Search and Discovery
     # =============================================================================
 
@@ -296,7 +365,6 @@ class Product(db.Model):
 
         self.rating_average = float(result[0]) if result[0] else 0.0
         self.rating_count = result[1] or 0
-        db.session.commit()
 
     # =============================================================================
     # Utility Methods
@@ -410,6 +478,24 @@ class ProductReview(db.Model):
 
     def __repr__(self):
         return f'<ProductReview {self.id}>'
+
+    # Moderation (plan 2026-11, B2). buyer.py wrote is_approved=True itself.
+    # A rejected review keeps is_flagged=True so it leaves the queue and stays
+    # hidden; the reason goes to the admin audit log. None of these commit.
+
+    @property
+    def moderation_state(self):
+        if self.is_approved:
+            return 'approved'
+        return 'rejected' if self.is_flagged else 'pending'
+
+    def approve(self):
+        self.is_approved = True
+        self.is_flagged = False
+
+    def reject(self):
+        self.is_approved = False
+        self.is_flagged = True
 
     def to_dict(self):
         """Convert review to dictionary"""

@@ -277,11 +277,20 @@ class Order(db.Model):
         if self.escrow and self.escrow.status == 'funded':
             self.escrow.mark_disputed()
 
-    def _handle_refunded(self, **kwargs):
-        """Dispute decided for the buyer: the escrow goes back to them."""
+    def _handle_refunded(self, restock=False, **kwargs):
+        """
+        Dispute decided for the buyer: the escrow goes back to them.
+
+        ``restock`` returns the reserved units to the shelf. Whether that is
+        right only the admin can say -- goods that never left the vendor are
+        sellable again, goods that were shipped and lost are not. Until plan
+        2026-11 step 4 (B5) nobody was asked and the stock simply stayed gone.
+        """
         self.dispute_resolved_at = utcnow()
         if self.escrow:
             self.escrow.refund_to_buyer()
+        if restock:
+            self.product.release_stock(self.quantity)
 
     # =============================================================================
     # Shipping Information (Encrypted)

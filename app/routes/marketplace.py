@@ -6,7 +6,7 @@ Purpose: Public marketplace browsing and product discovery
 
 from werkzeug.exceptions import NotFound
 from flask import Blueprint, render_template, request, abort
-from flask_login import login_required
+from flask_login import current_user, login_required
 from sqlalchemy import or_, and_
 
 from app import db, limiter
@@ -165,15 +165,21 @@ def product_detail(product_id):
     """
     product = db.get_or_404(Product, product_id)
 
-    # Check if product is accessible
+    # Public only when active and approved. The vendor and admins may PREVIEW
+    # a listing that is waiting for (or failed) moderation -- the admin has to
+    # see what they approve. Buying stays impossible: can_purchase checks
+    # is_approved itself.
     if not product.is_active or not product.is_approved:
-        abort(404)
+        may_preview = current_user.is_authenticated and (
+            current_user.is_admin() or product.vendor_id == current_user.id)
+        if not may_preview:
+            abort(404)
 
     # Count a view once per session. Every GET used to count, so anyone could
     # reload a page to push a product up the default "most viewed" sort.
     from flask import session
     seen = session.get('viewed_products', [])
-    if str(product.id) not in seen:
+    if str(product.id) not in seen and product.is_approved:  # a preview is not a view
         product.increment_views()
         session['viewed_products'] = (seen + [str(product.id)])[-200:]
 

@@ -141,10 +141,27 @@ class Escrow(db.Model):
     def mark_disputed(self):
         """Freeze a funded escrow while a dispute is open."""
         self._claim([EscrowStatus.FUNDED], EscrowStatus.DISPUTED)
+        self._audit_status_only_change()
 
     def cancel(self):
         """Close an escrow that was never funded (order cancelled while pending)."""
         self._claim([EscrowStatus.PENDING], EscrowStatus.CANCELLED)
+        self._audit_status_only_change()
+
+    def _audit_status_only_change(self):
+        """
+        Write the transaction_audit row the listener cannot write here.
+
+        _claim() moves the status with a conditional UPDATE, which bypasses the
+        ORM: `audit_escrow_changes` (after_update) only fires when a flush finds
+        dirty attributes. fund/release/refund also set timestamps and tx ids, so
+        they flush and get audited. mark_disputed() and cancel() change nothing
+        but the status -- until plan 2026-11 step 4 (B4) freezing an escrow in a
+        dispute left no audit row at all. Same action name as the listener's
+        (`escrow_<status>`); amount and status columns come from the order.
+        """
+        from app.services.audit_service import log_order_event
+        log_order_event(self.order_id, f'escrow_{self.status}')
 
     # =============================================================================
     # Helper Methods

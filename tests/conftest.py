@@ -181,7 +181,11 @@ AUDIT_TABLES_DDL = (
         timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
         admin_user_id VARCHAR(36) NOT NULL, action VARCHAR(100) NOT NULL,
         target_type VARCHAR(50), target_id VARCHAR(36),
-        before_state TEXT, after_state TEXT, reason TEXT
+        before_state TEXT, after_state TEXT, reason TEXT,
+        -- ip_address and session_id were missing here until plan step 4: every
+        -- log_admin_action() INSERT failed on SQLite and was swallowed by its
+        -- except, so no SQLite test could ever see an admin audit row.
+        ip_address VARCHAR(45), session_id VARCHAR(255)
     )
     """,
 )
@@ -265,6 +269,7 @@ PG_MIGRATIONS = (
     'migrations/encrypt_two_factor_secret.sql',
     'migrations/pgcrypto_fail_closed.sql',
     'migrations/audit_indexes_catchup.sql',
+    'migrations/product_moderation.sql',
 )
 
 

@@ -45,6 +45,14 @@
                             <span class="badge bg-{{ 'success' if product.is_active else 'danger' }}">
                                 {{ 'Active' if product.is_active else 'Inactive' }}
                             </span>
+                            {# B1: what the admin decided, and why. #}
+                            {% set state = product.moderation_state %}
+                            <span class="badge bg-{{ {'approved': 'success', 'pending': 'warning', 'rejected': 'danger'}[state] }}">
+                                {{ {'approved': 'Approved', 'pending': 'Awaiting review', 'rejected': 'Rejected'}[state] }}
+                            </span>
+                            {% if state == 'rejected' %}
+                            <div><small class="text-danger">{{ product.rejection_reason }}</small> <small class="text-muted">-- edit to resubmit</small></div>
+                            {% endif %}
                         </td>
                         <td>{{ product.created_at.strftime('%Y-%m-%d') }}</td>
                         <td>

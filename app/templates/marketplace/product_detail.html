@@ -3,6 +3,15 @@
 {% block title %}{{ product.title }}{% endblock %}
 
 {% block content %}
+{# B1: only the vendor and admins reach this page for a listing that is not live. #}
+{% if not (product.is_active and product.is_approved) %}
+<div class="alert alert-warning">
+    <strong>Preview -- not public.</strong>
+    {% if not product.is_active %}This listing is inactive.
+    {% elif product.moderation_state == 'rejected' %}Rejected by an admin: {{ product.rejection_reason }}
+    {% else %}Waiting for an admin to approve it.{% endif %}
+</div>
+{% endif %}
 <div class="row">
     <div class="col-md-8">
         <div class="card">
@@ -30,6 +39,30 @@
                 <p>{{ product.description }}</p>
             </div>
         </div>
+
+        {# The view always loaded the ten newest approved reviews and the template
+           never showed them (found in plan 2026-11, B2). Only approved ones arrive here. #}
+        <div class="card mt-3" id="reviews">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Reviews</h5>
+                {% if product.rating_count %}
+                <span>{{ "%.1f"|format(product.rating_average) }} / 5 ({{ product.rating_count }})</span>
+                {% endif %}
+            </div>
+            <div class="card-body">
+                {% for review in reviews %}
+                <div class="mb-3">
+                    <strong>{{ review.rating }}/5</strong>
+                    {% if review.title %} &middot; {{ review.title }}{% endif %}
+                    {# No buyer name: a public review must not tie a buyer to a vendor and a product. #}
+                    <small class="text-muted">&middot; {{ review.created_at.strftime('%Y-%m') if review.created_at else '' }}</small>
+                    {% if review.review_text %}<p class="mb-0">{{ review.review_text }}</p>{% endif %}
+                </div>
+                {% else %}
+                <p class="text-muted mb-0">No reviews yet.</p>
+                {% endfor %}
+            </div>
+        </div>
     </div>
 
     <div class="col-md-4">
@@ -47,7 +80,7 @@
             </div>
         </div>
 
-        {% if current_user.is_authenticated and current_user.id != product.vendor_id %}
+        {% if current_user.is_authenticated and current_user.id != product.vendor_id and product.is_approved and product.is_active %}
         <div class="card">
             <div class="card-header">
                 <h5>Purchase</h5>

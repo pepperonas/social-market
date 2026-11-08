@@ -487,6 +487,44 @@ def blockable_reason(ip_text, own_ip):
     return None
 
 
+SUGGESTION_WINDOW = timedelta(hours=24)
+
+
+def block_suggestions(own_ip, window=SUGGESTION_WINDOW):
+    """
+    Addresses the hourly security scan flagged, for an admin to decide on.
+
+    Returns [{'ip', 'findings', 'last_seen', 'description'}], newest first,
+    without addresses that are already blocked or that an admin may not block
+    (own address, non-public). Nothing here blocks: the scan reports, a person
+    decides (plan 2026-11, B7). Automatic blocking was rejected on purpose --
+    a class behind one NAT address would lock itself out.
+    """
+    try:
+        rows = db.session.execute(text("""
+            SELECT ip_address, COUNT(*) AS findings, MAX(timestamp) AS last_seen
+            FROM security_events
+            WHERE event_type = 'suspicious_failed_logins'
+              AND ip_address IS NOT NULL
+              AND timestamp > :since
+            GROUP BY ip_address
+            ORDER BY MAX(timestamp) DESC
+        """), {'since': datetime.now(timezone.utc) - window}).fetchall()
+    except Exception as exc:
+        db.session.rollback()
+        current_app.logger.warning('Could not load block suggestions: %s', exc)
+        return []
+
+    blocked = {str(row.ip_address) for row in SecurityService.get_blocked_ips()}
+    suggestions = []
+    for ip, findings, last_seen in rows:
+        ip = str(ip)
+        if ip in blocked or blockable_reason(ip, own_ip):
+            continue
+        suggestions.append({'ip': ip, 'findings': findings, 'last_seen': last_seen})
+    return suggestions
+
+
 SECURITY_TABLES_SQL = """
 -- Blocked IPs table
 CREATE TABLE IF NOT EXISTS blocked_ips (
