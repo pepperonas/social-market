@@ -17,7 +17,7 @@ Test einmal scheitern sehen.
 
 | # | Punkt | Vorschlag | Aufwand |
 |---|---|---|---|
-| A1 | `two_factor_secret` im Klartext | Eigener `TOTP_ENCRYPTION_KEY` (Fernet, über `CryptoService`), Spalte `two_factor_secret_enc LargeBinary`, SQL-Migration mit Übergangsphase: lesen aus beiden, schreiben nur verschlüsselt, danach Klartextspalte leeren. Rotation über `MultiFernet`, unabhängig von `SECRET_KEY`. Produktionswächter: ohne Schlüssel startet die App nicht. | mittel |
+| A1 | ✅ 2026-11-08 — `two_factor_secret` im Klartext | Eigener `TOTP_ENCRYPTION_KEY` (Fernet, über `CryptoService`), Spalte `two_factor_secret_enc LargeBinary`, SQL-Migration mit Übergangsphase: lesen aus beiden, schreiben nur verschlüsselt, danach Klartextspalte leeren. Rotation über `MultiFernet`, unabhängig von `SECRET_KEY`. Produktionswächter: ohne Schlüssel startet die App nicht. | mittel |
 | A2 | ✅ 2026-11-08 — `ADMIN_PASSWORD` zusätzlich in der Live-`.env` | Zeile entfernen; die einzige Quelle bleibt `/root/.socialmarket-adminpw`. Vorher prüfen, dass Datei und Hash zusammenpassen (0600-Prüfdatei, danach `shred`). | klein |
 | A3 | ✅ 2026-11-08, Rotation in `deploy.sh` ebenfalls — Deploy-Sicherungen in `/root` | Die zwei DB-Dumps (0644) zuerst löschen, danach Code-Sicherungen und `.env`-Kopie. Künftig legt `deploy.sh` Sicherungen mit 0700/0600 an und behält nur die letzten zwei. | klein |
 | A4 | ✅ 2026-11-08, alle Werte tot — Altes Redis-Passwort in der git-Historie ([BUGFIX-PLAN.md](BUGFIX-PLAN.md)) | Prüfen, ob das Passwort noch irgendwo gilt; falls ja rotieren. Die Historie bewusst **nicht** umschreiben (Lehrstoff), den Fund aber als erledigt markieren, sobald der Wert tot ist. | klein |
@@ -76,14 +76,13 @@ Diese Punkte sind von derselben Art.
 | Schritt | Inhalt | Begründung |
 |---|---|---|
 | 1 | ✅ A2, A3, A4, D1, D2 (2026-11-08) | Kleine Betriebsschulden, sofort erledigt, wenig Risiko |
-| 2 | A1 | Größte verbleibende Sicherheitsschuld; braucht die Schlüssel-Entscheidung |
+| 2 | ✅ A1 (2026-11-08) | Größte verbleibende Sicherheitsschuld |
 | 3 | C1, C2 | Bevor weitere Logik dazukommt, die Fehlerklasse „nur PostgreSQL“ abdecken |
 | 4 | B1, B2, B4, B5, B7 | Behauptungen einlösen; jeder Punkt bekommt einen HTTP-Test |
 | 5 | B3, B6 | Referenzcode anschließen oder ehrlich auslagern |
 | 6 | C3, C4, C5, C6 | Testabdeckung und Browser-Rauchtest |
 | 7 | D3, D4, E1–E4 | Betrieb abrunden, Lehrstoff ausbauen |
 
-**Entscheidungen, die vor Schritt 2 gebraucht werden:** Wo liegt der TOTP-Schlüssel (eigene
-Variable in der `.env` wie die übrigen Schlüssel, oder eigene Datei mit 0600)? Und dürfen
-bestehende 2FA-Einrichtungen bei einem Fehler in der Migration neu eingerichtet werden
-müssen, oder muss die Migration verlustfrei sein?
+**Entschieden und umgesetzt (2026-11-08):** Der TOTP-Schlüssel ist eine eigene Variable in
+der `.env` (`TOTP_ENCRYPTION_KEY`), die Migration ist verlustfrei mit Übergangsphase. Details
+im [Review-Nachtrag](REVIEW-2026-11.md#nachtrag-2026-11-08-totp-geheimnisse-verschlüsselt-a1).

@@ -53,8 +53,14 @@ Database migrations (`migrations/*.sql`) are applied by hand as `postgres` **bef
 followed by `GRANT ... TO socialmarket` for new tables (see Gotchas).
 
 The service runs with `APP_CONFIG=production` (since November 2026): CSRF referrer checks on,
-and it refuses to start if `SECRET_KEY`, `PASSWORD_PEPPER` or `DB_ENCRYPTION_KEY` fall back to
-the development values in `config.py`.
+and it refuses to start if `SECRET_KEY`, `PASSWORD_PEPPER`, `DB_ENCRYPTION_KEY` or
+`TOTP_ENCRYPTION_KEY` fall back to the development values in `config.py`, or if
+`TOTP_ENCRYPTION_KEY` does not parse as (comma-separated) Fernet keys.
+
+`TOTP_ENCRYPTION_KEY` encrypts the 2FA seeds and exists only in the server `.env` (and the
+nightly `env-secrets` and VPS backups that contain it). **Without it every 2FA enrolment is
+lost.** Rotation: put the new key first (`NEW,OLD`), restart, run
+`flask encrypt-totp-secrets`, then remove the old key and restart again.
 
 ## Latest verified deployment
 

@@ -26,4 +26,9 @@ regexes = [
   '''CHANGE_ME_[A-Z_]+''',
   # Test pepper used by the suite
   '''a{32,}''',
+  # Development fallback for TOTP_ENCRYPTION_KEY (base64 of
+  # "dev-totp-key-CHANGE-ME-in-prod!!"). Public on purpose: production refuses
+  # to start with exactly this value. Pinned literally, not as a pattern, so a
+  # real Fernet key in the tree is still reported.
+  '''ZGV2LXRvdHAta2V5LUNIQU5HRS1NRS1pbi1wcm9kISE=''',
 ]

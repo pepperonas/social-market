@@ -742,6 +742,28 @@ def run_job(names, list_jobs):
         raise SystemExit(1)
 
 
+@click.command('encrypt-totp-secrets')
+def encrypt_totp_secrets():
+    """
+    Encrypt leftover plaintext TOTP seeds and re-encrypt all others under the
+    newest TOTP_ENCRYPTION_KEY. Lossless and idempotent: nobody has to enrol
+    2FA again. Run once after the A1 migration, and after every key rotation.
+    """
+    from sqlalchemy import or_
+    users = User.query.filter(or_(User._two_factor_secret_plain.isnot(None),
+                                  User.two_factor_secret_enc.isnot(None))).all()
+    plaintext = sum(1 for u in users if u.two_factor_secret_enc is None)
+    for user in users:
+        user.encrypt_two_factor_secret()
+    db.session.commit()
+
+    remaining = User.query.filter(User._two_factor_secret_plain.isnot(None)).count()
+    click.echo(f'{len(users)} TOTP secret(s) processed, {plaintext} were plaintext, '
+               f'{remaining} plaintext left')
+    if remaining:
+        raise click.ClickException('plaintext TOTP secrets remain')
+
+
 def register_commands(app):
     """Register all CLI commands"""
     app.cli.add_command(init_db)
@@ -757,3 +779,4 @@ def register_commands(app):
     app.cli.add_command(generate_pgp_keys)
     app.cli.add_command(upload_pgp_key)
     app.cli.add_command(show_pgp_audit)
+    app.cli.add_command(encrypt_totp_secrets)

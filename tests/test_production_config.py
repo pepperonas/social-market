@@ -59,17 +59,26 @@ class TestProductionRefusesDevelopmentSecrets:
 
         source = pathlib.Path('app/config.py').read_text()
         found = dict(re.findall(
-            r"^\s+(SECRET_KEY|PASSWORD_PEPPER|DB_ENCRYPTION_KEY) = "
+            r"^\s+(SECRET_KEY|PASSWORD_PEPPER|DB_ENCRYPTION_KEY|TOTP_ENCRYPTION_KEY) = "
             r"os\.environ\.get\('\1'\) or '([^']+)'", source, re.M))
-        assert set(found) == {'SECRET_KEY', 'PASSWORD_PEPPER', 'DB_ENCRYPTION_KEY'}
+        assert set(found) == {'SECRET_KEY', 'PASSWORD_PEPPER', 'DB_ENCRYPTION_KEY',
+                              'TOTP_ENCRYPTION_KEY'}
         return found
+
+    @staticmethod
+    def _real_values(names):
+        """Strong stand-ins; TOTP_ENCRYPTION_KEY must also parse as a Fernet key."""
+        from cryptography.fernet import Fernet
+        values = {k: 'x' * 40 for k in names}
+        values['TOTP_ENCRYPTION_KEY'] = Fernet.generate_key().decode()
+        return values
 
     def test_fallback_secret_stops_startup(self):
         from app import refuse_development_secrets
 
         fallbacks = self._fallbacks_in_config_py()
         for name, value in fallbacks.items():
-            config = {k: 'x' * 40 for k in fallbacks}
+            config = self._real_values(fallbacks)
             config[name] = value
             with pytest.raises(RuntimeError, match=name):
                 refuse_development_secrets(config)
@@ -77,7 +86,7 @@ class TestProductionRefusesDevelopmentSecrets:
     def test_real_secrets_pass(self):
         from app import refuse_development_secrets
 
-        refuse_development_secrets({k: 'x' * 40 for k in self._fallbacks_in_config_py()})
+        refuse_development_secrets(self._real_values(self._fallbacks_in_config_py()))
 
     def test_create_app_applies_the_check_for_production(self):
         import inspect

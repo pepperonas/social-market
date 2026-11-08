@@ -26,6 +26,7 @@ cp .env.example .env
 python3 -c "import secrets; print('SECRET_KEY=' + secrets.token_hex(32))" >> .env
 python3 -c "import secrets; print('DB_ENCRYPTION_KEY=' + secrets.token_hex(32))" >> .env
 python3 -c "import secrets; print('PASSWORD_PEPPER=' + secrets.token_hex(32))" >> .env
+python3 -c "from cryptography.fernet import Fernet; print('TOTP_ENCRYPTION_KEY=' + Fernet.generate_key().decode())" >> .env
 ```
 
 ### 2. Edit .env File

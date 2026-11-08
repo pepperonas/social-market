@@ -49,7 +49,17 @@ class User(UserMixin, db.Model):
 
     # 2FA settings
     two_factor_enabled = db.Column(db.Boolean, default=False)
-    two_factor_secret = db.Column(db.String(32), nullable=True)
+    # The TOTP seed. Read and write it through the `two_factor_secret` property
+    # below, never through these columns.
+    #
+    # Until 2026-11 the seed sat here in plaintext: a database dump was enough
+    # to compute every user's current code, i.e. the second factor collapsed
+    # into whoever could read the database. `two_factor_secret_enc` holds it
+    # Fernet-encrypted under TOTP_ENCRYPTION_KEY. The plaintext column is only
+    # READ, for rows written before the change (transition phase); every write
+    # empties it. `flask encrypt-totp-secrets` migrates the remaining rows.
+    _two_factor_secret_plain = db.Column('two_factor_secret', db.String(32), nullable=True)
+    two_factor_secret_enc = db.Column(db.LargeBinary, nullable=True)
     # Highest TOTP counter already accepted. Prevents replay of a code that is
     # still inside its validity window (see verify_totp).
     two_factor_last_counter = db.Column(db.BigInteger, nullable=True)
@@ -277,6 +287,47 @@ class User(UserMixin, db.Model):
     # =============================================================================
 
     TOTP_VALID_WINDOW = 1  # +/- one 30s step, tolerates clock drift
+
+    @property
+    def two_factor_secret(self):
+        """
+        The plaintext TOTP seed, or None.
+
+        A wrong TOTP_ENCRYPTION_KEY raises InvalidToken instead of returning
+        None: "cannot decrypt" must never read as "no 2FA configured".
+        """
+        from app.services.crypto_service import CryptoService
+        if self.two_factor_secret_enc is not None:
+            return CryptoService.decrypt_totp_secret(self.two_factor_secret_enc)
+        return self._two_factor_secret_plain
+
+    @two_factor_secret.setter
+    def two_factor_secret(self, value):
+        from app.services.crypto_service import CryptoService
+        self._two_factor_secret_plain = None
+        self.two_factor_secret_enc = (
+            None if value is None else CryptoService.encrypt_totp_secret(value))
+
+    def encrypt_two_factor_secret(self):
+        """
+        Bring this row to the current key: encrypt a leftover plaintext seed,
+        re-encrypt a ciphertext under the newest key. Lossless; no commit.
+
+        Returns:
+            bool: True if the row changed
+        """
+        from app.services.crypto_service import CryptoService
+        if self.two_factor_secret_enc is not None:
+            # rotate() decrypts with any configured key and re-encrypts with
+            # the first one. Fernet tokens carry an IV, so the bytes always change.
+            self.two_factor_secret_enc = CryptoService.rotate_totp_secret(
+                self.two_factor_secret_enc)
+            self._two_factor_secret_plain = None
+            return True
+        if self._two_factor_secret_plain is not None:
+            self.two_factor_secret = self._two_factor_secret_plain
+            return True
+        return False
 
     def begin_two_factor_setup(self):
         """

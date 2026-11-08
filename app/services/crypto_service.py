@@ -5,7 +5,7 @@ Purpose: Centralized cryptographic operations
 """
 
 import secrets
-from cryptography.fernet import Fernet
+from cryptography.fernet import Fernet, MultiFernet
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from flask import current_app
@@ -78,6 +78,50 @@ class CryptoService:
         f = CryptoService.get_fernet()
         decrypted = f.decrypt(encrypted_data)
         return decrypted.decode('utf-8')
+
+    # =========================================================================
+    # TOTP seeds at rest (improvement plan 2026-11, A1)
+    # =========================================================================
+
+    @staticmethod
+    def _totp_keys(value):
+        return [k.strip() for k in (value or '').split(',') if k.strip()]
+
+    @staticmethod
+    def totp_key_is_usable(value):
+        """True if every comma-separated entry is a valid Fernet key."""
+        keys = CryptoService._totp_keys(value)
+        if not keys:
+            return False
+        try:
+            for key in keys:
+                Fernet(key)
+        except (ValueError, TypeError):
+            return False
+        return True
+
+    @staticmethod
+    def totp_fernet():
+        """
+        MultiFernet over TOTP_ENCRYPTION_KEY: encrypts with the first key,
+        decrypts with any of them. Its own key, not SECRET_KEY -- see config.py.
+        """
+        keys = CryptoService._totp_keys(current_app.config.get('TOTP_ENCRYPTION_KEY'))
+        return MultiFernet([Fernet(k) for k in keys])
+
+    @staticmethod
+    def encrypt_totp_secret(secret):
+        return CryptoService.totp_fernet().encrypt(secret.encode('ascii'))
+
+    @staticmethod
+    def decrypt_totp_secret(token):
+        """Raises InvalidToken on a wrong key: fail closed, never 'no 2FA'."""
+        return CryptoService.totp_fernet().decrypt(bytes(token)).decode('ascii')
+
+    @staticmethod
+    def rotate_totp_secret(token):
+        """Re-encrypt under the current first key."""
+        return CryptoService.totp_fernet().rotate(bytes(token))
 
     @staticmethod
     def generate_token(length=32):

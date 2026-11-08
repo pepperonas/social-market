@@ -68,8 +68,9 @@ nginx (TLS) → gunicorn → Flask
 environment variable when called without arguments (gunicorn calls the factory
 bare). The live service uses `APP_CONFIG=production`; local HTTP Docker training
 keeps the base config. `ProductionConfig` enables `WTF_CSRF_SSL_STRICT` and refuses
-the development fallback values for `SECRET_KEY`, `PASSWORD_PEPPER` and
-`DB_ENCRYPTION_KEY`. Strict HTTPS CSRF needs a same-origin Referer:
+the development fallback values for `SECRET_KEY`, `PASSWORD_PEPPER`,
+`DB_ENCRYPTION_KEY` and `TOTP_ENCRYPTION_KEY` (the last also when it does not parse as
+Fernet keys). Strict HTTPS CSRF needs a same-origin Referer:
 `Referrer-Policy` must stay `same-origin`; `no-referrer` would break every form.
 
 ### Blueprints
@@ -263,8 +264,13 @@ production does not merely miss bugs; it certifies them.
   protect rules preserve the server `.env`, venv, uploads and bytecode caches.
 - Admin credentials are private. `flask init-admin` uses `ADMIN_PASSWORD` if set,
   otherwise generates and prints a passphrase once; there is no built-in default.
-- `two_factor_secret` is still plaintext in the database. Encryption requires a
-  separate key and a data migration; do not couple it to `SECRET_KEY` rotation.
+- **The TOTP seed is encrypted at rest** (since 2026-11-08): `User.two_factor_secret` is a
+  property over `two_factor_secret_enc` (Fernet/MultiFernet under `TOTP_ENCRYPTION_KEY`, never
+  `SECRET_KEY`). The old plaintext column is mapped as `_two_factor_secret_plain`, only read for
+  pre-migration rows, emptied by every write. `flask encrypt-totp-secrets` migrates leftovers
+  and re-encrypts after a key rotation (new key first in the comma list). A wrong key raises
+  `InvalidToken` -- fail closed, never "no 2FA". Losing the key makes every 2FA enrolment
+  unusable; it lives only in the server `.env` and its backups.
 - Manual IP blocks are wired in; canary tokens and honeypots are reference code
   without callers. Do not describe them as active protection.
 - See `docs/REVIEW-2026-11.md` for coverage and open follow-ups. SQLite tests do

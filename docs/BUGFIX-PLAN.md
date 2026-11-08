@@ -347,7 +347,8 @@ Entwicklungs-`.env.bak` vom Server.
 
 ### Verbleibende Arbeit und Entscheidungen
 
-- **TOTP-Geheimnisse verschlüsseln:** `two_factor_secret` liegt weiterhin im Klartext.
+- ✅ **Erledigt 2026-11-08** ([Verbesserungsplan A1](VERBESSERUNGSPLAN-2026-11.md)) —
+  **TOTP-Geheimnisse verschlüsseln:** `two_factor_secret` lag bis dahin im Klartext.
   Eigener Schlüssel mit Rotationskonzept und Datenmigration nötig; `SECRET_KEY` als Schlüssel
   würde bei Rotation alle bestehenden 2FA-Einrichtungen unbrauchbar machen. Eigener Folgeschritt.
 - **Admin-Passwort in Live-`.env`:** `ADMIN_PASSWORD` ist laut letztem Betriebsstand noch

@@ -39,6 +39,12 @@ class Config:
 
     # Database encryption key
     DB_ENCRYPTION_KEY = os.environ.get('DB_ENCRYPTION_KEY') or 'dev-encryption-key'
+    # Key for the TOTP seeds at rest (users.two_factor_secret_enc). Deliberately
+    # NOT derived from SECRET_KEY: rotating the session key must not lock every
+    # 2FA user out. Comma-separated Fernet keys, newest first; older keys keep
+    # decrypting until `flask encrypt-totp-secrets` has re-encrypted the rows.
+    # Generate: python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    TOTP_ENCRYPTION_KEY = os.environ.get('TOTP_ENCRYPTION_KEY') or 'ZGV2LXRvdHAta2V5LUNIQU5HRS1NRS1pbi1wcm9kISE='
 
     # =============================================================================
     # Session Configuration

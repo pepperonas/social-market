@@ -37,6 +37,7 @@ DEVELOPMENT_SECRETS = {
     'SECRET_KEY': 'dev-key-change-me-in-production',
     'PASSWORD_PEPPER': 'dev-pepper-CHANGE-ME-IN-PRODUCTION',
     'DB_ENCRYPTION_KEY': 'dev-encryption-key',
+    'TOTP_ENCRYPTION_KEY': 'ZGV2LXRvdHAta2V5LUNIQU5HRS1NRS1pbi1wcm9kISE=',
 }
 
 
@@ -50,6 +51,12 @@ def refuse_development_secrets(config):
     public repository. Failing to start is the only safe answer.
     """
     weak = [name for name, value in DEVELOPMENT_SECRETS.items() if config.get(name) == value]
+    # A key that does not parse would only fail at the first 2FA login -- as a
+    # 500 for that user, long after the deploy looked healthy. Refuse it here.
+    from app.services.crypto_service import CryptoService
+    if 'TOTP_ENCRYPTION_KEY' not in weak and not CryptoService.totp_key_is_usable(
+            config.get('TOTP_ENCRYPTION_KEY')):
+        weak.append('TOTP_ENCRYPTION_KEY')
     if weak:
         raise RuntimeError(
             f'Refusing to start in production with development value(s) for: {", ".join(weak)}')
