@@ -45,9 +45,12 @@ also mit der Basis-Config. `ProductionConfig` schaltet zusätzlich
 HTTP-Trainingsaufbau (`:8080`) würde das Formulare brechen. Das ist ein
 Betriebs-Entscheid, kein Codefehler; Umschalten per `APP_CONFIG=production`.
 
-⚠️ **Offen:** Das alte Redis-Passwort steht weiterhin in der git-Historie
-(Commit `018e8f3`). Die Rotation entwertet es; ein History-Rewrite wurde nicht
-durchgeführt. Der damals offene CVE-Stand wurde in Runde 2 geprüft und die Abhängigkeiten aktualisiert;
+✅ **Erledigt (2026-11-08):** Das alte Redis-Passwort steht weiterhin in der git-Historie
+(`018e8f3` ist in der heutigen Historie nicht mehr auffindbar; die Werte stehen in
+`cf7069c` und `7d180ac`). Alle fünf Passwortwerte aus der Historie wurden gegen
+den Live-Redis geprüft: jeder wird mit `WRONGPASS` abgewiesen, keiner entspricht dem aktuellen
+`requirepass`. Gegenprobe: das aktuelle Passwort antwortet `PONG`, ohne Passwort `NOAUTH`.
+Die Werte sind also tot; ein History-Rewrite wurde bewusst nicht durchgeführt (Lehrstoff). Der damals offene CVE-Stand wurde in Runde 2 geprüft und die Abhängigkeiten aktualisiert;
 weitere im November gefundene Advisories wurden in Runde 3, Schritt 1 behoben.
 
 ---

@@ -34,6 +34,21 @@ this was an rsync of the whole working tree with a few excludes: 92 old test ses
 ended up on the server. A deny list fails open -- every new file is published until someone
 remembers to exclude it.
 
+Two guards run on every call (since 2026-11-08):
+
+- **Preflight**, also in the dry run: every path the service writes to (`/var/log/socialmarket`,
+  `app/uploads`) must belong to `socialmarket`, or the script stops before changing anything.
+  The first run found the uploads root still owned by uid 501, the Mac user of the very first
+  rsync; earlier, `app.log` had belonged to root.
+- **Backup** before `--go` touches the server: `/var/backups/socialmarket-deploy/<timestamp>/`
+  with `code.tar.gz` (without venv, `.env`, uploads) and `db.dump` (`pg_dump -Fc`), umask 077,
+  directory 0700, the newest two kept. The backups used to be made by hand in `/root`, where
+  the database dumps ended up 0644 and were never removed. The nightly
+  `/var/backups/postgres/socialmarket-*.dump` from the VPS backup is independent of this.
+
+`tests/test_deploy_script.py` pins the order (preflight before the dry run, backup before the
+real rsync) and the backup properties.
+
 Database migrations (`migrations/*.sql`) are applied by hand as `postgres` **before** `--go`,
 followed by `GRANT ... TO socialmarket` for new tables (see Gotchas).
 
@@ -72,6 +87,11 @@ ssh root@<host> 'systemctl daemon-reload && systemctl enable --now socialmarket-
 ssh root@<host> 'systemctl list-timers "socialmarket-*"; journalctl -u socialmarket-jobs-hourly -n 20'
 ```
 
+A failed run sends a mail: the web service and both job services carry a server-side drop-in
+`/etc/systemd/system/<unit>.service.d/onfailure.conf` with
+`OnFailure=homestack-backup-alert@%n.service` (the VPS's existing alert template, msmtp).
+It is not in `deploy/systemd/` because the template belongs to the server, not to this repo.
+
 `tests/test_jobs.py` checks that every job in `app/jobs.py` appears in the unit for its
 schedule. Until November 2026 no job ran here at all (see `docs/REVIEW-2026-11.md`, K2).
 
@@ -94,9 +114,13 @@ schedule. Until November 2026 no job ran here at all (see `docs/REVIEW-2026-11.m
   `postgres` and the app role gets `permission denied for table auth_log` until
   `GRANT ... ON ALL TABLES` (plus `ALTER DEFAULT PRIVILEGES`) is run.
 - **The admin password is generated at deploy time**, not the one in
-  `LOGIN_CREDENTIALS.md`. It lives in `/root/.socialmarket-adminpw`. (In November 2026 it no
-  longer matched the account -- nobody could log in as admin. Reset to the file's value.)
-  `flask init-admin` has no default any more: without `ADMIN_PASSWORD` it generates one.
+  `LOGIN_CREDENTIALS.md`. It lives in `/root/.socialmarket-adminpw` (root, 0600) and **only
+  there**: on 2026-11-08 the `ADMIN_PASSWORD` line was removed from the live `.env` and every
+  backup copy holding it was shredded. (In November 2026 it no longer matched the account --
+  nobody could log in as admin. Reset to the file's value.) `flask init-admin` has no default
+  any more: without `ADMIN_PASSWORD` it generates one. The nightly `env-secrets` archives in
+  `/var/backups/env-secrets` (root, 0700, 30 days) still contain the old line until they rotate
+  out in early December 2026.
 - **`Referrer-Policy: no-referrer` and `WTF_CSRF_SSL_STRICT` cannot coexist.** Strict CSRF
   rejects every HTTPS POST without a same-origin `Referer`; `no-referrer` tells browsers never
   to send one. The policy is `same-origin`.
