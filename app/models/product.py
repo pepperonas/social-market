@@ -322,10 +322,14 @@ class Product(db.Model):
         it, an edit between opening the queue and clicking "approve" was
         approved unseen.
         """
+        # JSON, not a joined string: with a separator character, a vendor who
+        # typed that character could move text between fields and keep the
+        # fingerprint (found by a security review of the first version).
         import hashlib
-        parts = [str(getattr(self, f) or '') for f in self.REVIEWED_FIELDS]
-        parts += sorted(str(image.filepath) for image in self.images)
-        return hashlib.sha256('\x1f'.join(parts).encode()).hexdigest()
+        import json
+        content = [str(getattr(self, f) or '') for f in self.REVIEWED_FIELDS]
+        content.append(sorted(str(image.filepath) for image in self.images))
+        return hashlib.sha256(json.dumps(content).encode()).hexdigest()
 
     # =============================================================================
     # Search and Discovery

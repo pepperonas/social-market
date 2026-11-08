@@ -564,3 +564,15 @@ class TestApprovalCoversWhatTheAdminSaw:
         db.session.commit()
 
         assert _product(product.id).is_approved is False
+
+
+class TestFingerprintIsUnambiguous:
+    def test_moving_text_between_fields_changes_the_fingerprint(self, shop):
+        """The first version joined fields with \\x1f; a vendor could move text across that seam."""
+        product = shop()
+        product.title, product.description = 'Lamp', 'nice\x1fbright'
+        first = product.content_fingerprint()
+
+        product.title, product.description = 'Lamp\x1fnice', 'bright'
+
+        assert product.content_fingerprint() != first
