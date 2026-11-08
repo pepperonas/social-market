@@ -18,8 +18,8 @@ Test einmal scheitern sehen.
 | # | Punkt | Vorschlag | Aufwand |
 |---|---|---|---|
 | A1 | `two_factor_secret` im Klartext | Eigener `TOTP_ENCRYPTION_KEY` (Fernet, über `CryptoService`), Spalte `two_factor_secret_enc LargeBinary`, SQL-Migration mit Übergangsphase: lesen aus beiden, schreiben nur verschlüsselt, danach Klartextspalte leeren. Rotation über `MultiFernet`, unabhängig von `SECRET_KEY`. Produktionswächter: ohne Schlüssel startet die App nicht. | mittel |
-| A2 | `ADMIN_PASSWORD` zusätzlich in der Live-`.env` | Zeile entfernen; die einzige Quelle bleibt `/root/.socialmarket-adminpw`. Vorher prüfen, dass Datei und Hash zusammenpassen (0600-Prüfdatei, danach `shred`). | klein |
-| A3 | Deploy-Sicherungen in `/root` | Die zwei DB-Dumps (0644) zuerst löschen, danach Code-Sicherungen und `.env`-Kopie. Künftig legt `deploy.sh` Sicherungen mit 0700/0600 an und behält nur die letzten zwei. | klein |
+| A2 | ✅ 2026-11-08 — `ADMIN_PASSWORD` zusätzlich in der Live-`.env` | Zeile entfernen; die einzige Quelle bleibt `/root/.socialmarket-adminpw`. Vorher prüfen, dass Datei und Hash zusammenpassen (0600-Prüfdatei, danach `shred`). | klein |
+| A3 | ✅ 2026-11-08 (Rotation in `deploy.sh` offen) — Deploy-Sicherungen in `/root` | Die zwei DB-Dumps (0644) zuerst löschen, danach Code-Sicherungen und `.env`-Kopie. Künftig legt `deploy.sh` Sicherungen mit 0700/0600 an und behält nur die letzten zwei. | klein |
 | A4 | Altes Redis-Passwort in der git-Historie ([BUGFIX-PLAN.md](BUGFIX-PLAN.md)) | Prüfen, ob das Passwort noch irgendwo gilt; falls ja rotieren. Die Historie bewusst **nicht** umschreiben (Lehrstoff), den Fund aber als erledigt markieren, sobald der Wert tot ist. | klein |
 
 
@@ -75,7 +75,7 @@ Diese Punkte sind von derselben Art.
 
 | Schritt | Inhalt | Begründung |
 |---|---|---|
-| 1 | A2, A3, A4, D1, D2 | Kleine Betriebsschulden, sofort erledigt, wenig Risiko |
+| 1 | ~~A2, A3~~, A4, D1, D2, Rotation in `deploy.sh` (A3) | Kleine Betriebsschulden, sofort erledigt, wenig Risiko |
 | 2 | A1 | Größte verbleibende Sicherheitsschuld; braucht die Schlüssel-Entscheidung |
 | 3 | C1, C2 | Bevor weitere Logik dazukommt, die Fehlerklasse „nur PostgreSQL“ abdecken |
 | 4 | B1, B2, B4, B5, B7 | Behauptungen einlösen; jeder Punkt bekommt einen HTTP-Test |
