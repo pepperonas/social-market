@@ -91,7 +91,8 @@ def log_auth_event(username, user_id, action, ip_address=None, session_id=None, 
         current_app.logger.error(f'Failed to log auth event: {e}')
 
 
-def log_security_event(event_type, severity, description, user_id=None, ip_address=None, metadata=None):
+def log_security_event(event_type, severity, description, user_id=None, ip_address=None, metadata=None,
+                       commit=True):
     """
     Log security event
 
@@ -102,6 +103,12 @@ def log_security_event(event_type, severity, description, user_id=None, ip_addre
         user_id: User ID (optional)
         ip_address: Client IP (optional)
         metadata: Additional metadata (optional)
+        commit: True (default) records the event on its own, even if nothing
+            else is committed. Pass False from INSIDE a business transaction:
+            the event is then committed or rolled back with it. A committing
+            call in the middle of EscrowService.pay_order() persisted the
+            payment before its caller had decided anything (found by the
+            PostgreSQL race tests, plan 2026-11 C2).
     """
     try:
         _write(
@@ -117,7 +124,7 @@ def log_security_event(event_type, severity, description, user_id=None, ip_addre
                 'ip_address': ip_address or (request.remote_addr if request else None),
                 'metadata': metadata
             },
-            commit=True,
+            commit=commit,
         )
     except Exception as e:
         current_app.logger.error(f'Failed to log security event: {e}')

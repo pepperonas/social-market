@@ -104,8 +104,11 @@ CREATE INDEX idx_rate_limit_log_key ON rate_limit_log(key, attempted_at DESC);
 CREATE INDEX idx_rate_limit_log_ip ON rate_limit_log(ip_address);
 
 -- Auto-cleanup old rate limit logs (keep 24 hours)
-CREATE INDEX idx_rate_limit_log_cleanup ON rate_limit_log(attempted_at)
-    WHERE attempted_at < NOW() - INTERVAL '24 hours';
+-- A plain index: an index predicate must be IMMUTABLE, and NOW() is not.
+-- The former `WHERE attempted_at < NOW() - INTERVAL '24 hours'` made this whole
+-- script fail on a fresh database ("functions in index predicate must be marked
+-- IMMUTABLE"), so every index after this line was missing on the live server.
+CREATE INDEX idx_rate_limit_log_cleanup ON rate_limit_log(attempted_at);
 
 -- =============================================================================
 -- Admin Actions Log

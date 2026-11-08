@@ -1,6 +1,9 @@
 """
 Test fixtures for Social Market application.
-Uses SQLite in-memory database to avoid PostgreSQL dependency in tests.
+
+Default: SQLite in memory, no server needed. With TEST_DATABASE_URL pointing at
+a PostgreSQL server, the same suite runs against a schema built exactly the way
+production builds it (improvement plan 2026-11, C1) -- see _create_pg_schema.
 """
 
 import os
@@ -17,6 +20,14 @@ os.environ['SECRET_KEY'] = 'test-secret-key-for-testing-only'
 os.environ['PASSWORD_PEPPER'] = 'a' * 64  # 64-char test pepper
 os.environ['WTF_CSRF_ENABLED'] = 'false'
 os.environ['RATELIMIT_ENABLED'] = 'false'
+
+TEST_DATABASE_URL = os.environ.get('TEST_DATABASE_URL') or 'sqlite:///:memory:'
+ON_POSTGRES = TEST_DATABASE_URL.startswith('postgresql')
+# CI sets this for its PostgreSQL run. Without it, a mistyped or missing
+# TEST_DATABASE_URL would fall back to SQLite, skip every PostgreSQL-only test
+# and still report green.
+if os.environ.get('REQUIRE_POSTGRES') == '1' and not ON_POSTGRES:
+    raise RuntimeError('REQUIRE_POSTGRES=1 but TEST_DATABASE_URL is not a PostgreSQL URL')
 
 # Imported only now: importing anything under ``app`` runs app/__init__.py and
 # app/config.py, whose class attributes read the environment at import time.
@@ -37,7 +48,7 @@ def app():
     app = create_app('testing')
     app.config.update({
         'TESTING': True,
-        'SQLALCHEMY_DATABASE_URI': 'sqlite:///:memory:',
+        'SQLALCHEMY_DATABASE_URI': TEST_DATABASE_URL,
         'WTF_CSRF_ENABLED': False,
         'SERVER_NAME': 'localhost',
         'RATELIMIT_ENABLED': False,
@@ -46,7 +57,10 @@ def app():
     })
 
     with app.app_context():
-        _create_sqlite_tables(db)
+        if ON_POSTGRES:
+            _create_pg_schema(db)
+        else:
+            _create_sqlite_tables(db)
 
     @app.teardown_request
     def _forget_loaded_user(exc):
@@ -66,7 +80,11 @@ def app():
     yield app
 
     with app.app_context():
-        db.drop_all()
+        db.session.remove()
+        if ON_POSTGRES:
+            _drop_pg_schema(db)
+        else:
+            db.drop_all()
         # Close the pooled in-memory connection; otherwise it is only released
         # by the garbage collector at exit ("ResourceWarning: unclosed database").
         db.engine.dispose()
@@ -223,6 +241,118 @@ def _create_sqlite_tables(db):
     for ddl in AUDIT_TABLES_DDL:
         db.session.execute(text(ddl))
     db.session.commit()
+
+
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# The production database is built in this order: the SQL init scripts (functions,
+# audit tables, grants), then `flask init-db` (db.create_all), then every file in
+# migrations/. The test schema follows the same path, so a migration that does not
+# apply to a fresh database, or a constraint the models do not know about, shows
+# up here instead of on the server.
+PG_INIT_SCRIPTS = ('postgres/pgcrypto-setup.sql', 'postgres/audit-logging.sql')
+PG_MIGRATIONS = (
+    'migrations/add_participant_columns.sql',
+    'migrations/add_pgp_key_timestamps.sql',
+    'migrations/add_two_factor_last_counter.sql',
+    'migrations/add_blocked_ips.sql',
+    'migrations/add_session_version.sql',
+    # NOT order_lifecycle_integrity.sql: it is a one-shot upgrade. It reserves
+    # the stock of orders that were pending before the change -- running it a
+    # second time would take that stock again -- and its CHECK constraints are
+    # in the models, so db.create_all() already made them. test_postgres.py
+    # checks that they exist.
+    'migrations/encrypt_two_factor_secret.sql',
+    'migrations/pgcrypto_fail_closed.sql',
+    'migrations/audit_indexes_catchup.sql',
+)
+
+
+def _autocommit_connection(db):
+    """
+    A raw connection in autocommit mode, for DDL scripts with their own BEGIN.
+
+    The mode must be switched back before the connection returns to the pool:
+    the pool's reset only rolls back, it does not restore autocommit -- every
+    later test on that connection would run without a transaction, and a
+    rollback test would prove nothing.
+    """
+    from contextlib import contextmanager
+
+    @contextmanager
+    def _cm():
+        raw = db.engine.raw_connection()
+        raw.driver_connection.autocommit = True
+        try:
+            yield raw.driver_connection
+        finally:
+            raw.driver_connection.autocommit = False
+            raw.close()
+    return _cm()
+
+
+def _run_sql_file(connection, relative_path):
+    with open(os.path.join(REPO_ROOT, relative_path), encoding='utf-8') as fh:
+        sql = fh.read()
+    with connection.cursor() as cur:
+        cur.execute(sql)
+
+
+def _create_pg_schema(db):
+    """Build the PostgreSQL test schema the way production does (see above)."""
+    _drop_pg_schema(db)
+    with _autocommit_connection(db) as conn:
+        with conn.cursor() as cur:
+            # Roles the init scripts GRANT to (postgres/init.sql creates them in
+            # production; it needs psql variables, so only its effect is copied).
+            for role in ('marketplace_app', 'marketplace_audit'):
+                cur.execute(
+                    "DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = %s) "
+                    "THEN EXECUTE format('CREATE ROLE %%I NOLOGIN', %s); END IF; END $$",
+                    (role, role))
+            cur.execute('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"')
+            cur.execute('CREATE EXTENSION IF NOT EXISTS pgcrypto')
+            # The live database runs its sessions in Europe/Berlin. Naive-UTC
+            # bugs only show in a zone that is not UTC.
+            cur.execute('SELECT current_database()')
+            dbname = cur.fetchone()[0]
+            cur.execute(f'ALTER DATABASE "{dbname}" SET timezone TO \'Europe/Berlin\'')
+        for path in PG_INIT_SCRIPTS:
+            _run_sql_file(conn, path)
+
+    db.create_all()
+    db.session.commit()
+
+    with _autocommit_connection(db) as conn:
+        for path in PG_MIGRATIONS:
+            _run_sql_file(conn, path)
+
+    # Fresh connections for the tests: they pick up the database's time zone,
+    # and none of them has been through the DDL above.
+    db.session.remove()
+    db.engine.dispose()
+
+
+def _drop_pg_schema(db):
+    with _autocommit_connection(db) as conn:
+        with conn.cursor() as cur:
+            cur.execute('DROP SCHEMA IF EXISTS public CASCADE')
+            cur.execute('CREATE SCHEMA public')
+
+
+def aware_utcnow():
+    """
+    The current time as a timezone-AWARE UTC value -- for writing into the
+    audit tables, whose timestamp columns are TIMESTAMPTZ.
+
+    A naive utcnow() is read as session-local time by PostgreSQL. The live
+    database (and the PostgreSQL suite) runs its sessions in Europe/Berlin, so
+    a naive value lands one hour in the past in winter and two in summer --
+    outside a one-hour scan window. SQLite has no time zones and never showed
+    it. The app itself leaves these columns to DEFAULT NOW().
+    """
+    from datetime import timezone
+    return datetime.now(timezone.utc)
 
 
 def reload_user(user_id):

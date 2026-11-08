@@ -408,6 +408,38 @@ class TestStateChangesAreAtomic:
         assert status(order) == 'disputed'
 
 
+class TestPaymentLeavesTheCommitToTheCaller:
+    def test_pay_order_does_not_commit(self, people, shop, monkeypatch):
+        """
+        The audit call inside EscrowService.pay_order() committed the session,
+        so the payment was persisted before the caller (the route) committed --
+        and a concurrent second payment no longer met an open transaction.
+        Found by the PostgreSQL race tests (tests/test_concurrency_pg.py).
+        """
+        from app import db
+        from app.models.order import Order
+        from app.services.escrow_service import EscrowService
+
+        from app.services import audit_service
+
+        order = buy_now(people['buyer'], shop(stock=5))
+        commits, audit_commit_flags = [], []
+        monkeypatch.setattr(db.session, 'commit', lambda: commits.append(1))
+        # On SQLite the log_* stored procedures do not exist, so the audit write
+        # fails before it would commit -- watching session.commit alone was blind
+        # there. The flag each audit write is called with is the real contract.
+        real_write = audit_service._write
+        monkeypatch.setattr(audit_service, '_write', lambda sql, params, commit: (
+            audit_commit_flags.append(commit), real_write(sql, params, commit))[1])
+
+        EscrowService.pay_order(fresh(Order, order.id))
+
+        assert audit_commit_flags and not any(audit_commit_flags)
+        assert commits == []
+        db.session.rollback()
+        assert status(order) == 'pending'
+
+
 # =============================================================================
 # Checkout
 # =============================================================================

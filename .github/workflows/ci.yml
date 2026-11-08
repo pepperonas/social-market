@@ -44,7 +44,8 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:15
+        # Same major version as the live server.
+        image: postgres:16
         env:
           POSTGRES_USER: marketplace
           POSTGRES_PASSWORD: testpassword
@@ -97,6 +98,22 @@ jobs:
           TESTING: 'true'
         run: |
           pytest tests/ -v --tb=short --cov=app --cov-report=xml --cov-report=term-missing
+
+      - name: Run tests against PostgreSQL
+        # The step above runs on SQLite (fast, and the coverage numbers). This
+        # one runs the same suite against the PostgreSQL service with the
+        # schema built from postgres/*.sql + db.create_all() + migrations/, plus
+        # the PostgreSQL-only modules (pgcrypto, session time zone, races
+        # between two connections). Improvement plan 2026-11, C1/C2.
+        env:
+          TEST_DATABASE_URL: postgresql://marketplace:testpassword@localhost:5432/marketplace_test
+          REQUIRE_POSTGRES: '1'
+          SECRET_KEY: test-secret-key-ci-only
+          PASSWORD_PEPPER: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+          WTF_CSRF_ENABLED: 'false'
+          RATELIMIT_ENABLED: 'false'
+          TESTING: 'true'
+        run: pytest tests/ -q --tb=short -p no:cacheprovider
 
       - name: Enforce route coverage target
         run: python -m coverage report --include='app/routes/*' --precision=2 --fail-under=70

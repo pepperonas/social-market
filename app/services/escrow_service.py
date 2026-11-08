@@ -73,7 +73,7 @@ class EscrowService:
         order.transition_to(OrderStatus.PAID)
         log_security_event(
             'escrow_funded', 'info', f'Escrow funded for order {order.id}',
-            user_id=order.buyer_id)
+            user_id=order.buyer_id, commit=False)  # the caller commits -- see docstring
 
     @staticmethod
     def release_escrow_to_vendor(escrow):
@@ -94,7 +94,7 @@ class EscrowService:
                 'escrow_released',
                 'info',
                 f'Escrow released to vendor for order {escrow.order_id}',
-                user_id=escrow.vendor_id
+                user_id=escrow.vendor_id, commit=False
             )
 
             return True
@@ -122,7 +122,7 @@ class EscrowService:
                 'escrow_refunded',
                 'info',
                 f'Escrow refunded to buyer for order {escrow.order_id}',
-                user_id=escrow.buyer_id
+                user_id=escrow.buyer_id, commit=False
             )
 
             return True

@@ -170,4 +170,4 @@ class TestShippingData:
 
         raw = order.shipping_address_encrypted
         assert raw is not None
-        assert secret.encode() not in (raw if isinstance(raw, bytes) else raw.encode())
+        assert secret.encode() not in (raw.encode() if isinstance(raw, str) else bytes(raw))

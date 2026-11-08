@@ -237,10 +237,44 @@ def create_app(config_name=None):
     return app
 
 
+def _libpq_option_value(value):
+    """Escape a value for libpq's `options` string (backslash and whitespace)."""
+    out = []
+    for char in value:
+        if char == '\\' or char.isspace():
+            out.append('\\')
+        out.append(char)
+    return ''.join(out)
+
+
+def _pass_db_encryption_key(app):
+    """
+    Give every PostgreSQL connection the key encrypt_data()/decrypt_data() use.
+
+    The pgcrypto functions read app.encryption_key from the session. Nothing set
+    it, so encrypt_data() returned NULL and checkout stored every shipping name
+    and address as NULL (found by the PostgreSQL test run, plan 2026-11 C1).
+
+    The key goes into the connection's startup options, not into a SET or
+    set_config() statement: a statement is what log_statement, auto_explain and
+    pg_stat_activity keep. The startup packet appears in none of them.
+    """
+    if not app.config['SQLALCHEMY_DATABASE_URI'].startswith('postgresql'):
+        return
+    key = app.config.get('DB_ENCRYPTION_KEY') or ''
+    engine_options = dict(app.config.get('SQLALCHEMY_ENGINE_OPTIONS') or {})
+    connect_args = dict(engine_options.get('connect_args') or {})
+    option = f'-c app.encryption_key={_libpq_option_value(key)}'
+    connect_args['options'] = ' '.join(filter(None, [connect_args.get('options'), option]))
+    engine_options['connect_args'] = connect_args
+    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = engine_options
+
+
 def initialize_extensions(app):
     """Initialize Flask extensions"""
 
     # Database
+    _pass_db_encryption_key(app)
     db.init_app(app)
     migrate.init_app(app, db)
 

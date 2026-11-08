@@ -280,7 +280,7 @@ class TestingConfig(Config):
     """Testing configuration"""
     TESTING = True
     IP_BLOCK_CACHE_SECONDS = 0  # a cached answer would leak between tests
-    SQLALCHEMY_DATABASE_URI = os.environ.get('TEST_DATABASE_URL', 'sqlite:///:memory:')
+    SQLALCHEMY_DATABASE_URI = os.environ.get('TEST_DATABASE_URL') or 'sqlite:///:memory:'
     # The base config sets PostgreSQL-only pool options (pool_size, max_overflow,
     # connect_args.sslmode). SQLite's StaticPool rejects them, so reset them here.
     SQLALCHEMY_ENGINE_OPTIONS = {}

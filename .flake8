@@ -15,3 +15,9 @@ extend-ignore =
     # paren; enforcing hanging indent would reflow ~70 call sites for no gain.
     E127,
     E128
+
+# Modules that reuse fixtures imported from another test module: pytest injects
+# them by name, which pyflakes reads as a redefinition of the import.
+per-file-ignores =
+    tests/test_postgres.py:F811
+    tests/test_concurrency_pg.py:F811

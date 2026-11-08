@@ -134,12 +134,12 @@ class TestRecentSecurityEvents:
 
         from app import db
         from app.services.audit_service import get_recent_security_events
-        from app.timeutil import utcnow
+        from tests.conftest import aware_utcnow
 
         marker = f'marker-{uuid.uuid4().hex[:8]}'
         db.session.execute(text(
             "INSERT INTO security_events (timestamp, event_type, severity, description) "
-            "VALUES (:ts, 'test', 'info', :d)"), {'ts': utcnow(), 'd': marker})
+            "VALUES (:ts, 'test', 'info', :d)"), {'ts': aware_utcnow(), 'd': marker})
         db.session.commit()
 
         events = get_recent_security_events(hours=1)
@@ -283,16 +283,16 @@ class TestSecurityPanelsShowWhatExists:
         from sqlalchemy import text
 
         from app import db
-        from app.timeutil import utcnow
+        from tests.conftest import aware_utcnow
 
         marker = f'evt-{uuid.uuid4().hex[:8]}'
         who = f'guesser_{uuid.uuid4().hex[:6]}'
         db.session.execute(text(
             "INSERT INTO security_events (timestamp, event_type, severity, description) "
-            "VALUES (:ts, 'test', 'high', :d)"), {'ts': utcnow(), 'd': marker})
+            "VALUES (:ts, 'test', 'high', :d)"), {'ts': aware_utcnow(), 'd': marker})
         db.session.execute(text(
             "INSERT INTO auth_log (timestamp, username, action, ip_address) "
-            "VALUES (:ts, :u, 'login_failed_password', '192.0.2.7')"), {'ts': utcnow(), 'u': who})
+            "VALUES (:ts, :u, 'login_failed_password', '192.0.2.7')"), {'ts': aware_utcnow(), 'u': who})
         db.session.commit()
         return marker, who
 

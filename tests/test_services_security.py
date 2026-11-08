@@ -13,15 +13,19 @@ import pytest
 def security_tables(app):
     """
     Create the security tables. They live in SECURITY_TABLES_SQL as PostgreSQL
-    DDL (SERIAL/INET/JSONB), so a SQLite-compatible equivalent is used here.
+    DDL (SERIAL/INET/JSONB); this portable equivalent runs on SQLite and on the
+    PostgreSQL suite (where blocked_ips already exists from its migration).
     """
     from sqlalchemy import text
     from app import db
 
+    serial = ('SERIAL PRIMARY KEY' if db.engine.dialect.name == 'postgresql'
+              else 'INTEGER PRIMARY KEY AUTOINCREMENT')
+
     ddl = [
         """
         CREATE TABLE IF NOT EXISTS blocked_ips (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id {serial},
             ip_address VARCHAR(45) NOT NULL UNIQUE,
             reason TEXT NOT NULL,
             blocked_by VARCHAR(100) DEFAULT 'system',
@@ -32,20 +36,20 @@ def security_tables(app):
         """,
         """
         CREATE TABLE IF NOT EXISTS canary_tokens (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id {serial},
             token_hash VARCHAR(64) NOT NULL UNIQUE,
             token_type VARCHAR(50) NOT NULL,
             description TEXT,
             alert_email VARCHAR(255),
             trigger_count INTEGER DEFAULT 0,
             last_triggered_at TIMESTAMP,
-            is_active BOOLEAN DEFAULT 1,
+            is_active BOOLEAN DEFAULT TRUE,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
         """,
         """
         CREATE TABLE IF NOT EXISTS canary_triggers (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id {serial},
             canary_id INTEGER,
             ip_address VARCHAR(45),
             user_agent TEXT,
@@ -55,7 +59,7 @@ def security_tables(app):
         """,
     ]
     for statement in ddl:
-        db.session.execute(text(statement))
+        db.session.execute(text(statement.replace('{serial}', serial)))
     db.session.commit()
 
     yield

@@ -274,13 +274,13 @@ class TestSecurityScan:
 
         from app import db
         from app.jobs import security_scan
-        from app.timeutil import utcnow
+        from tests.conftest import aware_utcnow
 
         ip = f'203.0.113.{uuid.uuid4().int % 250}'
         for action in ['login_failed_password'] * 8 + ['2fa_failed'] * 2 + ['reauth_failed'] * 2:
             db.session.execute(text(
                 "INSERT INTO auth_log (timestamp, username, action, ip_address) "
-                "VALUES (:ts, 'x', :action, :ip)"), {'ts': utcnow(), 'action': action, 'ip': ip})
+                "VALUES (:ts, 'x', :action, :ip)"), {'ts': aware_utcnow(), 'action': action, 'ip': ip})
         db.session.commit()
 
         result = security_scan()
@@ -292,13 +292,13 @@ class TestSecurityScan:
 
         from app import db
         from app.jobs import security_scan
-        from app.timeutil import utcnow
+        from tests.conftest import aware_utcnow
 
         ip = f'198.51.100.{uuid.uuid4().int % 250}'
         for _ in range(20):
             db.session.execute(text(
                 "INSERT INTO auth_log (timestamp, username, action, ip_address) "
-                "VALUES (:ts, 'x', 'login_success', :ip)"), {'ts': utcnow(), 'ip': ip})
+                "VALUES (:ts, 'x', 'login_success', :ip)"), {'ts': aware_utcnow(), 'ip': ip})
         db.session.commit()
 
         assert ip not in security_scan()['suspicious_ips']
