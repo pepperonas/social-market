@@ -21,6 +21,11 @@ message or docstring that says "fixed bug" throws away the teaching value.
 ```bash
 # Tests: SQLite in-memory, no Docker, no Postgres, no Redis needed
 pytest tests/ -v
+# Same suite against PostgreSQL (CI runs both). Needs a superuser; the schema
+# is rebuilt from postgres/*.sql + db.create_all() + migrations/ every session:
+docker run -d --name sm-pgtest -e POSTGRES_USER=marketplace -e POSTGRES_PASSWORD=testpassword \
+  -e POSTGRES_DB=marketplace_test -p 127.0.0.1:55432:5432 postgres:16
+TEST_DATABASE_URL=postgresql://marketplace:testpassword@127.0.0.1:55432/marketplace_test pytest tests/ -q
 pytest tests/test_auth.py -v
 pytest tests/ --cov=app --cov-report=term-missing
 python -m coverage report --include='app/routes/*' --precision=2 --fail-under=70
@@ -134,7 +139,14 @@ overall, 71.02% for `app/routes/`. CI enforces the route target of ≥70%; see
 `docs/REVIEW-2026-11.md` for the breakdown and follow-ups. Coverage is measured
 without branch tracking; do not treat it as proof of PostgreSQL concurrency.
 
-`tests/` runs on SQLite in-memory. `conftest.py` provides:
+`tests/` runs on SQLite in-memory by default, and against PostgreSQL when
+`TEST_DATABASE_URL` is a `postgresql://` URL (since 2026-11-08, plan C1/C2):
+`_create_pg_schema` builds the schema like production (init scripts, `create_all`,
+the files in `PG_MIGRATIONS` -- not the one-shot `order_lifecycle_integrity.sql`)
+with the database time zone set to Europe/Berlin. `tests/test_postgres.py` and
+`tests/test_concurrency_pg.py` only run there; `REQUIRE_POSTGRES=1` (CI) turns a
+fallback to SQLite into an error. A new migration must be added to `PG_MIGRATIONS`.
+`conftest.py` provides:
 
 - `app` (session) + an autouse **per-test app context** — Flask reuses an active
   context for requests, and `g` lives there, so a session-wide context leaks
@@ -145,6 +157,8 @@ without branch tracking; do not treat it as proof of PostgreSQL concurrency.
 - `query_counter` — counts SQL statements, for N+1 budgets
 - `mock_audit` — stubs the stored-procedure calls
 - SQLite implementations of `encrypt_data`, `decrypt_data` and `NOW()`
+- `aware_utcnow()` — for writing into the `TIMESTAMPTZ` audit tables; a naive value
+  lands an hour early in a Berlin session
 
 **House rule: every new regression test must be seen to fail.** Reintroduce the
 bug, watch it go red, then fix it again. Match against comment-free source —
@@ -158,7 +172,7 @@ against the very thing it forbids. (That trap has caught this project twice.)
 | Job | What it does |
 |---|---|
 | Lint | flake8 (`.flake8`) + bandit |
-| Test | pytest with PostgreSQL + Redis services available |
+| Test | pytest on SQLite (with coverage), then the same suite against the PostgreSQL 16 service |
 | Security Scan | `pip-audit`, **no `\|\| true`** |
 | Secret Scan | gitleaks over the **full history** |
 
@@ -273,8 +287,15 @@ production does not merely miss bugs; it certifies them.
   unusable; it lives only in the server `.env` and its backups.
 - Manual IP blocks are wired in; canary tokens and honeypots are reference code
   without callers. Do not describe them as active protection.
-- See `docs/REVIEW-2026-11.md` for coverage and open follow-ups. SQLite tests do
-  not prove PostgreSQL timezone or concurrent transaction behaviour.
+- **Shipping data goes through pgcrypto** (`encrypt_data`/`decrypt_data`), which read
+  `app.encryption_key` from the session. `_pass_db_encryption_key` puts `DB_ENCRYPTION_KEY`
+  into the connection's startup `options` -- never into a `SET`/`set_config` statement, which
+  statement logs keep. Both functions raise when the key is missing or wrong. Until
+  2026-11-08 nothing set the key and every shipping address was stored as NULL.
+- **No committing audit call inside a business transaction.** `log_security_event()` commits
+  by default; inside a service method pass `commit=False` (see `EscrowService.pay_order`).
+- See `docs/REVIEW-2026-11.md` for coverage and open follow-ups. Timezone and
+  concurrency behaviour are only covered by the PostgreSQL run.
 
 ### Infrastructure
 

@@ -43,8 +43,8 @@ Diese Punkte sind von derselben Art.
 
 | # | Punkt | Vorschlag | Aufwand |
 |---|---|---|---|
-| C1 | CI startet PostgreSQL und Redis, die Suite läuft aber trotzdem auf SQLite | Zweiter Testlauf gegen den PG-Dienst (`TEST_DATABASE_URL`), mindestens für Bestellfluss, Jobs, Audit-Prozeduren und Zeitzonen. Genau die Fehlerklasse, die SQLite in Runde 3 verdeckt hat (Rollback, NaN, `TIMESTAMPTZ`, negativer OFFSET). | mittel |
-| C2 | Nebenläufigkeit nur über künstlich veraltete Objekte getestet | Zwei echte Verbindungen gegen PG: doppelte Zahlung, gleichzeitige Lagerreservierung, Rennen zwischen Stornierung und Versand. | mittel |
+| C1 | ✅ 2026-11-08 — CI startet PostgreSQL und Redis, die Suite läuft aber trotzdem auf SQLite | Zweiter Testlauf gegen den PG-Dienst (`TEST_DATABASE_URL`), mindestens für Bestellfluss, Jobs, Audit-Prozeduren und Zeitzonen. Genau die Fehlerklasse, die SQLite in Runde 3 verdeckt hat (Rollback, NaN, `TIMESTAMPTZ`, negativer OFFSET). | mittel |
+| C2 | ✅ 2026-11-08 — Nebenläufigkeit nur über künstlich veraltete Objekte getestet | Zwei echte Verbindungen gegen PG: doppelte Zahlung, gleichzeitige Lagerreservierung, Rennen zwischen Stornierung und Versand. | mittel |
 | C3 | Routen-Coverage `admin.py` 61 %, `vendor.py` 63 % | Verhaltenstests über HTTP für Admin-Nutzerverwaltung, Streitfall-Entscheidung und Vendor-Produktbearbeitung. Ziel: CI-Schwelle für Routen von 70 auf 75 % anheben. | mittel |
 | C4 | Keine Branch-Coverage | `--cov-branch` messen und berichten; vorerst ohne Schwelle. | klein |
 | C5 | Kein Browser-Test | Ein Playwright-Rauchtest gegen die Docker-Umgebung: Registrieren → Produkt → Bestellen → Bezahlen → Versand → Abschluss, plus CSP-Verstöße in der Konsole als Fehler. Hätte K1 aus Runde 3 sofort gezeigt. | mittel |
@@ -77,7 +77,7 @@ Diese Punkte sind von derselben Art.
 |---|---|---|
 | 1 | ✅ A2, A3, A4, D1, D2 (2026-11-08) | Kleine Betriebsschulden, sofort erledigt, wenig Risiko |
 | 2 | ✅ A1 (2026-11-08) | Größte verbleibende Sicherheitsschuld |
-| 3 | C1, C2 | Bevor weitere Logik dazukommt, die Fehlerklasse „nur PostgreSQL“ abdecken |
+| 3 | ✅ C1, C2 (2026-11-08) | Bevor weitere Logik dazukommt, die Fehlerklasse „nur PostgreSQL“ abdecken |
 | 4 | B1, B2, B4, B5, B7 | Behauptungen einlösen; jeder Punkt bekommt einen HTTP-Test |
 | 5 | B3, B6 | Referenzcode anschließen oder ehrlich auslagern |
 | 6 | C3, C4, C5, C6 | Testabdeckung und Browser-Rauchtest |

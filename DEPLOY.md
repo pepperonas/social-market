@@ -51,6 +51,10 @@ real rsync) and the backup properties.
 
 Database migrations (`migrations/*.sql`) are applied by hand as `postgres` **before** `--go`,
 followed by `GRANT ... TO socialmarket` for new tables (see Gotchas).
+Exception: a migration that makes the database *require* something the new code provides comes
+**after** `--go`. `pgcrypto_fail_closed.sql` (2026-11-08) is one -- with the old code it would make
+every physical checkout fail, because only the new code passes `DB_ENCRYPTION_KEY` as
+`app.encryption_key` in the connection options.
 
 The service runs with `APP_CONFIG=production` (since November 2026): CSRF referrer checks on,
 and it refuses to start if `SECRET_KEY`, `PASSWORD_PEPPER`, `DB_ENCRYPTION_KEY` or
