@@ -30,13 +30,13 @@ Diese Punkte sind von derselben Art.
 
 | # | Punkt | Vorschlag | Aufwand |
 |---|---|---|---|
-| B1 | Produktfreigabe existiert nur als Spalte: `vendor.py` setzt `is_approved=True` selbst, eine Admin-Freigabe gibt es nicht | Entweder echte Freigabe-Queue im Admin (Liste, Freigeben/Ablehnen mit Begründung, Audit-Eintrag) oder Spalte und Kommentare ehrlich als „Auto-Freigabe in der Lehrumgebung“ dokumentieren. Empfehlung: Queue bauen, weil sie die Rollentrennung zeigt. | mittel |
-| B2 | Bewertungen ebenso automatisch freigegeben (`buyer.py`) | Gleiche Entscheidung wie B1; mit B1 zusammen umsetzen. | klein |
+| B1 | ✅ 2026-11-08 — Produktfreigabe existiert nur als Spalte: `vendor.py` setzt `is_approved=True` selbst, eine Admin-Freigabe gibt es nicht | Entweder echte Freigabe-Queue im Admin (Liste, Freigeben/Ablehnen mit Begründung, Audit-Eintrag) oder Spalte und Kommentare ehrlich als „Auto-Freigabe in der Lehrumgebung“ dokumentieren. Empfehlung: Queue bauen, weil sie die Rollentrennung zeigt. | mittel |
+| B2 | ✅ 2026-11-08 — Bewertungen ebenso automatisch freigegeben (`buyer.py`) | Gleiche Entscheidung wie B1; mit B1 zusammen umsetzen. | klein |
 | B3 | Canary-Tokens und Honeypots: Referenzcode ohne Aufrufer | Einen Honeypot wirklich anschließen (z. B. versteckte Login-Route `/admin.php` → `security_event` + optionale IP-Sperre), mit Test. Oder die Klassen in ein `examples/`-Modul verschieben. | mittel |
-| B4 | `Escrow.mark_disputed()` schreibt keinen eigenen Audit-Eintrag (bedingtes UPDATE umgeht den Listener) | Audit-Aufruf explizit im Service, wie bei den anderen Zustandswechseln. | klein |
-| B5 | Erstattung aus `paid` bucht das Lager nicht zurück | Admin-Entscheidung im Formular abfragen („Ware nie versandt → Lager zurückbuchen“), statt sie stillschweigend offenzulassen. | klein |
+| B4 | ✅ 2026-11-08 — `Escrow.mark_disputed()` schreibt keinen eigenen Audit-Eintrag (bedingtes UPDATE umgeht den Listener) | Audit-Aufruf explizit im Service, wie bei den anderen Zustandswechseln. | klein |
+| B5 | ✅ 2026-11-08 — Erstattung aus `paid` bucht das Lager nicht zurück | Admin-Entscheidung im Formular abfragen („Ware nie versandt → Lager zurückbuchen“), statt sie stillschweigend offenzulassen. | klein |
 | B6 | Gast-Warenkorb in `cart.py` angekündigt, aber nicht vorhanden | Kommentar entfernen; der Marktplatz ist bewusst nur mit Login erreichbar. | klein |
-| B7 | IP-Sperren nur per Formular; keine Liste der aktiven Sperren mit Ablauf | Übersicht im Admin-Sicherheitsbereich, Ablaufdatum, wer gesperrt hat. Optional: der Security-Scan-Job schlägt Sperren vor (nie automatisch). | klein |
+| B7 | ✅ 2026-11-08 (Liste gab es schon; Vorschläge neu) — IP-Sperren nur per Formular; keine Liste der aktiven Sperren mit Ablauf | Übersicht im Admin-Sicherheitsbereich, Ablaufdatum, wer gesperrt hat. Optional: der Security-Scan-Job schlägt Sperren vor (nie automatisch). | klein |
 
 
 ## C — Testqualität
@@ -78,7 +78,7 @@ Diese Punkte sind von derselben Art.
 | 1 | ✅ A2, A3, A4, D1, D2 (2026-11-08) | Kleine Betriebsschulden, sofort erledigt, wenig Risiko |
 | 2 | ✅ A1 (2026-11-08) | Größte verbleibende Sicherheitsschuld |
 | 3 | ✅ C1, C2 (2026-11-08) | Bevor weitere Logik dazukommt, die Fehlerklasse „nur PostgreSQL“ abdecken |
-| 4 | B1, B2, B4, B5, B7 | Behauptungen einlösen; jeder Punkt bekommt einen HTTP-Test |
+| 4 | ✅ B1, B2, B4, B5, B7 (2026-11-08) | Behauptungen einlösen; jeder Punkt bekommt einen HTTP-Test |
 | 5 | B3, B6 | Referenzcode anschließen oder ehrlich auslagern |
 | 6 | C3, C4, C5, C6 | Testabdeckung und Browser-Rauchtest |
 | 7 | D3, D4, E1–E4 | Betrieb abrunden, Lehrstoff ausbauen |

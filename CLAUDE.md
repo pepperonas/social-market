@@ -208,6 +208,13 @@ Every one of these cost real debugging time here.
 - **During a flush, a relationship may not be populated.** The escrow audit listener
   read `target.order` and bound NULL into a NOT NULL column, failing every order.
   Set the relationship (`Escrow(order=order, ...)`), not just the foreign key.
+- **Products and reviews are approved by an admin** (since 2026-11-08, `/admin/moderation`).
+  A content or image change sends a product back (`submit_for_review`, which uses `flag_modified`
+  so `is_approved` is always in the UPDATE). The moderation form carries
+  `content_fingerprint()`; a decision on changed content is refused. Published reviews show no
+  buyer name.
+- **Escrow status changes through `_claim()` bypass the audit listener.** A method that changes
+  nothing but the status must write its `transaction_audit` row itself (`mark_disputed`, `cancel`).
 - **Availability checks belong on the model.** `product.can_purchase(qty)` covers active,
   approved and stock in one place; re-implementing it in a route is how `product.active`
   got past review.
@@ -219,7 +226,14 @@ Every one of these cost real debugging time here.
 database rejects — and every order failed in production while the tests were
 green. When mirroring `postgres/*.sql` into `conftest.py`, carry the constraints
 across, not just the column names. A test schema that is more permissive than
-production does not merely miss bugs; it certifies them.
+production does not merely miss bugs; it certifies them. The opposite drift hides bugs too:
+`admin_actions` lacked `ip_address` here until 2026-11-08, so every admin audit write failed
+silently on SQLite and no test could see one.
+
+Raw SQL in tests must not compare `str(uuid)` against a **model** table's id: on SQLite the
+model type stores these UUIDs as 32 hex digits without dashes, the `WHERE` matches nothing and
+the test runs against a precondition that never held. Use an ORM bulk `update()` instead. (The
+audit tables are different: the app itself writes them with `str()`, so `str()` matches there.)
 
 ### Sessions and the test harness
 
