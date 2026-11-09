@@ -37,6 +37,7 @@ Diese Punkte sind von derselben Art.
 | B5 | ✅ 2026-11-08 — Erstattung aus `paid` bucht das Lager nicht zurück | Admin-Entscheidung im Formular abfragen („Ware nie versandt → Lager zurückbuchen“), statt sie stillschweigend offenzulassen. | klein |
 | B6 | ✅ 2026-11-09 — Gast-Warenkorb in `cart.py` angekündigt, aber nicht vorhanden | Kommentar entfernen; der Marktplatz ist bewusst nur mit Login erreichbar. | klein |
 | B7 | ✅ 2026-11-08 (Liste gab es schon; Vorschläge neu) — IP-Sperren nur per Formular; keine Liste der aktiven Sperren mit Ablauf | Übersicht im Admin-Sicherheitsbereich, Ablaufdatum, wer gesperrt hat. Optional: der Security-Scan-Job schlägt Sperren vor (nie automatisch). | klein |
+| B8 | Neu 2026-11-09 (Browser-Rauchtest) — Warenkorb und Checkout sind von keiner Seite aus erreichbar: kein Link in der Navigation, kein „In den Warenkorb“-Knopf; `cart.add` hat keinen Aufrufer in den Vorlagen | Entweder Knopf auf der Produktseite plus Link in der Navigation (mit Browser-Test über den Checkout) oder Warenkorb ausbauen und den Direktkauf als einzigen Weg dokumentieren. | klein |
 
 
 ## C — Testqualität
@@ -45,10 +46,10 @@ Diese Punkte sind von derselben Art.
 |---|---|---|---|
 | C1 | ✅ 2026-11-08 — CI startet PostgreSQL und Redis, die Suite läuft aber trotzdem auf SQLite | Zweiter Testlauf gegen den PG-Dienst (`TEST_DATABASE_URL`), mindestens für Bestellfluss, Jobs, Audit-Prozeduren und Zeitzonen. Genau die Fehlerklasse, die SQLite in Runde 3 verdeckt hat (Rollback, NaN, `TIMESTAMPTZ`, negativer OFFSET). | mittel |
 | C2 | ✅ 2026-11-08 — Nebenläufigkeit nur über künstlich veraltete Objekte getestet | Zwei echte Verbindungen gegen PG: doppelte Zahlung, gleichzeitige Lagerreservierung, Rennen zwischen Stornierung und Versand. | mittel |
-| C3 | Routen-Coverage `admin.py` 61 %, `vendor.py` 63 % | Verhaltenstests über HTTP für Admin-Nutzerverwaltung, Streitfall-Entscheidung und Vendor-Produktbearbeitung. Ziel: CI-Schwelle für Routen von 70 auf 75 % anheben. | mittel |
-| C4 | Keine Branch-Coverage | `--cov-branch` messen und berichten; vorerst ohne Schwelle. | klein |
-| C5 | Kein Browser-Test | Ein Playwright-Rauchtest gegen die Docker-Umgebung: Registrieren → Produkt → Bestellen → Bezahlen → Versand → Abschluss, plus CSP-Verstöße in der Konsole als Fehler. Hätte K1 aus Runde 3 sofort gezeigt. | mittel |
-| C6 | Mutationsproben laufen von Hand | `mutmut` für `services/` und `models/order.py` als nächtlicher, nicht blockierender Job. | klein |
+| C3 | ✅ 2026-11-09 (Routen 77,9 % mit Zweigen, admin 87 %, vendor 77 %; CI-Schwelle 75 %) — Routen-Coverage `admin.py` 61 %, `vendor.py` 63 % | Verhaltenstests über HTTP für Admin-Nutzerverwaltung, Streitfall-Entscheidung und Vendor-Produktbearbeitung. Ziel: CI-Schwelle für Routen von 70 auf 75 % anheben. | mittel |
+| C4 | ✅ 2026-11-09 (`--cov-branch` in CI, Gesamt 73,6 %, ohne Schwelle) — Keine Branch-Coverage | `--cov-branch` messen und berichten; vorerst ohne Schwelle. | klein |
+| C5 | ✅ 2026-11-09 (SQLite-Testkonfiguration statt Docker; fand 18 blockierte Inline-Handler, siehe Review-Nachtrag) — Kein Browser-Test | Ein Playwright-Rauchtest gegen die Docker-Umgebung: Registrieren → Produkt → Bestellen → Bezahlen → Versand → Abschluss, plus CSP-Verstöße in der Konsole als Fehler. Hätte K1 aus Runde 3 sofort gezeigt. | mittel |
+| C6 | ✅ 2026-11-09 (`.github/workflows/mutation.yml`, nachts 02:30 UTC) — Mutationsproben laufen von Hand | `mutmut` für `services/` und `models/order.py` als nächtlicher, nicht blockierender Job. | klein |
 
 
 ## D — Betrieb
@@ -80,8 +81,8 @@ Diese Punkte sind von derselben Art.
 | 3 | ✅ C1, C2 (2026-11-08) | Bevor weitere Logik dazukommt, die Fehlerklasse „nur PostgreSQL“ abdecken |
 | 4 | ✅ B1, B2, B4, B5, B7 (2026-11-08) | Behauptungen einlösen; jeder Punkt bekommt einen HTTP-Test |
 | 5 ✅ | B3, B6 | Referenzcode anschließen oder ehrlich auslagern |
-| 6 | C3, C4, C5, C6 | Testabdeckung und Browser-Rauchtest |
-| 7 | D3, D4, E1–E4 | Betrieb abrunden, Lehrstoff ausbauen |
+| 6 ✅ | C3, C4, C5, C6 (2026-11-09) | Testabdeckung und Browser-Rauchtest |
+| 7 | B8, D3, D4, E1–E4 | Betrieb abrunden, Lehrstoff ausbauen |
 
 **Entschieden und umgesetzt (2026-11-08):** Der TOTP-Schlüssel ist eine eigene Variable in
 der `.env` (`TOTP_ENCRYPTION_KEY`), die Migration ist verlustfrei mit Übergangsphase. Details

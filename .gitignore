@@ -101,3 +101,4 @@ redis/data/
 backups/
 uploads/
 tor/hidden_service/
+mutants/

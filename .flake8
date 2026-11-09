@@ -1,6 +1,6 @@
 [flake8]
 max-line-length = 120
-exclude = __pycache__,migrations,.git,venv
+exclude = __pycache__,migrations,.git,venv,mutants
 
 # extend-ignore (not ignore!): plain `ignore` REPLACES pycodestyle's default
 # ignore list, which silently re-enabled E121/E123/E126/E226/E704/W504 and made

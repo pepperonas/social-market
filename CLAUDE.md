@@ -27,8 +27,13 @@ docker run -d --name sm-pgtest -e POSTGRES_USER=marketplace -e POSTGRES_PASSWORD
   -e POSTGRES_DB=marketplace_test -p 127.0.0.1:55432:5432 postgres:16
 TEST_DATABASE_URL=postgresql://marketplace:testpassword@127.0.0.1:55432/marketplace_test pytest tests/ -q
 pytest tests/test_auth.py -v
-pytest tests/ --cov=app --cov-report=term-missing
-python -m coverage report --include='app/routes/*' --precision=2 --fail-under=70
+pytest tests/ --cov=app --cov-branch --cov-report=term-missing
+python -m coverage report --include='app/routes/*' --precision=2 --fail-under=75
+# Browser smoke test (opt-in; CI runs it as its own job)
+pip install playwright && python -m playwright install chromium
+BROWSER_TESTS=1 pytest tests/test_browser_smoke.py -v
+# Mutation testing (config in setup.cfg; CI runs it nightly, non-blocking)
+pip install mutmut==3.8.1 && mutmut run && mutmut results
 
 # Lint (settings live in .flake8 so CI and local cannot drift)
 flake8 app/ tests/
@@ -127,6 +132,13 @@ Audit tables (`auth_log`, `audit_log`, `security_events`, `message_audit`,
 
 - POST forms: `<input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>`
 - Inline scripts: `nonce="{{ csp_nonce() }}"` — the CSP blocks anything else, silently
+- **No inline event handlers** (`onclick=`, `onsubmit=`, `onchange=`) and no `javascript:`
+  URLs: the CSP blocks them too. Use the data-* hooks of `static/js/ui.js`:
+  `data-confirm="Question?"` (form or submit button), `data-autosubmit`,
+  `data-toggle-password="<input id>"`, `data-submit-form="<form id>"`.
+  `tests/test_templates_csp.py` rejects anything else.
+- Never ship a control that only JavaScript enables (a `disabled` submit button):
+  if the script does not run, the form is dead. Disable from the script instead.
 - Code samples in templates: `<pre class="code-block">`, which gets a header bar and copy button
 - Money is `Decimal` end to end; never multiply it by a float
 - Rate limits: `@limiter.limit("20 per minute")` on login, `3 per hour` on PGP generation.
@@ -134,10 +146,16 @@ Audit tables (`auth_log`, `audit_log`, `security_events`, `message_audit`,
 
 ### Tests
 
-Measured 2026-11-07 after step 7: 627 passing tests; statement coverage 71.35%
-overall, 71.02% for `app/routes/`. CI enforces the route target of ≥70%; see
-`docs/REVIEW-2026-11.md` for the breakdown and follow-ups. Coverage is measured
-without branch tracking; do not treat it as proof of PostgreSQL concurrency.
+Measured 2026-11-09 after plan step 6: 900 passing tests on SQLite (914 on
+PostgreSQL); line + branch coverage 74 % overall, 78 % for `app/routes/` (admin 87 %, vendor 77 %).
+CI enforces the route target of ≥75 %; whole-app branch coverage is reported,
+not enforced. Coverage is no proof of PostgreSQL concurrency.
+
+`tests/test_browser_smoke.py` (opt-in, `BROWSER_TESTS=1`) runs the app on a local
+port in a thread and clicks through it in headless Chromium with **CSRF on**;
+any CSP violation, page error or console error fails it. The fixture is
+`shop_url`, not `live_server` -- pytest-flask owns that name. It uses the
+in-memory SQLite of the test session, so the server is single-threaded.
 
 `tests/` runs on SQLite in-memory by default, and against PostgreSQL when
 `TEST_DATABASE_URL` is a `postgresql://` URL (since 2026-11-08, plan C1/C2):
@@ -167,14 +185,24 @@ against the very thing it forbids. (That trap has caught this project twice.)
 
 ### CI
 
-`.github/workflows/ci.yml` — four jobs, all required:
+`.github/workflows/ci.yml` — five jobs, all required:
 
 | Job | What it does |
 |---|---|
 | Lint | flake8 (`.flake8`) + bandit |
-| Test | pytest on SQLite (with coverage), then the same suite against the PostgreSQL 16 service |
+| Test | pytest on SQLite (line + branch coverage, routes ≥75 %), then the same suite against the PostgreSQL 16 service |
+| Browser smoke test | `tests/test_browser_smoke.py` in headless Chromium |
 | Security Scan | `pip-audit`, **no `\|\| true`** |
 | Secret Scan | gitleaks over the **full history** |
+
+`.github/workflows/mutation.yml` — mutmut over `app/services/` and
+`app/models/order.py`, nightly at 02:30 UTC and on demand. Never blocks: the
+survivor list (artifact `mutmut-results`) is the to-do list for new tests.
+mutmut 3 copies the project into `./mutants` (gitignored); every directory the
+tests read has to be in `also_copy` in `setup.cfg`, or the baseline run fails.
+Baseline 2026-11-09: 2758 mutants, 59 % of the reachable ones caught, 832 with
+no covering test (420 in `pgp_service`). A full run is ~6 CPU-hours, hence the
+240-minute job timeout.
 
 ## Gotchas
 
