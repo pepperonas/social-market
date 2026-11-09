@@ -16,8 +16,11 @@ class Cart(db.Model):
     Shopping cart model with security features:
     - UUID primary keys
     - User association
-    - Session-based cart for guests (not implemented in training env)
-    - Automatic cleanup of old carts
+    - Login only: there is no guest cart. The marketplace is reachable only
+      after login on purpose (plan 2026-11, B6), so a cart always has an owner
+    - One cart per user (unique user_id), emptied at checkout. There is no
+      job that deletes old carts -- nothing needs one, since a cart cannot
+      outnumber its owners. (This line used to promise "automatic cleanup".)
     """
 
     __tablename__ = 'carts'

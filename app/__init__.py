@@ -346,6 +346,7 @@ def register_blueprints(app):
     from app.routes.cart import cart_bp
     from app.routes.account import account_bp
     from app.routes.notifications import notifications_bp
+    from app.routes.decoys import decoys_bp
 
     app.register_blueprint(auth_bp, url_prefix='/auth')
     app.register_blueprint(marketplace_bp, url_prefix='/')
@@ -356,6 +357,7 @@ def register_blueprints(app):
     app.register_blueprint(cart_bp, url_prefix='/cart')
     app.register_blueprint(account_bp, url_prefix='/account')
     app.register_blueprint(notifications_bp, url_prefix='/notifications')
+    app.register_blueprint(decoys_bp)
 
 
 def register_error_handlers(app):

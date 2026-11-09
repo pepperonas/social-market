@@ -112,7 +112,7 @@
                 </form>
                 {# B7: what the hourly security scan flagged. Offered, never applied -- an admin decides. #}
                 <div id="block-suggestions" class="mb-3">
-                    <h6 class="mb-2">Suggested by the security scan <small class="text-muted">(last 24 h, never blocked automatically)</small></h6>
+                    <h6 class="mb-2">Suggested by the security scan and the honeypot traps <small class="text-muted">(last 24 h, never blocked automatically)</small></h6>
                     {% if block_suggestions %}
                     <table class="table table-sm align-middle mb-0">
                         <thead><tr><th>Address</th><th>Findings</th><th>Last seen (UTC)</th><th></th></tr></thead>
@@ -120,13 +120,18 @@
                         {% for s in block_suggestions %}
                             <tr>
                                 <td><code>{{ s.ip }}</code></td>
-                                <td><small>{{ s.findings }} &times; failed-login burst</small></td>
+                                {# One label per finding kind (security_service.SUGGESTION_KINDS); the same
+                                   counts go into the block reason, so the list of blocks says why. #}
+                                {% set labels = {'failed_logins': 'failed-login burst', 'decoy_path': 'decoy path', 'trap_field': 'trap field'} %}
+                                {% set parts = [] %}
+                                {% for kind, label in labels.items() if s.kinds.get(kind) %}{% set _ = parts.append(s.kinds[kind] ~ ' ' ~ label ~ ' hit(s)') %}{% endfor %}
+                                <td><small>{% for kind, label in labels.items() if s.kinds.get(kind) %}{{ s.kinds[kind] }} &times; {{ label }}{% if not loop.last %}, {% endif %}{% endfor %}</small></td>
                                 <td><small>{{ s.last_seen|when }}</small></td>
                                 <td>
                                     <form method="POST" action="{{ url_for('admin.block_ip') }}" class="d-flex gap-1">
                                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                                         <input type="hidden" name="ip_address" value="{{ s.ip }}">
-                                        <input type="hidden" name="reason" value="security-scan: {{ s.findings }} failed-login burst(s) in 24 h">
+                                        <input type="hidden" name="reason" value="{{ 'security-scan' if s.kinds.get('failed_logins') else 'trap' }}: {{ parts|join(', ') }} in 24 h">
                                         <input type="number" name="hours" class="form-control form-control-sm" value="24" min="1" max="720" title="Hours" style="max-width: 5rem;">
                                         <button type="submit" class="btn btn-sm btn-outline-danger">Block</button>
                                     </form>

@@ -377,6 +377,15 @@ def register():
         return redirect(url_for('marketplace.index'))
 
     if request.method == 'POST':
+        # Honeypot (plan 2026-11, B3): a field people never see. Checked FIRST
+        # and answered like a success, so a bot learns nothing -- neither that
+        # it was noticed nor which of its other fields were invalid. Reported,
+        # never blocked (block_suggestions offers it to an admin).
+        from app.services.security_service import SecurityService
+        if SecurityService.check_honeypot(request.form, honeypot_fields=('hp_website',)):
+            flash('Registration successful! Please log in.', 'success')
+            return redirect(url_for('auth.login'))
+
         username = request.form.get('username', '').strip()
         email = request.form.get('email', '').strip().lower()
         password = request.form.get('password', '')

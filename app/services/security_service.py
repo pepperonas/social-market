@@ -1,17 +1,14 @@
 """
 EDUCATIONAL SECURITY TRAINING ENVIRONMENT
 Security Service
-Purpose: IP blocking, canary tokens, threat detection
+Purpose: IP blocking, honeypot traps, threat detection
 """
 
-import hashlib
-import secrets
-import json
 import ipaddress
 import time
 from datetime import datetime, timedelta, timezone
 from flask import request, current_app
-from sqlalchemy import text
+from sqlalchemy import bindparam, text
 from app import db
 from app.timeutil import utcnow
 
@@ -20,9 +17,8 @@ class SecurityService:
     """
     Advanced security features:
     - IP blocking (automatic and manual)
-    - Canary tokens for intrusion detection
     - Threat scoring
-    - Honeypot fields
+    - Honeypot traps (registration field, decoy paths) -- report only
     """
 
     # ==========================================================================
@@ -190,155 +186,6 @@ class SecurityService:
             return False
 
     # ==========================================================================
-    # Canary Tokens
-    # ==========================================================================
-
-    @staticmethod
-    def create_canary_token(token_type, description, alert_email=None):
-        """
-        Create a canary token for intrusion detection
-
-        Token types:
-        - url: Triggers on access
-        - username: Triggers on login attempt
-        - file: Triggers on file access
-        - api_key: Triggers on API usage
-
-        Args:
-            token_type: Type of canary
-            description: What this canary protects
-            alert_email: Email for alerts (optional)
-
-        Returns:
-            dict: Token details
-        """
-        try:
-            token_value = secrets.token_urlsafe(32)
-            token_hash = hashlib.sha256(token_value.encode()).hexdigest()
-
-            db.session.execute(
-                text("""
-                    INSERT INTO canary_tokens
-                    (token_hash, token_type, description, alert_email, created_at, is_active)
-                    VALUES (:hash, :type, :desc, :email, NOW(), true)
-                """),
-                {
-                    'hash': token_hash,
-                    'type': token_type,
-                    'desc': description,
-                    'email': alert_email
-                }
-            )
-            db.session.commit()
-
-            return {
-                'token': token_value,
-                'type': token_type,
-                'description': description,
-                'hash': token_hash[:16] + '...'  # Partial hash for reference
-            }
-
-        except Exception as e:
-            current_app.logger.error(f'Failed to create canary: {e}')
-            db.session.rollback()
-            return None
-
-    @staticmethod
-    def trigger_canary(token_value):
-        """
-        Check and trigger a canary token
-
-        Returns:
-            bool: True if canary was triggered
-        """
-        try:
-            token_hash = hashlib.sha256(token_value.encode()).hexdigest()
-
-            result = db.session.execute(
-                text("""
-                    SELECT id, token_type, description, alert_email
-                    FROM canary_tokens
-                    WHERE token_hash = :hash AND is_active = true
-                """),
-                {'hash': token_hash}
-            )
-            canary = result.fetchone()
-
-            if canary:
-                # Log the trigger
-                db.session.execute(
-                    text("""
-                        INSERT INTO canary_triggers
-                        (canary_id, ip_address, user_agent, triggered_at, metadata)
-                        VALUES (:canary_id, :ip, :ua, NOW(), :meta)
-                    """),
-                    {
-                        'canary_id': canary.id,
-                        'ip': request.remote_addr if request else 'unknown',
-                        'ua': request.headers.get('User-Agent', '') if request else 'unknown',
-                        'meta': json.dumps({
-                            'type': canary.token_type,
-                            'description': canary.description
-                        })
-                    }
-                )
-
-                # Update trigger count
-                db.session.execute(
-                    text("""
-                        UPDATE canary_tokens
-                        SET trigger_count = trigger_count + 1,
-                            last_triggered_at = NOW()
-                        WHERE id = :id
-                    """),
-                    {'id': canary.id}
-                )
-
-                db.session.commit()
-
-                # Log security event
-                from app.services.audit_service import log_security_event
-                log_security_event(
-                    'canary_triggered',
-                    'critical',
-                    f'Canary token triggered: {canary.description}',
-                    ip_address=request.remote_addr if request else None
-                )
-
-                current_app.logger.critical(
-                    f'CANARY TRIGGERED! Type: {canary.token_type}, '
-                    f'Description: {canary.description}'
-                )
-
-                return True
-
-            return False
-
-        except Exception as e:
-            current_app.logger.error(f'Canary trigger error: {e}')
-            return False
-
-    @staticmethod
-    def get_canary_alerts(hours=24):
-        """Get recent canary alerts"""
-        try:
-            result = db.session.execute(
-                text("""
-                    SELECT ct.id, ct.token_type, ct.description,
-                           tr.ip_address, tr.user_agent, tr.triggered_at
-                    FROM canary_tokens ct
-                    JOIN canary_triggers tr ON ct.id = tr.canary_id
-                    WHERE tr.triggered_at > NOW() - INTERVAL ':hours hours'
-                    ORDER BY tr.triggered_at DESC
-                """),
-                {'hours': hours}
-            )
-            return result.fetchall()
-        except Exception as e:
-            current_app.logger.error(f'Error fetching canary alerts: {e}')
-            return []
-
-    # ==========================================================================
     # Threat Scoring
     # ==========================================================================
 
@@ -490,39 +337,105 @@ def blockable_reason(ip_text, own_ip):
 SUGGESTION_WINDOW = timedelta(hours=24)
 
 
+# What the traps and the scan leave in security_events, by the name the admin
+# page shows. Only these become block suggestions; other events (CSP reports,
+# rate limits) say nothing about a single hostile address.
+SUGGESTION_KINDS = {
+    'suspicious_failed_logins': 'failed_logins',
+    'honeypot_path': 'decoy_path',
+    'honeypot_triggered': 'trap_field',
+}
+
+
 def block_suggestions(own_ip, window=SUGGESTION_WINDOW):
     """
-    Addresses the hourly security scan flagged, for an admin to decide on.
+    Addresses the hourly scan and the honeypot traps flagged, for an admin to decide on.
 
-    Returns [{'ip', 'findings', 'last_seen', 'description'}], newest first,
-    without addresses that are already blocked or that an admin may not block
-    (own address, non-public). Nothing here blocks: the scan reports, a person
-    decides (plan 2026-11, B7). Automatic blocking was rejected on purpose --
-    a class behind one NAT address would lock itself out.
+    Returns [{'ip', 'findings', 'kinds', 'last_seen'}], newest first, where
+    ``kinds`` counts the findings per SUGGESTION_KINDS name. Addresses that are
+    already blocked, or that an admin may not block (own address, non-public),
+    are left out. Nothing here blocks: the scan and the traps report, a person
+    decides (plan 2026-11, B3/B7). Automatic blocking was rejected on purpose --
+    a class behind one NAT address would lock itself out, and behind the Tor
+    hidden service every visitor arrives from 127.0.0.1.
     """
     try:
         rows = db.session.execute(text("""
-            SELECT ip_address, COUNT(*) AS findings, MAX(timestamp) AS last_seen
+            SELECT ip_address, event_type, COUNT(*) AS findings, MAX(timestamp) AS last_seen
             FROM security_events
-            WHERE event_type = 'suspicious_failed_logins'
+            WHERE event_type IN :kinds
               AND ip_address IS NOT NULL
               AND timestamp > :since
-            GROUP BY ip_address
-            ORDER BY MAX(timestamp) DESC
-        """), {'since': datetime.now(timezone.utc) - window}).fetchall()
+            GROUP BY ip_address, event_type
+        """).bindparams(bindparam('kinds', expanding=True)),
+            {'since': datetime.now(timezone.utc) - window, 'kinds': list(SUGGESTION_KINDS)}).fetchall()
     except Exception as exc:
         db.session.rollback()
         current_app.logger.warning('Could not load block suggestions: %s', exc)
         return []
 
     blocked = {str(row.ip_address) for row in SecurityService.get_blocked_ips()}
-    suggestions = []
-    for ip, findings, last_seen in rows:
+    by_ip = {}
+    for ip, event_type, findings, last_seen in rows:
         ip = str(ip)
         if ip in blocked or blockable_reason(ip, own_ip):
             continue
-        suggestions.append({'ip': ip, 'findings': findings, 'last_seen': last_seen})
-    return suggestions
+        entry = by_ip.setdefault(ip, {'ip': ip, 'findings': 0, 'kinds': {}, 'last_seen': last_seen})
+        entry['findings'] += findings
+        entry['kinds'][SUGGESTION_KINDS[event_type]] = findings
+        entry['last_seen'] = max(entry['last_seen'], last_seen)
+    return sorted(by_ip.values(), key=lambda s: s['last_seen'], reverse=True)
+
+
+# =============================================================================
+# Decoy paths (honeypot, plan 2026-11 B3)
+# =============================================================================
+
+# Paths that do not exist here and that no visitor of this app has a reason to
+# request -- but that every vulnerability scanner probes. A hit is a finding
+# about the address, never a block (see block_suggestions).
+DECOY_PATHS = (
+    '/wp-login.php',
+    '/wp-admin/',
+    '/xmlrpc.php',
+    '/admin.php',
+    '/administrator/',
+    '/phpmyadmin/',
+    '/.env',
+    '/.git/config',
+    '/config.php',
+    '/server-status',
+)
+
+# One security_events row per address and decoy within the window: a scanner
+# sends thousands of requests, and each must not become a database row. Same
+# bounded per-process cache as the block check (_block_cache, below).
+_decoy_seen = {}
+DECOY_SEEN_MAX = 10000
+
+
+def record_decoy_hit(path, ip_address):
+    """Report a request to a decoy path, at most once per address and path per window."""
+    window = current_app.config.get('DECOY_LOG_WINDOW_SECONDS', 600)
+    now = time.monotonic()
+    key = (ip_address, path)
+    if _decoy_seen.get(key, 0) > now:
+        return False
+    if len(_decoy_seen) >= DECOY_SEEN_MAX:
+        for stale in [k for k, until in _decoy_seen.items() if until <= now]:
+            del _decoy_seen[stale]
+        if len(_decoy_seen) >= DECOY_SEEN_MAX:
+            _decoy_seen.clear()
+    _decoy_seen[key] = now + window
+
+    from app.services.audit_service import log_security_event
+    log_security_event(
+        'honeypot_path',
+        'medium',
+        f'Decoy path requested: {path}',
+        ip_address=ip_address,
+    )
+    return True
 
 
 SECURITY_TABLES_SQL = """
@@ -538,31 +451,6 @@ CREATE TABLE IF NOT EXISTS blocked_ips (
 );
 
 CREATE INDEX IF NOT EXISTS idx_blocked_ips_expires ON blocked_ips(expires_at);
-
--- Canary tokens table
-CREATE TABLE IF NOT EXISTS canary_tokens (
-    id SERIAL PRIMARY KEY,
-    token_hash VARCHAR(64) NOT NULL UNIQUE,
-    token_type VARCHAR(50) NOT NULL,
-    description TEXT,
-    alert_email VARCHAR(255),
-    trigger_count INTEGER DEFAULT 0,
-    last_triggered_at TIMESTAMP,
-    is_active BOOLEAN DEFAULT true,
-    created_at TIMESTAMP DEFAULT NOW()
-);
-
--- Canary triggers table
-CREATE TABLE IF NOT EXISTS canary_triggers (
-    id SERIAL PRIMARY KEY,
-    canary_id INTEGER REFERENCES canary_tokens(id),
-    ip_address INET,
-    user_agent TEXT,
-    triggered_at TIMESTAMP DEFAULT NOW(),
-    metadata JSONB
-);
-
-CREATE INDEX IF NOT EXISTS idx_canary_triggers_time ON canary_triggers(triggered_at);
 """
 
 

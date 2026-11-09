@@ -12,9 +12,10 @@ import pytest
 @pytest.fixture(autouse=True)
 def security_tables(app):
     """
-    Create the security tables. They live in SECURITY_TABLES_SQL as PostgreSQL
-    DDL (SERIAL/INET/JSONB); this portable equivalent runs on SQLite and on the
-    PostgreSQL suite (where blocked_ips already exists from its migration).
+    Create the blocked_ips table. Its PostgreSQL DDL (SERIAL/INET) lives in
+    migrations/add_blocked_ips.sql; this portable equivalent runs on SQLite and
+    on the PostgreSQL suite (where the table already exists). The canary tables
+    went with the canary code to examples/ (plan 2026-11, B3).
     """
     from sqlalchemy import text
     from app import db
@@ -34,29 +35,6 @@ def security_tables(app):
             updated_at TIMESTAMP
         )
         """,
-        """
-        CREATE TABLE IF NOT EXISTS canary_tokens (
-            id {serial},
-            token_hash VARCHAR(64) NOT NULL UNIQUE,
-            token_type VARCHAR(50) NOT NULL,
-            description TEXT,
-            alert_email VARCHAR(255),
-            trigger_count INTEGER DEFAULT 0,
-            last_triggered_at TIMESTAMP,
-            is_active BOOLEAN DEFAULT TRUE,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-        """,
-        """
-        CREATE TABLE IF NOT EXISTS canary_triggers (
-            id {serial},
-            canary_id INTEGER,
-            ip_address VARCHAR(45),
-            user_agent TEXT,
-            triggered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            metadata TEXT
-        )
-        """,
     ]
     for statement in ddl:
         db.session.execute(text(statement.replace('{serial}', serial)))
@@ -64,7 +42,7 @@ def security_tables(app):
 
     yield
 
-    for table in ('canary_triggers', 'canary_tokens', 'blocked_ips'):
+    for table in ('blocked_ips',):
         try:
             db.session.execute(text(f'DELETE FROM {table}'))
             db.session.commit()

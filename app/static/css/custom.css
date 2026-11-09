@@ -74,3 +74,14 @@ footer {
         font-size: 2rem;
     }
 }
+
+/* Honeypot field on the registration form (plan 2026-11, B3). Off-screen
+   rather than display:none: some bots skip fields that are display:none. */
+.hp-field {
+    position: absolute;
+    left: -10000px;
+    top: auto;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+}

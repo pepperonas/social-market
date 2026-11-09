@@ -16,6 +16,15 @@
                 <form method="POST" action="{{ url_for('auth.register') }}" novalidate>
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
 
+                    {# Honeypot (plan 2026-11, B3): moved out of view by custom.css,
+                       skipped by screen readers, keyboard and password managers.
+                       People leave it empty; form-filling bots do not. #}
+                    <div class="hp-field" aria-hidden="true">
+                        <label for="hp_website">Website</label>
+                        <input type="text" id="hp_website" name="hp_website" value=""
+                               tabindex="-1" autocomplete="off">
+                    </div>
+
                     {% if errors %}
                     <div class="alert alert-danger" role="alert">
                         <strong>Please correct the following:</strong>
