@@ -34,34 +34,49 @@ def _strip_comments(source):
     return re.sub(r'\{#.*?#\}|<!--.*?-->', '', source, flags=re.DOTALL)
 
 
+def inline_handlers(source):
+    return [m.group(0)[:80] for m in INLINE_HANDLER.finditer(_strip_comments(source))]
+
+
+def scripts_without_nonce(source):
+    return [m.group(0) for m in SCRIPT_TAG.finditer(_strip_comments(source))
+            if 'csp_nonce()' not in m.group(1) and 'src=' not in m.group(1)]
+
+
+def javascript_urls(source):
+    return JS_URL.findall(_strip_comments(source))
+
+
 @pytest.mark.parametrize('template', ALL, ids=lambda p: str(p.relative_to(TEMPLATES)))
 def test_no_inline_event_handlers(template):
-    source = _strip_comments(template.read_text())
-    found = [m.group(0)[:80] for m in INLINE_HANDLER.finditer(source)]
-    assert found == [], 'blocked by script-src; use data-* + static/js/ui.js'
+    assert inline_handlers(template.read_text()) == [], 'blocked by script-src; use data-* + static/js/ui.js'
 
 
 @pytest.mark.parametrize('template', ALL, ids=lambda p: str(p.relative_to(TEMPLATES)))
 def test_every_script_has_the_nonce_or_a_source(template):
-    source = _strip_comments(template.read_text())
-    bad = [m.group(0) for m in SCRIPT_TAG.finditer(source)
-           if 'csp_nonce()' not in m.group(1) and 'src=' not in m.group(1)]
-    assert bad == []
+    assert scripts_without_nonce(template.read_text()) == []
 
 
 @pytest.mark.parametrize('template', ALL, ids=lambda p: str(p.relative_to(TEMPLATES)))
 def test_no_javascript_urls(template):
-    assert JS_URL.findall(_strip_comments(template.read_text())) == []
+    assert javascript_urls(template.read_text()) == []
 
 
-def test_the_guard_sees_what_it_is_for():
-    """Counter-check: the patterns match the defects they exist to catch."""
-    assert INLINE_HANDLER.search('<button type="submit"\n   onclick="return confirm(\'x\')">')
-    assert INLINE_HANDLER.search('<input onchange="this.form.submit()">')
-    assert not INLINE_HANDLER.search('<button data-confirm="Delete?">')
-    tags = [m.group(1) for m in SCRIPT_TAG.finditer('<script>x</script><script nonce="{{ csp_nonce() }}">')]
-    assert tags == ['', ' nonce="{{ csp_nonce() }}"']
-    assert JS_URL.search('<a href="javascript:void(0)">')
+@pytest.mark.parametrize('detector, bad, good', [
+    (inline_handlers, '<button type="submit"\n   onclick="return confirm(\'x\')">', '<button data-confirm="x">'),
+    (inline_handlers, '<input onchange="this.form.submit()">', '<input data-autosubmit>'),
+    (scripts_without_nonce, '<script>x()</script>', '<script nonce="{{ csp_nonce() }}">x()</script>'),
+    (scripts_without_nonce, '<script>x()</script>', '<script src="/static/js/ui.js"></script>'),
+    (javascript_urls, '<a href="javascript:void(0)">', '<a href="#top">'),
+])
+def test_the_guard_sees_what_it_is_for(detector, bad, good):
+    """Counter-check: the same functions the guards use catch the real defect.
+
+    No template has these defects any more, so the guards above pass even if
+    a detector is broken; this is what makes a broken detector visible."""
+    assert detector(bad)
+    assert detector(good) == []
+    assert detector('{# ' + bad + ' #}') == [], 'a commented-out example is not a defect'
 
 
 def test_behaviours_used_by_templates_exist_in_ui_js():

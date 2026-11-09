@@ -290,3 +290,26 @@ def test_cart_quantity_submits_on_change(shop_url, browser, shop, sample_user):
     cart = Cart.query.filter_by(user_id=fresh(User, sample_user.id).id).one()
     assert [item.quantity for item in cart.items] == [3], w.flash()
     assert w.problems == []
+
+
+@pytest.mark.parametrize('answer, survives', [('dismiss', True), ('accept', False)])
+def test_a_form_level_confirmation_guards_the_edit_page_delete(
+        shop_url, browser, shop, sample_vendor, answer, survives):
+    """form[data-confirm] (any submit of that form), not a button hook."""
+    from app.models.product import Product
+    product = shop()
+    w = _logged_in(browser, shop_url, sample_vendor, BUYER_PW, 'vendor')
+    asked = []
+    w.page.on('dialog', lambda d: (asked.append(d.message), getattr(d, answer)()))
+    w.goto(f'{shop_url}/vendor/product/{product.id}/edit')
+    button = w.page.locator(f'form[data-confirm][action$="/product/{product.id}/delete"] button[type=submit]')
+    if survives:
+        button.click()
+        w.page.wait_for_timeout(300)
+    else:
+        with w.page.expect_navigation():
+            button.click()
+
+    assert asked, 'no confirmation dialog'
+    assert (fresh(Product, product.id) is not None) is survives
+    assert w.problems == []
