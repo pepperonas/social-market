@@ -108,7 +108,7 @@ Security logic lives in `app/services/`, never inline in a route:
 | `pgp_service.py` | RSA-4096 keypairs, encrypt/decrypt |
 | `image_service.py` | Upload validation, metadata removal by rebuilding pixels (fail closed), thumbnails |
 | `audit_service.py` | PostgreSQL stored procedures |
-| `security_service.py` | IP blocking, canary tokens, honeypots |
+| `security_service.py` | IP blocking, honeypot traps (report only), block suggestions |
 | `escrow_service.py` | Escrow lifecycle |
 
 ### Database
@@ -299,8 +299,15 @@ audit tables are different: the app itself writes them with `str()`, so `str()` 
   and re-encrypts after a key rotation (new key first in the comma list). A wrong key raises
   `InvalidToken` -- fail closed, never "no 2FA". Losing the key makes every 2FA enrolment
   unusable; it lives only in the server `.env` and its backups.
-- Manual IP blocks are wired in; canary tokens and honeypots are reference code
-  without callers. Do not describe them as active protection.
+- Manual IP blocks are wired in. **Honeypots are wired in but only report** (since 2026-11-09):
+  the hidden `hp_website` field on `/auth/register` (checked before validation, answered like a
+  success) and `DECOY_PATHS` (`app/routes/decoys.py`, CSRF-exempt, answer the normal JSON 404).
+  Both write `security_events`; `block_suggestions()` counts them per kind (`SUGGESTION_KINDS`)
+  for the admin. Never auto-block: behind the Tor hidden service every visitor is 127.0.0.1.
+  Decoy de-duplication (`_decoy_seen`) is per worker process -- N workers can log a hit N times.
+  The test config turns CSRF off; a test about a CSRF exemption must switch it on itself.
+- Canary tokens are NOT in the app: reference code in `examples/canary_tokens.py` (no tables,
+  no callers). Do not describe them as active protection.
 - **Shipping data goes through pgcrypto** (`encrypt_data`/`decrypt_data`), which read
   `app.encryption_key` from the session. `_pass_db_encryption_key` puts `DB_ENCRYPTION_KEY`
   into the connection's startup `options` -- never into a `SET`/`set_config` statement, which

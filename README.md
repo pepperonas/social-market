@@ -262,8 +262,9 @@ and inbox pages passed HTTPS checks. See the [deployment verification](docs/REVI
 The detailed findings, mutation checks and remaining work are recorded in
 [`docs/REVIEW-2026-11.md`](docs/REVIEW-2026-11.md) and the
 [round 3 summary](docs/BUGFIX-PLAN.md#dritte-runde-november-2026--abschluss).
-TOTP secrets remain plaintext in the database; encryption with a separate key and a data
-migration is a follow-up. Canary tokens and honeypots remain unwired reference code.
+TOTP secrets are encrypted at rest with their own key since 2026-11-08 (see the review).
+Honeypots are wired in since 2026-11-09 and only report; canary tokens are reference code in
+`examples/canary_tokens.py`, not part of the app.
 
 ### 🎓 Start here
 

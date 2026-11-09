@@ -19,7 +19,8 @@ vulnerabilities — read the linked material instead, that is the point:
 | A real pepper once leaked through documentation | `docs/PASSWORD_SECURITY.md` (worked example) |
 | IP blocking fails **open** on database errors | `tests/test_services_security.py::TestFailureMode` |
 | IP blocking is **manual only** (admin → Security); nothing blocks automatically -- a class behind one NAT address would lock itself out | `SecurityService.auto_block_check` docstring |
-| Canary tokens and honeypot fields exist in `security_service.py` but are **not wired in** (no tables, no callers) -- reference code, not a protection | `docs/REVIEW-2026-11.md`, P1-24 |
+| Honeypots are wired in (hidden registration field, decoy paths such as `/wp-login.php`) but **only report**: findings become block *suggestions* on the admin security page, never a block. Decoy hits are de-duplicated per worker process | `app/routes/decoys.py`, `docs/REVIEW-2026-11.md` (Nachtrag 2026-11-09) |
+| Canary tokens are **not** part of the app: reference code in `examples/canary_tokens.py`, no tables, no callers | `examples/canary_tokens.py` |
 | Crypto salt for `CryptoService` is fixed | `app/services/crypto_service.py` (must be deterministic to decrypt) |
 | `style-src` allows `unsafe-inline` | Bootstrap from CDN; `script-src` is nonce-gated and does not |
 | Historic security findings are left visible | `docs/BUGFIX-PLAN.md` |
