@@ -262,7 +262,7 @@
                         <a href="{{ url_for('account.privacy_settings') }}" class="list-group-item list-group-item-action">
                             <i class="bi bi-gear me-2"></i> Privacy Settings
                         </a>
-                        <a href="#" onclick="document.getElementById('exportForm').submit(); return false;" class="list-group-item list-group-item-action">
+                        <a href="{{ url_for('account.privacy_settings') }}" data-submit-form="exportForm" class="list-group-item list-group-item-action">
                             <i class="bi bi-download me-2"></i> Export My Data
                         </a>
                         <a href="{{ url_for('account.delete_account') }}" class="list-group-item list-group-item-action text-danger">

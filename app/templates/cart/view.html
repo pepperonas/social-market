@@ -94,7 +94,7 @@
                                 <input type="hidden" name="product_id" value="{{ item.product_id }}">
                                 <input type="number" name="quantity" value="{{ item.quantity }}" min="0" max="100" 
                                        class="form-control form-control-sm" style="width: 70px;"
-                                       onchange="this.form.submit()">
+                                       data-autosubmit>
                             </form>
                         </td>
                         <td class="align-middle">
@@ -145,7 +145,7 @@
                         <form action="{{ url_for('cart.clear_cart') }}" method="POST">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                             <button type="submit" class="btn btn-outline-secondary w-100" 
-                                    onclick="return confirm('Are you sure you want to clear your cart?')">
+                                    data-confirm="Are you sure you want to clear your cart?">
                                 <i class="bi bi-trash"></i> Clear Cart
                             </button>
                         </form>

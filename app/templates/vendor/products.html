@@ -59,7 +59,7 @@
                             <a href="{{ url_for('vendor.edit_product', product_id=product.id) }}" class="btn btn-sm btn-secondary">Edit</a>
                             <form method="POST" action="{{ url_for('vendor.delete_product', product_id=product.id) }}" style="display: inline;">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                                <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Delete this product?')">Delete</button>
+                                <button type="submit" class="btn btn-sm btn-danger" data-confirm="Delete this product?">Delete</button>
                             </form>
                         </td>
                     </tr>

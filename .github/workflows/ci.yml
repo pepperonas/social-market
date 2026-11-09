@@ -97,7 +97,7 @@ jobs:
           RATELIMIT_ENABLED: 'false'
           TESTING: 'true'
         run: |
-          pytest tests/ -v --tb=short --cov=app --cov-report=xml --cov-report=term-missing
+          pytest tests/ -v --tb=short --cov=app --cov-branch --cov-report=xml --cov-report=term-missing
 
       - name: Run tests against PostgreSQL
         # The step above runs on SQLite (fast, and the coverage numbers). This
@@ -116,7 +116,9 @@ jobs:
         run: pytest tests/ -q --tb=short -p no:cacheprovider
 
       - name: Enforce route coverage target
-        run: python -m coverage report --include='app/routes/*' --precision=2 --fail-under=70
+        # Line + branch coverage since plan step 6 (C3/C4): 77.9 % when raised.
+        # Branch coverage of the whole app is reported, not enforced (yet).
+        run: python -m coverage report --include='app/routes/*' --precision=2 --fail-under=75
 
       - name: Upload coverage report
         if: always()
@@ -124,6 +126,39 @@ jobs:
         with:
           name: coverage-report
           path: coverage.xml
+
+  browser:
+    name: Browser smoke test
+    # Improvement plan 2026-11, C5: headless Chromium through register -> order
+    # -> pay -> ship -> complete with CSRF on; any CSP violation, page error or
+    # console error fails it. Runs on the SQLite test config, no services.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libmagic1 gnupg
+
+      - name: Install Python dependencies and Chromium
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r app/requirements.txt playwright
+          python -m playwright install --with-deps chromium
+
+      - name: Run browser tests
+        env:
+          BROWSER_TESTS: '1'
+          SECRET_KEY: test-secret-key-ci-only
+          PASSWORD_PEPPER: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+          TESTING: 'true'
+        run: pytest tests/test_browser_smoke.py -v --tb=short -p no:cacheprovider
 
   secrets:
     name: Secret Scan

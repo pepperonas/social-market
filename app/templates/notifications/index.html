@@ -89,7 +89,7 @@
                 <form action="{{ url_for('notifications.delete', notification_id=notification.id) }}" method="POST">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button type="submit" class="btn btn-sm btn-outline-danger" 
-                            onclick="return confirm('Delete this notification?')">
+                            data-confirm="Delete this notification?">
                         <i class="bi bi-trash"></i>
                     </button>
                 </form>

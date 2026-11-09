@@ -23,3 +23,4 @@ per-file-ignores =
     tests/test_concurrency_pg.py:F811
     tests/test_plan_step4.py:F811
     tests/test_plan_step6.py:F811
+    tests/test_browser_smoke.py:F811

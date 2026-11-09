@@ -70,7 +70,7 @@
                         <!-- Delete button -->
                         <form method="POST" action="{{ url_for('messages.delete_message', message_id=message.id) }}" style="display: inline;">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                            <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Delete this message?')">
+                            <button type="submit" class="btn btn-sm btn-danger" data-confirm="Delete this message?">
                                 🗑️ Delete
                             </button>
                         </form>

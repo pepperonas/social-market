@@ -76,7 +76,7 @@
                     <form action="{{ url_for('account.terminate_all_sessions') }}" method="POST">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <button type="submit" class="btn btn-warning" 
-                                onclick="return confirm('This will sign you out of all other devices. Continue?')">
+                                data-confirm="This will sign you out of all other devices. Continue?">
                             <i class="bi bi-power"></i> Sign Out All Other Sessions
                         </button>
                     </form>

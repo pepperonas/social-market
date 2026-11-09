@@ -119,7 +119,7 @@
 }
 </style>
 
-<script>
+<script nonce="{{ csp_nonce() }}">
 document.addEventListener('DOMContentLoaded', function() {
     // Update rating text
     const ratingInputs = document.querySelectorAll('input[name="rating"]');
