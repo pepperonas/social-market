@@ -57,13 +57,13 @@
                             {{ health.database.status|upper }}
                         </strong>
                     </div>
-                    {% if health.database.latency %}
+                    {% if health.database.get('latency') %}
                     <div class="d-flex justify-content-between mb-2">
                         <span>Latency:</span>
                         <strong>{{ health.database.latency }}ms</strong>
                     </div>
                     {% endif %}
-                    {% if health.database.error %}
+                    {% if health.database.get('error') %}
                     <div class="alert alert-danger small mb-0">{{ health.database.error }}</div>
                     {% endif %}
                 </div>
@@ -92,13 +92,13 @@
                             {{ health.redis.status|upper }}
                         </strong>
                     </div>
-                    {% if health.redis.latency %}
+                    {% if health.redis.get('latency') %}
                     <div class="d-flex justify-content-between mb-2">
                         <span>Latency:</span>
                         <strong>{{ health.redis.latency }}ms</strong>
                     </div>
                     {% endif %}
-                    {% if health.redis.error %}
+                    {% if health.redis.get('error') %}
                     <div class="alert alert-danger small mb-0">{{ health.redis.error }}</div>
                     {% endif %}
                 </div>
@@ -127,7 +127,7 @@
                             {{ health.disk.status|upper }}
                         </strong>
                     </div>
-                    {% if health.disk.usage %}
+                    {% if health.disk.get('usage') %}
                     <div class="mb-2">
                         <div class="d-flex justify-content-between small">
                             <span>Usage:</span>
@@ -172,7 +172,7 @@
                             {{ health.memory.status|upper }}
                         </strong>
                     </div>
-                    {% if health.memory.usage %}
+                    {% if health.memory.get('usage') %}
                     <div class="mb-2">
                         <div class="d-flex justify-content-between small">
                             <span>Usage:</span>
