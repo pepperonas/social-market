@@ -169,12 +169,25 @@ class TestDecoyPaths:
         assert decoy.get_data() == unknown.get_data()
         assert decoy.headers['Content-Type'] == unknown.headers['Content-Type']
 
-    def test_post_to_a_decoy_is_recorded_too(self, app, events):
-        """wp-login.php is mostly POSTed to by credential stuffers -- CSRF must not hide it."""
+    def test_post_to_a_decoy_is_recorded_too(self, app, events, monkeypatch):
+        """
+        wp-login.php is mostly POSTed to by credential stuffers, without a CSRF
+        token. With CSRF on (as in production) the decoy must still record the
+        hit and answer 404 -- a CSRF 400 would hide it and give the decoy away.
+        The test config turns CSRF off, so it is switched on here.
+        """
+        monkeypatch.setitem(app.config, 'WTF_CSRF_ENABLED', True)
         response = _client(app).post('/wp-login.php', data={'log': 'admin', 'pwd': 'admin'})
 
         assert response.status_code == 404
         assert [e['type'] for e in events] == ['honeypot_path']
+
+    def test_csrf_still_guards_real_forms_in_that_setup(self, app, monkeypatch):
+        """Control for the test above: the switch really turns CSRF on."""
+        monkeypatch.setitem(app.config, 'WTF_CSRF_ENABLED', True)
+        response = _client(app).post('/auth/register', data=_registration('nocsrf1'))
+
+        assert response.status_code == 400
 
     def test_unknown_paths_are_not_decoys(self, app, events):
         _client(app).get('/definitely-not-a-route')
@@ -328,4 +341,5 @@ class TestNoGuestCart:
     def test_model_does_not_promise_a_cleanup_job_that_does_not_exist(self):
         from app.models import cart
 
-        assert 'automatic cleanup' not in cart.Cart.__doc__.replace('promise "automatic cleanup"', '')
+        doc = cart.Cart.__doc__.lower().replace('promise "automatic cleanup"', '')
+        assert 'automatic cleanup' not in doc
